@@ -125,6 +125,13 @@ a {
   gap: 8px;
 }
 
+.row-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
 .side-menu-items {
   display: grid;
   gap: 4px;
@@ -210,6 +217,7 @@ a {
   color: #0b3a70;
 }
 
+.icon-button,
 .overflow-button {
   display: inline-flex;
   flex: 0 0 28px;
@@ -227,6 +235,12 @@ a {
   line-height: 1;
 }
 
+.icon-button {
+  font-size: 1rem;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible,
 .overflow-button:hover,
 .overflow-button:focus-visible {
   background: #dbeafe;
@@ -234,7 +248,7 @@ a {
   outline: none;
 }
 
-.side-menu-title .overflow-button {
+.side-menu-title .row-actions {
   margin-top: -6px;
 }
 

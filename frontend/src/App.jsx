@@ -72,7 +72,10 @@ export default function App() {
           {activePage === "work" ? (
             <div className="side-menu-title action-row">
               <span>{page.title}</span>
-              <OverflowButton label="Work actions" />
+              <div className="row-actions">
+                <AddButton label="Add work item" />
+                <OverflowButton label="Work actions" />
+              </div>
             </div>
           ) : (
             <div className="side-menu-title">{page.title}</div>
@@ -121,7 +124,10 @@ function WorkMenu({ activeItem, onSelect }) {
             >
               {project.name}
             </button>
-            <OverflowButton label={`${project.name} actions`} />
+            <div className="row-actions">
+              <AddButton label={`Add conversation to ${project.name}`} />
+              <OverflowButton label={`${project.name} actions`} />
+            </div>
           </div>
           <div className="conversation-list">
             {project.conversations.map((conversation) => (
@@ -154,6 +160,14 @@ function OverflowButton({ label }) {
   return (
     <button className="overflow-button" type="button" aria-label={label}>
       {"\u2026"}
+    </button>
+  );
+}
+
+function AddButton({ label }) {
+  return (
+    <button className="icon-button" type="button" aria-label={label}>
+      +
     </button>
   );
 }
