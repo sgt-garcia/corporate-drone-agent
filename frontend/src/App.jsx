@@ -1,5 +1,6 @@
 import "./styles.css";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 const initialProjects = [
   {
@@ -43,6 +44,10 @@ const pages = {
 
 export default function App() {
   const [projects, setProjects] = useState(initialProjects);
+  const [messagesByConversationId, setMessagesByConversationId] = useState(() =>
+    createInitialMessages(initialProjects)
+  );
+  const [draftsByConversationId, setDraftsByConversationId] = useState({});
   const [activePage, setActivePage] = useState("work");
   const [activeWorkItemId, setActiveWorkItemId] = useState(
     initialProjects[0].conversations[0].id
@@ -72,6 +77,7 @@ export default function App() {
   }
 
   function addConversation(projectId) {
+    const targetProject = projects.find((project) => project.id === projectId);
     const conversation = {
       id: `conversation-${crypto.randomUUID()}`,
       name: "New Conversation"
@@ -87,6 +93,13 @@ export default function App() {
           : project
       )
     );
+    setMessagesByConversationId((currentMessages) => ({
+      ...currentMessages,
+      [conversation.id]: createConversationMessages(
+        conversation,
+        targetProject?.name ?? "New Project"
+      )
+    }));
     setActiveWorkItemId(conversation.id);
   }
 
@@ -96,6 +109,68 @@ export default function App() {
         ? currentIds.filter((id) => id !== projectId)
         : [...currentIds, projectId]
     );
+  }
+
+  function updateDraft(conversationId, value) {
+    setDraftsByConversationId((currentDrafts) => ({
+      ...currentDrafts,
+      [conversationId]: value
+    }));
+  }
+
+  function sendMessage(conversationId, content) {
+    const trimmedContent = content.trim();
+
+    if (!trimmedContent) {
+      return;
+    }
+
+    const userMessage = {
+      id: `user-${crypto.randomUUID()}`,
+      content: trimmedContent,
+      role: "user"
+    };
+
+    setDraftsByConversationId((currentDrafts) => ({
+      ...currentDrafts,
+      [conversationId]: ""
+    }));
+
+    setMessagesByConversationId((currentMessages) => ({
+      ...currentMessages,
+      [conversationId]: [...(currentMessages[conversationId] ?? []), userMessage]
+    }));
+
+    window.setTimeout(() => {
+      const statusMessage = {
+        id: `status-${crypto.randomUUID()}`,
+        content: "CDA is processing...",
+        role: "status"
+      };
+
+      setMessagesByConversationId((currentMessages) => ({
+        ...currentMessages,
+        [conversationId]: [...(currentMessages[conversationId] ?? []), statusMessage]
+      }));
+
+      window.setTimeout(() => {
+        const assistantMessage = {
+          id: `assistant-${crypto.randomUUID()}`,
+          content: `You said:\n\n${trimmedContent}`,
+          role: "assistant"
+        };
+
+        setMessagesByConversationId((currentMessages) => ({
+          ...currentMessages,
+          [conversationId]: [
+            ...(currentMessages[conversationId] ?? []).filter(
+              (message) => message.id !== statusMessage.id
+            ),
+            assistantMessage
+          ]
+        }));
+      }, 1000);
+    }, 1000);
   }
 
   return (
@@ -172,7 +247,13 @@ export default function App() {
           </section>
 
           {activePage === "work" ? (
-            <WorkContent activeItem={activeWorkItem} projects={projects} />
+            <WorkContent
+              activeItem={activeWorkItem}
+              draftsByConversationId={draftsByConversationId}
+              messagesByConversationId={messagesByConversationId}
+              onDraftChange={updateDraft}
+              onSend={sendMessage}
+            />
           ) : (
             <SettingsPanel />
           )}
@@ -208,6 +289,29 @@ function findWorkItem(projects, activeId) {
     name: projects[0]?.name ?? "Work",
     type: "project"
   };
+}
+
+function createInitialMessages(projects) {
+  return projects.reduce((messages, project) => {
+    project.conversations.forEach((conversation) => {
+      messages[conversation.id] = createConversationMessages(
+        conversation,
+        project.name
+      );
+    });
+
+    return messages;
+  }, {});
+}
+
+function createConversationMessages(conversation, projectName) {
+  return [
+    {
+      id: `assistant-seed-${conversation.id}`,
+      content: `Ready for **${conversation.name}** in ${projectName}.`,
+      role: "assistant"
+    }
+  ];
 }
 
 function WorkMenu({
@@ -296,7 +400,13 @@ function AddButton({ label, onClick }) {
   );
 }
 
-function WorkContent({ activeItem, projects }) {
+function WorkContent({
+  activeItem,
+  draftsByConversationId,
+  messagesByConversationId,
+  onDraftChange,
+  onSend
+}) {
   if (activeItem.type === "project") {
     return <ProjectSettingsPanel key={activeItem.item.id} project={activeItem.item} />;
   }
@@ -305,7 +415,11 @@ function WorkContent({ activeItem, projects }) {
     <ConversationPanel
       conversation={activeItem.item}
       key={activeItem.item.id}
+      messages={messagesByConversationId[activeItem.item.id] ?? []}
+      onDraftChange={(value) => onDraftChange(activeItem.item.id, value)}
+      onSend={(content) => onSend(activeItem.item.id, content)}
       project={activeItem.project}
+      value={draftsByConversationId[activeItem.item.id] ?? ""}
     />
   );
 }
@@ -329,21 +443,64 @@ function ProjectSettingsPanel({ project }) {
   );
 }
 
-function ConversationPanel({ conversation, project }) {
+function ConversationPanel({ conversation, messages, onDraftChange, onSend, project, value }) {
+  const historyRef = useRef(null);
+
+  useEffect(() => {
+    if (historyRef.current) {
+      historyRef.current.scrollTop = historyRef.current.scrollHeight;
+    }
+  }, [conversation.id, messages]);
+
+  function submitMessage() {
+    onSend(value);
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      submitMessage();
+    }
+  }
+
   return (
     <section className="conversation-page" aria-label={`${conversation.name} conversation`}>
-      <article className="summary-card wide">
-        <span className="card-label">{project.name}</span>
-        <h2>{conversation.name}</h2>
-        <p>
-          This conversation page is ready for chat history, context, and scheduled
-          jobs when the backend arrives.
-        </p>
-      </article>
-      <div className="message-composer">
-        <input type="text" placeholder="Type a message..." />
-        <button type="button">Send</button>
+      <div className="message-history" aria-label="Message history" ref={historyRef}>
+        {messages.map((message) => (
+          <article className={`chat-message ${message.role}`} key={message.id}>
+            <div className="message-author">
+              {message.role === "user" ? "You" : "CDA"}
+            </div>
+            <div className="message-bubble">
+              {message.role === "status" ? (
+                <span>{message.content}</span>
+              ) : (
+                <ReactMarkdown>{message.content}</ReactMarkdown>
+              )}
+            </div>
+          </article>
+        ))}
       </div>
+
+      <form
+        className="message-composer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submitMessage();
+        }}
+      >
+        <textarea
+          aria-label={`Message ${conversation.name}`}
+          onChange={(event) => onDraftChange(event.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={`Message ${project.name}`}
+          rows="3"
+          value={value}
+        />
+        <button type="submit" disabled={!value.trim()}>
+          Send
+        </button>
+      </form>
     </section>
   );
 }
