@@ -53,6 +53,12 @@ export default function App() {
   const page = pages[activePage];
   const activeWorkItem = findWorkItem(projects, activeWorkItemId);
   const activeMenuItem = activePage === "work" ? activeWorkItem.name : activeSettingsItem;
+  const pageContext =
+    activePage === "work"
+      ? activeWorkItem.type === "project"
+        ? "Project settings"
+        : "Conversation"
+      : page.title;
 
   function addProject() {
     const project = {
@@ -161,11 +167,15 @@ export default function App() {
 
         <main className="main-body">
           <section className="page-heading" aria-labelledby="page-title">
-            <p>{page.title}</p>
+            <p>{pageContext}</p>
             <h1 id="page-title">{activeMenuItem}</h1>
           </section>
 
-          {activePage === "work" ? <WorkPanel projects={projects} /> : <SettingsPanel />}
+          {activePage === "work" ? (
+            <WorkContent activeItem={activeWorkItem} projects={projects} />
+          ) : (
+            <SettingsPanel />
+          )}
         </main>
       </div>
     </div>
@@ -175,16 +185,29 @@ export default function App() {
 function findWorkItem(projects, activeId) {
   for (const project of projects) {
     if (project.id === activeId) {
-      return project;
+      return {
+        item: project,
+        name: project.name,
+        type: "project"
+      };
     }
 
     const conversation = project.conversations.find((item) => item.id === activeId);
     if (conversation) {
-      return conversation;
+      return {
+        item: conversation,
+        name: conversation.name,
+        project,
+        type: "conversation"
+      };
     }
   }
 
-  return projects[0] ?? { name: "Work" };
+  return {
+    item: projects[0],
+    name: projects[0]?.name ?? "Work",
+    type: "project"
+  };
 }
 
 function WorkMenu({
@@ -273,30 +296,54 @@ function AddButton({ label, onClick }) {
   );
 }
 
-function WorkPanel({ projects }) {
-  const conversationCount = projects.reduce(
-    (total, project) => total + project.conversations.length,
-    0
-  );
+function WorkContent({ activeItem, projects }) {
+  if (activeItem.type === "project") {
+    return <ProjectSettingsPanel key={activeItem.item.id} project={activeItem.item} />;
+  }
 
   return (
-    <section className="content-grid" aria-label="Work overview">
+    <ConversationPanel
+      conversation={activeItem.item}
+      key={activeItem.item.id}
+      project={activeItem.project}
+    />
+  );
+}
+
+function ProjectSettingsPanel({ project }) {
+  return (
+    <section className="settings-panel" aria-label={`${project.name} settings`}>
+      <label>
+        Project name
+        <input type="text" defaultValue={project.name} />
+      </label>
+      <label>
+        Working folder
+        <input type="text" placeholder="Optional local folder path" />
+      </label>
+      <label className="toggle-row">
+        <span>Index project sources</span>
+        <input type="checkbox" defaultChecked />
+      </label>
+    </section>
+  );
+}
+
+function ConversationPanel({ conversation, project }) {
+  return (
+    <section className="conversation-page" aria-label={`${conversation.name} conversation`}>
       <article className="summary-card wide">
-        <span className="card-label">Current focus</span>
-        <h2>Personal workspace</h2>
+        <span className="card-label">{project.name}</span>
+        <h2>{conversation.name}</h2>
         <p>
-          Keep project conversations, scheduled follow-ups, and indexed sources in
-          one calm command center.
+          This conversation page is ready for chat history, context, and scheduled
+          jobs when the backend arrives.
         </p>
       </article>
-      <article className="summary-card">
-        <span className="card-label">Projects</span>
-        <strong>{projects.length}</strong>
-      </article>
-      <article className="summary-card">
-        <span className="card-label">Conversations</span>
-        <strong>{conversationCount}</strong>
-      </article>
+      <div className="message-composer">
+        <input type="text" placeholder="Type a message..." />
+        <button type="button">Send</button>
+      </div>
     </section>
   );
 }
