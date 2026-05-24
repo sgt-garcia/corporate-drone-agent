@@ -128,6 +128,7 @@ export default function App() {
     const userMessage = {
       id: `user-${crypto.randomUUID()}`,
       content: trimmedContent,
+      createdAt: new Date().toISOString(),
       role: "user"
     };
 
@@ -145,6 +146,7 @@ export default function App() {
       const statusMessage = {
         id: `status-${crypto.randomUUID()}`,
         content: "CDA is processing...",
+        createdAt: new Date().toISOString(),
         role: "status"
       };
 
@@ -157,6 +159,7 @@ export default function App() {
         const assistantMessage = {
           id: `assistant-${crypto.randomUUID()}`,
           content: `You said:\n\n${trimmedContent}`,
+          createdAt: new Date().toISOString(),
           role: "assistant"
         };
 
@@ -309,6 +312,7 @@ function createConversationMessages(conversation, projectName) {
     {
       id: `assistant-seed-${conversation.id}`,
       content: `Ready for **${conversation.name}** in ${projectName}.`,
+      createdAt: new Date().toISOString(),
       role: "assistant"
     }
   ];
@@ -469,7 +473,7 @@ function ConversationPanel({ conversation, messages, onDraftChange, onSend, proj
         {messages.map((message) => (
           <article className={`chat-message ${message.role}`} key={message.id}>
             <div className="message-author">
-              {message.role === "user" ? "You" : "CDA"}
+              {formatMessageTimestamp(message.createdAt)}
             </div>
             <div className="message-bubble">
               {message.role === "status" ? (
@@ -503,6 +507,13 @@ function ConversationPanel({ conversation, messages, onDraftChange, onSend, proj
       </form>
     </section>
   );
+}
+
+function formatMessageTimestamp(value) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(value));
 }
 
 function SettingsPanel() {

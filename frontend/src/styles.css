@@ -532,8 +532,7 @@ a {
 
 .message-composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
+  grid-template-columns: 1fr;
   gap: 10px;
   padding: 14px;
   border: 1px solid #dbe4ef;
@@ -560,6 +559,7 @@ a {
 }
 
 .message-composer button {
+  justify-self: end;
   min-height: 44px;
   padding: 0 18px;
   border: 1px solid #0f3d72;
