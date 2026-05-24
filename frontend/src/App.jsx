@@ -47,6 +47,7 @@ export default function App() {
   const [activeWorkItemId, setActiveWorkItemId] = useState(
     initialProjects[0].conversations[0].id
   );
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState([]);
   const [activeSettingsItem, setActiveSettingsItem] = useState(pages.settings.menu[0]);
 
   const page = pages[activePage];
@@ -81,6 +82,14 @@ export default function App() {
       )
     );
     setActiveWorkItemId(conversation.id);
+  }
+
+  function toggleProject(projectId) {
+    setCollapsedProjectIds((currentIds) =>
+      currentIds.includes(projectId)
+        ? currentIds.filter((id) => id !== projectId)
+        : [...currentIds, projectId]
+    );
   }
 
   return (
@@ -129,8 +138,10 @@ export default function App() {
           {activePage === "work" ? (
             <WorkMenu
               activeItemId={activeWorkItemId}
+              collapsedProjectIds={collapsedProjectIds}
               onAddConversation={addConversation}
               onSelect={setActiveWorkItemId}
+              onToggleProject={toggleProject}
               projects={projects}
             />
           ) : (
@@ -177,12 +188,31 @@ function findWorkItem(projects, activeId) {
   return projects[0] ?? { name: "Work" };
 }
 
-function WorkMenu({ activeItemId, onAddConversation, onSelect, projects }) {
+function WorkMenu({
+  activeItemId,
+  collapsedProjectIds,
+  onAddConversation,
+  onSelect,
+  onToggleProject,
+  projects
+}) {
   return (
     <nav className="project-menu" aria-label="Projects and conversations">
-      {projects.map((project) => (
+      {projects.map((project) => {
+        const isCollapsed = collapsedProjectIds.includes(project.id);
+
+        return (
         <section className="project-group" key={project.id}>
           <div className={project.id === activeItemId ? "project-row active" : "project-row"}>
+            <button
+              className="collapse-button"
+              type="button"
+              aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${project.name}`}
+              aria-expanded={!isCollapsed}
+              onClick={() => onToggleProject(project.id)}
+            >
+              {isCollapsed ? "+" : "-"}
+            </button>
             <button
               className="project-button"
               type="button"
@@ -198,29 +228,32 @@ function WorkMenu({ activeItemId, onAddConversation, onSelect, projects }) {
               />
             </div>
           </div>
-          <div className="conversation-list">
-            {project.conversations.map((conversation) => (
-              <div
-                className={
-                  conversation.id === activeItemId
-                    ? "conversation-row active"
-                    : "conversation-row"
-                }
-                key={conversation.id}
-              >
-                <button
-                  className="conversation-button"
-                  type="button"
-                  onClick={() => onSelect(conversation.id)}
+          {!isCollapsed && (
+            <div className="conversation-list">
+              {project.conversations.map((conversation) => (
+                <div
+                  className={
+                    conversation.id === activeItemId
+                      ? "conversation-row active"
+                      : "conversation-row"
+                  }
+                  key={conversation.id}
                 >
-                  {conversation.name}
-                </button>
-                <OverflowButton label={`${conversation.name} actions`} />
-              </div>
-            ))}
-          </div>
+                  <button
+                    className="conversation-button"
+                    type="button"
+                    onClick={() => onSelect(conversation.id)}
+                  >
+                    {conversation.name}
+                  </button>
+                  <OverflowButton label={`${conversation.name} actions`} />
+                </div>
+              ))}
+            </div>
+          )}
         </section>
-      ))}
+      );
+      })}
     </nav>
   );
 }
