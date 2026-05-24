@@ -69,7 +69,14 @@ export default function App() {
 
       <div className="workspace">
         <aside className="side-menu" aria-label={`${page.title} menu`}>
-          <div className="side-menu-title">{page.title}</div>
+          {activePage === "work" ? (
+            <div className="side-menu-title action-row">
+              <span>{page.title}</span>
+              <OverflowButton label="Work actions" />
+            </div>
+          ) : (
+            <div className="side-menu-title">{page.title}</div>
+          )}
           {activePage === "work" ? (
             <WorkMenu activeItem={activeWorkItem} onSelect={setActiveWorkItem} />
           ) : (
@@ -106,32 +113,48 @@ function WorkMenu({ activeItem, onSelect }) {
     <nav className="project-menu" aria-label="Projects and conversations">
       {projects.map((project) => (
         <section className="project-group" key={project.id}>
-          <button
-            className={project.name === activeItem ? "project-button active" : "project-button"}
-            type="button"
-            onClick={() => onSelect(project.name)}
-          >
-            {project.name}
-          </button>
+          <div className={project.name === activeItem ? "project-row active" : "project-row"}>
+            <button
+              className="project-button"
+              type="button"
+              onClick={() => onSelect(project.name)}
+            >
+              {project.name}
+            </button>
+            <OverflowButton label={`${project.name} actions`} />
+          </div>
           <div className="conversation-list">
             {project.conversations.map((conversation) => (
-              <button
+              <div
                 className={
                   conversation === activeItem
-                    ? "conversation-button active"
-                    : "conversation-button"
+                    ? "conversation-row active"
+                    : "conversation-row"
                 }
                 key={conversation}
-                type="button"
-                onClick={() => onSelect(conversation)}
               >
-                {conversation}
-              </button>
+                <button
+                  className="conversation-button"
+                  type="button"
+                  onClick={() => onSelect(conversation)}
+                >
+                  {conversation}
+                </button>
+                <OverflowButton label={`${conversation} actions`} />
+              </div>
             ))}
           </div>
         </section>
       ))}
     </nav>
+  );
+}
+
+function OverflowButton({ label }) {
+  return (
+    <button className="overflow-button" type="button" aria-label={label}>
+      {"\u2026"}
+    </button>
   );
 }
 
