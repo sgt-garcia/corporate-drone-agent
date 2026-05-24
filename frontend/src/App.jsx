@@ -128,7 +128,6 @@ export default function App() {
             <div className="side-menu-title action-row">
               <span>{page.title}</span>
               <div className="row-actions">
-                <OverflowButton label="Work actions" />
                 <AddButton label="Add project" onClick={addProject} />
               </div>
             </div>
@@ -211,7 +210,7 @@ function WorkMenu({
               aria-expanded={!isCollapsed}
               onClick={() => onToggleProject(project.id)}
             >
-              {isCollapsed ? "+" : "-"}
+              {isCollapsed ? "\u203A" : "\u2304"}
             </button>
             <button
               className="project-button"
