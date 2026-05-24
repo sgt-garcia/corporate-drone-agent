@@ -1,10 +1,27 @@
 import "./styles.css";
 import { useState } from "react";
 
+const projects = [
+  {
+    id: "northwind",
+    name: "Northwind Migration",
+    conversations: ["Kickoff notes", "Data inventory", "Risk review"]
+  },
+  {
+    id: "atlas",
+    name: "Atlas Reporting",
+    conversations: ["Dashboard scope", "Finance metrics", "Release checklist"]
+  },
+  {
+    id: "helix",
+    name: "Helix Operations",
+    conversations: ["Weekly status", "Vendor follow-up", "Incident summary"]
+  }
+];
+
 const pages = {
   work: {
-    title: "Work",
-    menu: ["Dashboard", "Projects", "Conversations", "Scheduled jobs"]
+    title: "Work"
   },
   settings: {
     title: "Settings",
@@ -14,31 +31,28 @@ const pages = {
 
 export default function App() {
   const [activePage, setActivePage] = useState("work");
-  const [activeMenuItem, setActiveMenuItem] = useState(pages.work.menu[0]);
-
-  function openPage(page) {
-    setActivePage(page);
-    setActiveMenuItem(pages[page].menu[0]);
-  }
+  const [activeWorkItem, setActiveWorkItem] = useState(projects[0].conversations[0]);
+  const [activeSettingsItem, setActiveSettingsItem] = useState(pages.settings.menu[0]);
 
   const page = pages[activePage];
+  const activeMenuItem = activePage === "work" ? activeWorkItem : activeSettingsItem;
 
   return (
     <div className="app-shell">
       <header className="top-menu">
-        <div className="brand">✨ CDA 0.0.1</div>
+        <div className="brand">{"\u2728 CDA 0.0.1"}</div>
         <nav className="primary-nav" aria-label="Primary">
           <button
             className={activePage === "work" ? "nav-button active" : "nav-button"}
             type="button"
-            onClick={() => openPage("work")}
+            onClick={() => setActivePage("work")}
           >
             Work
           </button>
           <button
             className={activePage === "settings" ? "nav-button active" : "nav-button"}
             type="button"
-            onClick={() => openPage("settings")}
+            onClick={() => setActivePage("settings")}
           >
             Settings
           </button>
@@ -56,18 +70,22 @@ export default function App() {
       <div className="workspace">
         <aside className="side-menu" aria-label={`${page.title} menu`}>
           <div className="side-menu-title">{page.title}</div>
-          <nav className="side-menu-items">
-            {page.menu.map((item) => (
-              <button
-                className={item === activeMenuItem ? "side-button active" : "side-button"}
-                key={item}
-                type="button"
-                onClick={() => setActiveMenuItem(item)}
-              >
-                {item}
-              </button>
-            ))}
-          </nav>
+          {activePage === "work" ? (
+            <WorkMenu activeItem={activeWorkItem} onSelect={setActiveWorkItem} />
+          ) : (
+            <nav className="side-menu-items">
+              {page.menu.map((item) => (
+                <button
+                  className={item === activeMenuItem ? "side-button active" : "side-button"}
+                  key={item}
+                  type="button"
+                  onClick={() => setActiveSettingsItem(item)}
+                >
+                  {item}
+                </button>
+              ))}
+            </nav>
+          )}
         </aside>
 
         <main className="main-body">
@@ -83,7 +101,46 @@ export default function App() {
   );
 }
 
+function WorkMenu({ activeItem, onSelect }) {
+  return (
+    <nav className="project-menu" aria-label="Projects and conversations">
+      {projects.map((project) => (
+        <section className="project-group" key={project.id}>
+          <button
+            className={project.name === activeItem ? "project-button active" : "project-button"}
+            type="button"
+            onClick={() => onSelect(project.name)}
+          >
+            {project.name}
+          </button>
+          <div className="conversation-list">
+            {project.conversations.map((conversation) => (
+              <button
+                className={
+                  conversation === activeItem
+                    ? "conversation-button active"
+                    : "conversation-button"
+                }
+                key={conversation}
+                type="button"
+                onClick={() => onSelect(conversation)}
+              >
+                {conversation}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+    </nav>
+  );
+}
+
 function WorkPanel() {
+  const conversationCount = projects.reduce(
+    (total, project) => total + project.conversations.length,
+    0
+  );
+
   return (
     <section className="content-grid" aria-label="Work overview">
       <article className="summary-card wide">
@@ -96,11 +153,11 @@ function WorkPanel() {
       </article>
       <article className="summary-card">
         <span className="card-label">Projects</span>
-        <strong>0</strong>
+        <strong>{projects.length}</strong>
       </article>
       <article className="summary-card">
-        <span className="card-label">Scheduled jobs</span>
-        <strong>0</strong>
+        <span className="card-label">Conversations</span>
+        <strong>{conversationCount}</strong>
       </article>
     </section>
   );
