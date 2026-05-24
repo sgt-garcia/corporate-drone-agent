@@ -73,8 +73,8 @@ export default function App() {
             <div className="side-menu-title action-row">
               <span>{page.title}</span>
               <div className="row-actions">
-                <AddButton label="Add work item" />
                 <OverflowButton label="Work actions" />
+                <AddButton label="Add work item" />
               </div>
             </div>
           ) : (
@@ -125,8 +125,8 @@ function WorkMenu({ activeItem, onSelect }) {
               {project.name}
             </button>
             <div className="row-actions">
-              <AddButton label={`Add conversation to ${project.name}`} />
               <OverflowButton label={`${project.name} actions`} />
+              <AddButton label={`Add conversation to ${project.name}`} />
             </div>
           </div>
           <div className="conversation-list">
