@@ -19,6 +19,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 button,
@@ -97,10 +98,13 @@ a {
 .workspace {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
-  min-height: calc(100vh - 64px);
+  height: calc(100vh - 64px);
+  min-height: 0;
 }
 
 .side-menu {
+  min-height: 0;
+  overflow-y: auto;
   padding: 24px 16px;
   background: #ffffff;
   border-right: 1px solid #d7e0eb;
@@ -205,6 +209,8 @@ a {
 }
 
 .main-body {
+  min-width: 0;
+  overflow-y: auto;
   padding: 34px;
 }
 
@@ -338,11 +344,14 @@ a {
 
   .workspace {
     grid-template-columns: 1fr;
+    height: calc(100vh - 112px);
   }
 
   .side-menu {
     border-right: 0;
     border-bottom: 1px solid #d7e0eb;
+    overflow-x: auto;
+    overflow-y: hidden;
     padding: 14px 16px;
   }
 
