@@ -210,7 +210,7 @@ function WorkMenu({
               aria-expanded={!isCollapsed}
               onClick={() => onToggleProject(project.id)}
             >
-              {isCollapsed ? "\u203A" : "\u2304"}
+              {isCollapsed ? "\u23f5" : "\u23f7"}
             </button>
             <button
               className="project-button"
