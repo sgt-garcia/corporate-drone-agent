@@ -1,21 +1,33 @@
 import "./styles.css";
 import { useState } from "react";
 
-const projects = [
+const initialProjects = [
   {
     id: "northwind",
     name: "Northwind Migration",
-    conversations: ["Kickoff notes", "Data inventory", "Risk review"]
+    conversations: [
+      { id: "northwind-kickoff", name: "Kickoff notes" },
+      { id: "northwind-inventory", name: "Data inventory" },
+      { id: "northwind-risks", name: "Risk review" }
+    ]
   },
   {
     id: "atlas",
     name: "Atlas Reporting",
-    conversations: ["Dashboard scope", "Finance metrics", "Release checklist"]
+    conversations: [
+      { id: "atlas-dashboard", name: "Dashboard scope" },
+      { id: "atlas-finance", name: "Finance metrics" },
+      { id: "atlas-release", name: "Release checklist" }
+    ]
   },
   {
     id: "helix",
     name: "Helix Operations",
-    conversations: ["Weekly status", "Vendor follow-up", "Incident summary"]
+    conversations: [
+      { id: "helix-status", name: "Weekly status" },
+      { id: "helix-vendor", name: "Vendor follow-up" },
+      { id: "helix-incident", name: "Incident summary" }
+    ]
   }
 ];
 
@@ -30,12 +42,46 @@ const pages = {
 };
 
 export default function App() {
+  const [projects, setProjects] = useState(initialProjects);
   const [activePage, setActivePage] = useState("work");
-  const [activeWorkItem, setActiveWorkItem] = useState(projects[0].conversations[0]);
+  const [activeWorkItemId, setActiveWorkItemId] = useState(
+    initialProjects[0].conversations[0].id
+  );
   const [activeSettingsItem, setActiveSettingsItem] = useState(pages.settings.menu[0]);
 
   const page = pages[activePage];
-  const activeMenuItem = activePage === "work" ? activeWorkItem : activeSettingsItem;
+  const activeWorkItem = findWorkItem(projects, activeWorkItemId);
+  const activeMenuItem = activePage === "work" ? activeWorkItem.name : activeSettingsItem;
+
+  function addProject() {
+    const project = {
+      id: `project-${crypto.randomUUID()}`,
+      name: "New Project",
+      conversations: []
+    };
+
+    setProjects((currentProjects) => [...currentProjects, project]);
+    setActiveWorkItemId(project.id);
+  }
+
+  function addConversation(projectId) {
+    const conversation = {
+      id: `conversation-${crypto.randomUUID()}`,
+      name: "New Conversation"
+    };
+
+    setProjects((currentProjects) =>
+      currentProjects.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              conversations: [...project.conversations, conversation]
+            }
+          : project
+      )
+    );
+    setActiveWorkItemId(conversation.id);
+  }
 
   return (
     <div className="app-shell">
@@ -74,14 +120,19 @@ export default function App() {
               <span>{page.title}</span>
               <div className="row-actions">
                 <OverflowButton label="Work actions" />
-                <AddButton label="Add work item" />
+                <AddButton label="Add project" onClick={addProject} />
               </div>
             </div>
           ) : (
             <div className="side-menu-title">{page.title}</div>
           )}
           {activePage === "work" ? (
-            <WorkMenu activeItem={activeWorkItem} onSelect={setActiveWorkItem} />
+            <WorkMenu
+              activeItemId={activeWorkItemId}
+              onAddConversation={addConversation}
+              onSelect={setActiveWorkItemId}
+              projects={projects}
+            />
           ) : (
             <nav className="side-menu-items">
               {page.menu.map((item) => (
@@ -104,49 +155,67 @@ export default function App() {
             <h1 id="page-title">{activeMenuItem}</h1>
           </section>
 
-          {activePage === "work" ? <WorkPanel /> : <SettingsPanel />}
+          {activePage === "work" ? <WorkPanel projects={projects} /> : <SettingsPanel />}
         </main>
       </div>
     </div>
   );
 }
 
-function WorkMenu({ activeItem, onSelect }) {
+function findWorkItem(projects, activeId) {
+  for (const project of projects) {
+    if (project.id === activeId) {
+      return project;
+    }
+
+    const conversation = project.conversations.find((item) => item.id === activeId);
+    if (conversation) {
+      return conversation;
+    }
+  }
+
+  return projects[0] ?? { name: "Work" };
+}
+
+function WorkMenu({ activeItemId, onAddConversation, onSelect, projects }) {
   return (
     <nav className="project-menu" aria-label="Projects and conversations">
       {projects.map((project) => (
         <section className="project-group" key={project.id}>
-          <div className={project.name === activeItem ? "project-row active" : "project-row"}>
+          <div className={project.id === activeItemId ? "project-row active" : "project-row"}>
             <button
               className="project-button"
               type="button"
-              onClick={() => onSelect(project.name)}
+              onClick={() => onSelect(project.id)}
             >
               {project.name}
             </button>
             <div className="row-actions">
               <OverflowButton label={`${project.name} actions`} />
-              <AddButton label={`Add conversation to ${project.name}`} />
+              <AddButton
+                label={`Add conversation to ${project.name}`}
+                onClick={() => onAddConversation(project.id)}
+              />
             </div>
           </div>
           <div className="conversation-list">
             {project.conversations.map((conversation) => (
               <div
                 className={
-                  conversation === activeItem
+                  conversation.id === activeItemId
                     ? "conversation-row active"
                     : "conversation-row"
                 }
-                key={conversation}
+                key={conversation.id}
               >
                 <button
                   className="conversation-button"
                   type="button"
-                  onClick={() => onSelect(conversation)}
+                  onClick={() => onSelect(conversation.id)}
                 >
-                  {conversation}
+                  {conversation.name}
                 </button>
-                <OverflowButton label={`${conversation} actions`} />
+                <OverflowButton label={`${conversation.name} actions`} />
               </div>
             ))}
           </div>
@@ -164,15 +233,15 @@ function OverflowButton({ label }) {
   );
 }
 
-function AddButton({ label }) {
+function AddButton({ label, onClick }) {
   return (
-    <button className="icon-button" type="button" aria-label={label}>
+    <button className="icon-button" type="button" aria-label={label} onClick={onClick}>
       +
     </button>
   );
 }
 
-function WorkPanel() {
+function WorkPanel({ projects }) {
   const conversationCount = projects.reduce(
     (total, project) => total + project.conversations.length,
     0
