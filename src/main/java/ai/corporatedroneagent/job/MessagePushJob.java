@@ -4,6 +4,7 @@ import ai.corporatedroneagent.dto.MessageDto;
 import ai.corporatedroneagent.dto.MessageEventDto;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.repository.ConversationRepository;
+import ai.corporatedroneagent.service.AiChatService;
 import ai.corporatedroneagent.service.EventService;
 import java.time.Instant;
 import java.util.UUID;
@@ -15,10 +16,16 @@ public class MessagePushJob {
 
     private final ConversationRepository conversationRepository;
     private final EventService eventService;
+    private final AiChatService aiChatService;
 
-    public MessagePushJob(ConversationRepository conversationRepository, EventService eventService) {
+    public MessagePushJob(
+            ConversationRepository conversationRepository,
+            EventService eventService,
+            AiChatService aiChatService
+    ) {
         this.conversationRepository = conversationRepository;
         this.eventService = eventService;
+        this.aiChatService = aiChatService;
     }
 
     public void queueAssistantReply(UUID conversationId, String userContent) {
@@ -45,7 +52,7 @@ public class MessagePushJob {
             Message message = new Message(
                     UUID.randomUUID(),
                     "assistant",
-                    "You said:\n\n" + userContent,
+                    aiChatService.reply(userContent),
                     Instant.now()
             );
             conversation.getMessages().add(message);
