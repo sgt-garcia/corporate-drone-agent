@@ -1,0 +1,78 @@
+const jsonHeaders = {
+  "Content-Type": "application/json"
+};
+
+export async function getProjects() {
+  return request("/api/projects");
+}
+
+export async function createProject(project) {
+  return request("/api/projects", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(project)
+  });
+}
+
+export async function saveProject(project) {
+  return request(`/api/projects/${project.id}`, {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify(project)
+  });
+}
+
+export async function getProjectConversations(projectId) {
+  return request(`/api/projects/${projectId}/conversations`);
+}
+
+export async function createConversation(projectId, conversation) {
+  return request(`/api/projects/${projectId}/conversations`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(conversation)
+  });
+}
+
+export async function getConversation(conversationId) {
+  return request(`/api/conversations/${conversationId}`);
+}
+
+export async function saveConversation(conversation) {
+  return request(`/api/conversations/${conversation.id}`, {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify(conversation)
+  });
+}
+
+export async function sendConversationMessage(conversationId, content) {
+  return request(`/api/conversations/${conversationId}/messages`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ content })
+  });
+}
+
+export async function getSettings() {
+  return request("/api/settings");
+}
+
+export async function saveSettings(settings) {
+  return request("/api/settings", {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify(settings)
+  });
+}
+
+async function request(path, options) {
+  const response = await fetch(path, options);
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed: ${response.status}`);
+  }
+
+  return response.json();
+}

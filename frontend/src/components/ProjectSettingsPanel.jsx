@@ -1,20 +1,44 @@
 import { SettingsScreen } from "./SettingsScreen.jsx";
+import { useEffect, useState } from "react";
 
-export function ProjectSettingsPanel({ project }) {
+export function ProjectSettingsPanel({ onSave, project }) {
+  const [draft, setDraft] = useState(project);
+
+  useEffect(() => {
+    setDraft(project);
+  }, [project]);
+
   return (
-    <SettingsScreen title={project.name} subtitle="Project settings">
+    <SettingsScreen
+      title={draft.name}
+      subtitle="Project settings"
+      onReload={() => setDraft(project)}
+      onSave={() => onSave(draft)}
+    >
       <label>
         Project name
-        <input type="text" defaultValue={project.name} />
+        <input
+          type="text"
+          value={draft.name}
+          onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+        />
       </label>
       <label>
         Working folder
-        <input type="text" placeholder="Optional local folder path" />
+        <input
+          type="text"
+          placeholder="Optional local folder path"
+          value={draft.workingFolder ?? ""}
+          onChange={(event) => setDraft({ ...draft, workingFolder: event.target.value })}
+        />
       </label>
       <label>
         Custom instructions
         <textarea
-          defaultValue="Use this project context when answering questions about planning, decisions, and follow-up work."
+          value={draft.customInstructions ?? ""}
+          onChange={(event) =>
+            setDraft({ ...draft, customInstructions: event.target.value })
+          }
           rows="8"
         />
       </label>

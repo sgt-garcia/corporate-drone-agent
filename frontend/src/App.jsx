@@ -1,76 +1,214 @@
 import "./styles.css";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  createConversation,
+  createProject,
+  getConversation,
+  getProjects,
+  getSettings,
+  saveConversation,
+  saveProject,
+  saveSettings,
+  sendConversationMessage
+} from "./api.js";
 import { AddButton } from "./components/IconButtons.jsx";
 import { SettingsContent } from "./components/SettingsContent.jsx";
 import { WorkContent } from "./components/WorkContent.jsx";
 import { WorkMenu } from "./components/WorkMenu.jsx";
-import {
-  createConversationMessages,
-  createInitialMessages,
-  findWorkItem,
-  initialProjects,
-  pages
-} from "./data.js";
+import { findWorkItem, pages } from "./data.js";
+
+const defaultProjectInstructions =
+  "Use this project context when answering questions about planning, decisions, and follow-up work.";
+
+const emptySettings = {
+  agentName: "Corporate Drone Agent",
+  aiModel: "none",
+  customInstructions:
+    "Answer with concise, practical guidance using available local project context first.",
+  openAi: {
+    apiKey: "",
+    model: "gpt-4.1-mini"
+  },
+  azureOpenAi: {
+    endpoint: "",
+    apiKey: "",
+    deploymentName: ""
+  }
+};
 
 export default function App() {
-  const [projects, setProjects] = useState(initialProjects);
-  const [messagesByConversationId, setMessagesByConversationId] = useState(() =>
-    createInitialMessages(initialProjects)
-  );
+  const [projects, setProjects] = useState([]);
+  const [conversationsById, setConversationsById] = useState({});
   const [draftsByConversationId, setDraftsByConversationId] = useState({});
+  const [settings, setSettings] = useState(emptySettings);
   const [activePage, setActivePage] = useState("work");
-  const [activeWorkItemId, setActiveWorkItemId] = useState(
-    initialProjects[0].conversations[0].id
-  );
+  const [activeWorkItemId, setActiveWorkItemId] = useState(null);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState([]);
   const [activeSettingsItem, setActiveSettingsItem] = useState(pages.settings.menu[0]);
+  const [statusText, setStatusText] = useState("Loading...");
 
   const page = pages[activePage];
-  const activeWorkItem = findWorkItem(projects, activeWorkItemId);
-  const activeMenuItem = activePage === "work" ? activeWorkItem.name : activeSettingsItem;
+  const activeWorkItem = useMemo(
+    () => findWorkItem(projects, activeWorkItemId),
+    [activeWorkItemId, projects]
+  );
+  const activeMenuItem =
+    activePage === "work" ? activeWorkItem.name : activeSettingsItem;
   const pageContext =
     activePage === "work"
       ? activeWorkItem.type === "project"
         ? "Project settings"
         : "Conversation"
       : page.title;
-  const showMainHeading = activePage === "work" && activeWorkItem.type === "conversation";
+  const showMainHeading =
+    activePage === "work" && activeWorkItem.type === "conversation";
 
-  function addProject() {
-    const project = {
-      id: `project-${crypto.randomUUID()}`,
+  useEffect(() => {
+    loadInitialState();
+  }, []);
+
+  useEffect(() => {
+    if (activeWorkItem.type !== "conversation") {
+      return;
+    }
+
+    loadConversation(activeWorkItem.item.id);
+  }, [activeWorkItem]);
+
+  useEffect(() => {
+    const events = new EventSource("/api/events");
+
+    events.addEventListener("connected", () => setStatusText(""));
+    events.addEventListener("message-created", (event) => {
+      const payload = JSON.parse(event.data);
+      addMessageToConversation(payload.conversationId, payload.message);
+    });
+    events.addEventListener("projects-updated", (event) => {
+      setProjects(JSON.parse(event.data));
+    });
+    events.addEventListener("project-updated", (event) => {
+      const project = JSON.parse(event.data);
+      setProjects((currentProjects) =>
+        currentProjects.map((item) => (item.id === project.id ? project : item))
+      );
+    });
+    events.addEventListener("conversation-created", (event) => {
+      const conversation = JSON.parse(event.data);
+      setProjects((currentProjects) =>
+        currentProjects.map((project) =>
+          project.id === conversation.projectId
+            ? {
+                ...project,
+                conversations: upsertById(project.conversations, conversation)
+              }
+            : project
+        )
+      );
+    });
+    events.addEventListener("conversation-updated", (event) => {
+      const conversation = JSON.parse(event.data);
+      setConversationsById((currentConversations) => ({
+        ...currentConversations,
+        [conversation.id]: conversation
+      }));
+      setProjects((currentProjects) =>
+        currentProjects.map((project) =>
+          project.id === conversation.projectId
+            ? {
+                ...project,
+                conversations: upsertById(project.conversations, {
+                  id: conversation.id,
+                  projectId: conversation.projectId,
+                  name: conversation.name
+                })
+              }
+            : project
+        )
+      );
+    });
+    events.addEventListener("settings-updated", (event) => {
+      setSettings(JSON.parse(event.data));
+    });
+    events.onerror = () => setStatusText("Backend event stream disconnected.");
+
+    return () => events.close();
+  }, []);
+
+  async function loadInitialState() {
+    try {
+      const [loadedProjects, loadedSettings] = await Promise.all([
+        getProjects(),
+        getSettings()
+      ]);
+      setProjects(loadedProjects);
+      setSettings(loadedSettings);
+      setActiveWorkItemId((currentId) => currentId ?? findFirstWorkItemId(loadedProjects));
+      setStatusText("");
+    } catch (error) {
+      setStatusText(error.message);
+    }
+  }
+
+  async function loadConversation(conversationId) {
+    if (conversationsById[conversationId]) {
+      return;
+    }
+
+    try {
+      const conversation = await getConversation(conversationId);
+      setConversationsById((currentConversations) => ({
+        ...currentConversations,
+        [conversation.id]: conversation
+      }));
+    } catch (error) {
+      setStatusText(error.message);
+    }
+  }
+
+  async function reloadConversation(conversationId) {
+    const conversation = await getConversation(conversationId);
+    setConversationsById((currentConversations) => ({
+      ...currentConversations,
+      [conversation.id]: conversation
+    }));
+  }
+
+  async function addProject() {
+    const project = await createProject({
       name: "New Project",
-      conversations: []
-    };
-
-    setProjects((currentProjects) => [...currentProjects, project]);
+      workingFolder: "",
+      customInstructions: defaultProjectInstructions
+    });
+    setProjects((currentProjects) => upsertById(currentProjects, project));
     setActiveWorkItemId(project.id);
   }
 
-  function addConversation(projectId) {
-    const targetProject = projects.find((project) => project.id === projectId);
-    const conversation = {
-      id: `conversation-${crypto.randomUUID()}`,
-      name: "New Conversation"
-    };
+  async function addConversation(projectId) {
+    const conversation = await createConversation(projectId, {
+      name: "New Conversation",
+      settings: {
+        customInstructions: ""
+      }
+    });
 
+    setConversationsById((currentConversations) => ({
+      ...currentConversations,
+      [conversation.id]: conversation
+    }));
     setProjects((currentProjects) =>
       currentProjects.map((project) =>
         project.id === projectId
           ? {
               ...project,
-              conversations: [...project.conversations, conversation]
+              conversations: upsertById(project.conversations, {
+                id: conversation.id,
+                projectId: conversation.projectId,
+                name: conversation.name
+              })
             }
           : project
       )
     );
-    setMessagesByConversationId((currentMessages) => ({
-      ...currentMessages,
-      [conversation.id]: createConversationMessages(
-        conversation,
-        targetProject?.name ?? "New Project"
-      )
-    }));
     setActiveWorkItemId(conversation.id);
   }
 
@@ -89,68 +227,85 @@ export default function App() {
     }));
   }
 
-  function sendMessage(conversationId, content) {
+  async function sendMessage(conversationId, content) {
     const trimmedContent = content.trim();
 
     if (!trimmedContent) {
       return;
     }
 
-    const userMessage = {
-      id: `user-${crypto.randomUUID()}`,
-      content: trimmedContent,
-      createdAt: new Date().toISOString(),
-      role: "user"
-    };
-
     setDraftsByConversationId((currentDrafts) => ({
       ...currentDrafts,
       [conversationId]: ""
     }));
 
-    setMessagesByConversationId((currentMessages) => ({
-      ...currentMessages,
-      [conversationId]: [...(currentMessages[conversationId] ?? []), userMessage]
+    try {
+      const message = await sendConversationMessage(conversationId, trimmedContent);
+      addMessageToConversation(conversationId, message);
+    } catch (error) {
+      setStatusText(error.message);
+    }
+  }
+
+  async function updateProject(project) {
+    const savedProject = await saveProject(project);
+    setProjects((currentProjects) => upsertById(currentProjects, savedProject));
+  }
+
+  async function updateConversation(conversation) {
+    const savedConversation = await saveConversation(conversation);
+    setConversationsById((currentConversations) => ({
+      ...currentConversations,
+      [savedConversation.id]: savedConversation
     }));
+    setProjects((currentProjects) =>
+      currentProjects.map((project) =>
+        project.id === savedConversation.projectId
+          ? {
+              ...project,
+              conversations: upsertById(project.conversations, {
+                id: savedConversation.id,
+                projectId: savedConversation.projectId,
+                name: savedConversation.name
+              })
+            }
+          : project
+      )
+    );
+  }
 
-    window.setTimeout(() => {
-      const statusMessage = {
-        id: `status-${crypto.randomUUID()}`,
-        content: "CDA is processing...",
-        createdAt: new Date().toISOString(),
-        role: "status"
+  async function updateSettings(nextSettings) {
+    const savedSettings = await saveSettings(nextSettings);
+    setSettings(savedSettings);
+  }
+
+  function addMessageToConversation(conversationId, message) {
+    setConversationsById((currentConversations) => {
+      const conversation = currentConversations[conversationId];
+
+      if (!conversation) {
+        return currentConversations;
+      }
+
+      const messages =
+        message.role === "assistant"
+          ? conversation.messages.filter((item) => item.role !== "status")
+          : conversation.messages;
+
+      return {
+        ...currentConversations,
+        [conversationId]: {
+          ...conversation,
+          messages: upsertById(messages, message)
+        }
       };
-
-      setMessagesByConversationId((currentMessages) => ({
-        ...currentMessages,
-        [conversationId]: [...(currentMessages[conversationId] ?? []), statusMessage]
-      }));
-
-      window.setTimeout(() => {
-        const assistantMessage = {
-          id: `assistant-${crypto.randomUUID()}`,
-          content: `You said:\n\n${trimmedContent}`,
-          createdAt: new Date().toISOString(),
-          role: "assistant"
-        };
-
-        setMessagesByConversationId((currentMessages) => ({
-          ...currentMessages,
-          [conversationId]: [
-            ...(currentMessages[conversationId] ?? []).filter(
-              (message) => message.id !== statusMessage.id
-            ),
-            assistantMessage
-          ]
-        }));
-      }, 1000);
-    }, 1000);
+    });
   }
 
   return (
     <div className="app-shell">
       <header className="top-menu">
-        <div className="brand">{"\u2728 CDA 0.0.1"}</div>
+        <div className="brand">CDA 0.0.1</div>
         <nav className="primary-nav" aria-label="Primary">
           <button
             className={activePage === "work" ? "nav-button active" : "nav-button"}
@@ -215,6 +370,8 @@ export default function App() {
         </aside>
 
         <main className="main-body">
+          {statusText && <div className="app-status">{statusText}</div>}
+
           {showMainHeading && (
             <section className="page-heading" aria-labelledby="page-title">
               <p>{pageContext}</p>
@@ -225,16 +382,35 @@ export default function App() {
           {activePage === "work" ? (
             <WorkContent
               activeItem={activeWorkItem}
+              conversationsById={conversationsById}
               draftsByConversationId={draftsByConversationId}
-              messagesByConversationId={messagesByConversationId}
+              onConversationReload={reloadConversation}
+              onConversationSave={updateConversation}
               onDraftChange={updateDraft}
+              onProjectSave={updateProject}
               onSend={sendMessage}
             />
           ) : (
-            <SettingsContent activeSettingsItem={activeSettingsItem} />
+            <SettingsContent
+              activeSettingsItem={activeSettingsItem}
+              onReload={loadInitialState}
+              onSave={updateSettings}
+              settings={settings}
+            />
           )}
         </main>
       </div>
     </div>
   );
+}
+
+function findFirstWorkItemId(projects) {
+  const firstProject = projects[0];
+  return firstProject?.conversations[0]?.id ?? firstProject?.id ?? null;
+}
+
+function upsertById(items, nextItem) {
+  return items.some((item) => item.id === nextItem.id)
+    ? items.map((item) => (item.id === nextItem.id ? nextItem : item))
+    : [...items, nextItem];
 }

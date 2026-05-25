@@ -39,6 +39,14 @@ export const pages = {
 };
 
 export function findWorkItem(projects, activeId) {
+  if (projects.length === 0) {
+    return {
+      item: null,
+      name: "Work",
+      type: "empty"
+    };
+  }
+
   for (const project of projects) {
     if (project.id === activeId) {
       return {

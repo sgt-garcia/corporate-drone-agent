@@ -1,15 +1,22 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 export function ConversationPanel({
   conversation,
   messages,
   onDraftChange,
+  onReload,
+  onSave,
   onSend,
   project,
   value
 }) {
   const historyRef = useRef(null);
+  const [settingsDraft, setSettingsDraft] = useState(conversation);
+
+  useEffect(() => {
+    setSettingsDraft(conversation);
+  }, [conversation]);
 
   useEffect(() => {
     if (historyRef.current) {
@@ -30,6 +37,46 @@ export function ConversationPanel({
 
   return (
     <section className="conversation-page" aria-label={`${conversation.name} conversation`}>
+      <details className="conversation-settings">
+        <summary>Conversation settings</summary>
+        <div className="conversation-settings-grid">
+          <label>
+            Name
+            <input
+              type="text"
+              value={settingsDraft.name ?? ""}
+              onChange={(event) =>
+                setSettingsDraft({ ...settingsDraft, name: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Custom instructions
+            <textarea
+              rows="3"
+              value={settingsDraft.settings?.customInstructions ?? ""}
+              onChange={(event) =>
+                setSettingsDraft({
+                  ...settingsDraft,
+                  settings: {
+                    ...(settingsDraft.settings ?? {}),
+                    customInstructions: event.target.value
+                  }
+                })
+              }
+            />
+          </label>
+          <div className="conversation-settings-actions">
+            <button type="button" onClick={onReload}>
+              Reload
+            </button>
+            <button type="button" onClick={() => onSave(settingsDraft)}>
+              Save
+            </button>
+          </div>
+        </div>
+      </details>
+
       <div className="message-history" aria-label="Message history" ref={historyRef}>
         {messages.map((message) => (
           <article className={`chat-message ${message.role}`} key={message.id}>

@@ -19,6 +19,9 @@ frontend/node/
 frontend/node_modules/
 frontend/dist/
 
+# Local application data
+data/
+
 # IDEs and OS files
 .idea/
 .vscode/

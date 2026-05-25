@@ -1,4 +1,4 @@
-export function SettingsScreen({ children, subtitle, title }) {
+export function SettingsScreen({ children, onReload, onSave, subtitle, title }) {
   return (
     <section className="settings-screen" aria-labelledby="settings-screen-title">
       <div className="settings-header">
@@ -7,8 +7,10 @@ export function SettingsScreen({ children, subtitle, title }) {
           <h1 id="settings-screen-title">{title}</h1>
         </div>
         <div className="settings-actions" aria-label={`${title} actions`}>
-          <button type="button">Reload</button>
-          <button className="primary-action" type="button">
+          <button type="button" onClick={onReload}>
+            Reload
+          </button>
+          <button className="primary-action" type="button" onClick={onSave}>
             Save
           </button>
         </div>
