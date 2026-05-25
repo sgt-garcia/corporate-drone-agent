@@ -350,6 +350,71 @@ a {
   box-shadow: 0 16px 40px rgba(15, 61, 114, 0.06);
 }
 
+.settings-screen {
+  display: grid;
+  gap: 18px;
+  max-width: 860px;
+}
+
+.settings-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.settings-header p {
+  margin: 0 0 6px;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.settings-header h1 {
+  margin: 0;
+  color: #132238;
+  font-size: 2rem;
+  font-weight: 760;
+  line-height: 1.15;
+}
+
+.settings-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.settings-actions button {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid #cbd7e5;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0f3d72;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 720;
+}
+
+.settings-actions button:hover,
+.settings-actions button:focus-visible {
+  border-color: #93c5fd;
+  background: #edf5ff;
+  outline: none;
+}
+
+.settings-actions .primary-action {
+  border-color: #0f3d72;
+  background: #0f3d72;
+  color: #ffffff;
+}
+
+.settings-actions .primary-action:hover,
+.settings-actions .primary-action:focus-visible {
+  background: #174d89;
+}
+
 .summary-card {
   min-height: 156px;
   padding: 22px;
@@ -386,7 +451,6 @@ a {
 
 .settings-panel {
   display: grid;
-  max-width: 720px;
   gap: 18px;
   padding: 24px;
 }
@@ -400,7 +464,8 @@ a {
 }
 
 .settings-panel input[type="text"],
-.settings-panel select {
+.settings-panel select,
+.settings-panel textarea {
   width: 100%;
   min-height: 42px;
   padding: 0 12px;
@@ -410,8 +475,15 @@ a {
   color: #172033;
 }
 
+.settings-panel textarea {
+  min-height: 150px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
 .settings-panel input[type="text"]:focus,
-.settings-panel select:focus {
+.settings-panel select:focus,
+.settings-panel textarea:focus {
   border-color: #2563eb;
   outline: 3px solid rgba(37, 99, 235, 0.16);
 }
@@ -651,6 +723,19 @@ a {
 
   .main-body {
     padding: 24px 18px;
+  }
+
+  .settings-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-actions {
+    width: 100%;
+  }
+
+  .settings-actions button {
+    flex: 1;
   }
 
   .content-grid {

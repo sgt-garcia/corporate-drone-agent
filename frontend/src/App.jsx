@@ -64,6 +64,7 @@ export default function App() {
         ? "Project settings"
         : "Conversation"
       : page.title;
+  const showMainHeading = activePage === "work" && activeWorkItem.type === "conversation";
 
   function addProject() {
     const project = {
@@ -244,10 +245,12 @@ export default function App() {
         </aside>
 
         <main className="main-body">
-          <section className="page-heading" aria-labelledby="page-title">
-            <p>{pageContext}</p>
-            <h1 id="page-title">{activeMenuItem}</h1>
-          </section>
+          {showMainHeading && (
+            <section className="page-heading" aria-labelledby="page-title">
+              <p>{pageContext}</p>
+              <h1 id="page-title">{activeMenuItem}</h1>
+            </section>
+          )}
 
           {activePage === "work" ? (
             <WorkContent
@@ -258,7 +261,7 @@ export default function App() {
               onSend={sendMessage}
             />
           ) : (
-            <SettingsPanel />
+            <SettingsContent activeSettingsItem={activeSettingsItem} />
           )}
         </main>
       </div>
@@ -430,7 +433,7 @@ function WorkContent({
 
 function ProjectSettingsPanel({ project }) {
   return (
-    <section className="settings-panel" aria-label={`${project.name} settings`}>
+    <SettingsScreen title={project.name} subtitle="Project settings">
       <label>
         Project name
         <input type="text" defaultValue={project.name} />
@@ -439,11 +442,14 @@ function ProjectSettingsPanel({ project }) {
         Working folder
         <input type="text" placeholder="Optional local folder path" />
       </label>
-      <label className="toggle-row">
-        <span>Index project sources</span>
-        <input type="checkbox" defaultChecked />
+      <label>
+        Custom instructions
+        <textarea
+          defaultValue="Use this project context when answering questions about planning, decisions, and follow-up work."
+          rows="8"
+        />
       </label>
-    </section>
+    </SettingsScreen>
   );
 }
 
@@ -516,25 +522,112 @@ function formatMessageTimestamp(value) {
   }).format(new Date(value));
 }
 
-function SettingsPanel() {
+function SettingsContent({ activeSettingsItem }) {
+  if (activeSettingsItem === "Models") {
+    return (
+      <SettingsScreen title="Models" subtitle="Settings">
+        <label>
+          Default model provider
+          <select defaultValue="local">
+            <option value="local">Local</option>
+            <option value="openai">OpenAI</option>
+            <option value="azure">Azure OpenAI</option>
+          </select>
+        </label>
+        <label>
+          Default chat model
+          <input type="text" defaultValue="cda-local-default" />
+        </label>
+        <label>
+          System instructions
+          <textarea
+            defaultValue="Answer with concise, practical guidance using available local project context first."
+            rows="7"
+          />
+        </label>
+      </SettingsScreen>
+    );
+  }
+
+  if (activeSettingsItem === "Connectors") {
+    return (
+      <SettingsScreen title="Connectors" subtitle="Settings">
+        <label>
+          GitHub organization
+          <input type="text" placeholder="Optional organization name" />
+        </label>
+        <label>
+          SharePoint site
+          <input type="text" placeholder="https://contoso.sharepoint.com/sites/team" />
+        </label>
+        <label className="toggle-row">
+          <span>Sync external sources</span>
+          <input type="checkbox" defaultChecked />
+        </label>
+      </SettingsScreen>
+    );
+  }
+
+  if (activeSettingsItem === "Storage") {
+    return (
+      <SettingsScreen title="Storage" subtitle="Settings">
+        <label>
+          Local index folder
+          <input type="text" defaultValue=".cda/index" />
+        </label>
+        <label>
+          Maximum cache size
+          <select defaultValue="10gb">
+            <option value="2gb">2 GB</option>
+            <option value="10gb">10 GB</option>
+            <option value="50gb">50 GB</option>
+          </select>
+        </label>
+        <label className="toggle-row">
+          <span>Keep downloaded source snapshots</span>
+          <input type="checkbox" />
+        </label>
+      </SettingsScreen>
+    );
+  }
+
   return (
-    <section className="settings-panel" aria-label="Settings">
+    <SettingsScreen title="General" subtitle="Settings">
       <label>
         Workspace name
         <input type="text" defaultValue="Corporate Drone Agent" />
       </label>
       <label>
-        Default model provider
-        <select defaultValue="local">
-          <option value="local">Local</option>
-          <option value="openai">OpenAI</option>
-          <option value="azure">Azure OpenAI</option>
+        Default start page
+        <select defaultValue="work">
+          <option value="work">Work</option>
+          <option value="settings">Settings</option>
         </select>
       </label>
       <label className="toggle-row">
         <span>Local-first indexing</span>
         <input type="checkbox" defaultChecked />
       </label>
+    </SettingsScreen>
+  );
+}
+
+function SettingsScreen({ children, subtitle, title }) {
+  return (
+    <section className="settings-screen" aria-labelledby="settings-screen-title">
+      <div className="settings-header">
+        <div>
+          <p>{subtitle}</p>
+          <h1 id="settings-screen-title">{title}</h1>
+        </div>
+        <div className="settings-actions" aria-label={`${title} actions`}>
+          <button type="button">Reload</button>
+          <button className="primary-action" type="button">
+            Save
+          </button>
+        </div>
+      </div>
+      <div className="settings-panel">{children}</div>
     </section>
   );
 }
