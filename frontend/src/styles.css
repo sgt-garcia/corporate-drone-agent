@@ -463,6 +463,7 @@ a {
   font-weight: 680;
 }
 
+.settings-panel input[type="password"],
 .settings-panel input[type="text"],
 .settings-panel select,
 .settings-panel textarea {
@@ -481,6 +482,7 @@ a {
   resize: vertical;
 }
 
+.settings-panel input[type="password"]:focus,
 .settings-panel input[type="text"]:focus,
 .settings-panel select:focus,
 .settings-panel textarea:focus {

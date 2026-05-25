@@ -38,7 +38,7 @@ const pages = {
   },
   settings: {
     title: "Settings",
-    menu: ["General", "Models", "Connectors", "Storage"]
+    menu: ["General", "OpenAI", "Azure OpenAI"]
   }
 };
 
@@ -523,69 +523,35 @@ function formatMessageTimestamp(value) {
 }
 
 function SettingsContent({ activeSettingsItem }) {
-  if (activeSettingsItem === "Models") {
+  if (activeSettingsItem === "OpenAI") {
     return (
-      <SettingsScreen title="Models" subtitle="Settings">
+      <SettingsScreen title="OpenAI" subtitle="Settings">
         <label>
-          Default model provider
-          <select defaultValue="local">
-            <option value="local">Local</option>
-            <option value="openai">OpenAI</option>
-            <option value="azure">Azure OpenAI</option>
-          </select>
+          OpenAI API Key
+          <input type="password" placeholder="sk-..." />
         </label>
         <label>
-          Default chat model
-          <input type="text" defaultValue="cda-local-default" />
-        </label>
-        <label>
-          System instructions
-          <textarea
-            defaultValue="Answer with concise, practical guidance using available local project context first."
-            rows="7"
-          />
+          OpenAI Model
+          <input type="text" defaultValue="gpt-4.1-mini" />
         </label>
       </SettingsScreen>
     );
   }
 
-  if (activeSettingsItem === "Connectors") {
+  if (activeSettingsItem === "Azure OpenAI") {
     return (
-      <SettingsScreen title="Connectors" subtitle="Settings">
+      <SettingsScreen title="Azure OpenAI" subtitle="Settings">
         <label>
-          GitHub organization
-          <input type="text" placeholder="Optional organization name" />
-        </label>
-        <label>
-          SharePoint site
-          <input type="text" placeholder="https://contoso.sharepoint.com/sites/team" />
-        </label>
-        <label className="toggle-row">
-          <span>Sync external sources</span>
-          <input type="checkbox" defaultChecked />
-        </label>
-      </SettingsScreen>
-    );
-  }
-
-  if (activeSettingsItem === "Storage") {
-    return (
-      <SettingsScreen title="Storage" subtitle="Settings">
-        <label>
-          Local index folder
-          <input type="text" defaultValue=".cda/index" />
+          Azure OpenAI Endpoint
+          <input type="text" placeholder="https://resource-name.openai.azure.com" />
         </label>
         <label>
-          Maximum cache size
-          <select defaultValue="10gb">
-            <option value="2gb">2 GB</option>
-            <option value="10gb">10 GB</option>
-            <option value="50gb">50 GB</option>
-          </select>
+          Azure OpenAI API Key
+          <input type="password" placeholder="Azure OpenAI API key" />
         </label>
-        <label className="toggle-row">
-          <span>Keep downloaded source snapshots</span>
-          <input type="checkbox" />
+        <label>
+          Azure OpenAI Deployment Name
+          <input type="text" placeholder="deployment-name" />
         </label>
       </SettingsScreen>
     );
@@ -594,19 +560,23 @@ function SettingsContent({ activeSettingsItem }) {
   return (
     <SettingsScreen title="General" subtitle="Settings">
       <label>
-        Workspace name
+        Agent name
         <input type="text" defaultValue="Corporate Drone Agent" />
       </label>
       <label>
-        Default start page
-        <select defaultValue="work">
-          <option value="work">Work</option>
-          <option value="settings">Settings</option>
+        AI model
+        <select defaultValue="none">
+          <option value="none">None</option>
+          <option value="openai">OpenAI</option>
+          <option value="azure-openai">Azure OpenAI</option>
         </select>
       </label>
-      <label className="toggle-row">
-        <span>Local-first indexing</span>
-        <input type="checkbox" defaultChecked />
+      <label>
+        Custom instructions
+        <textarea
+          defaultValue="Answer with concise, practical guidance using available local project context first."
+          rows="8"
+        />
       </label>
     </SettingsScreen>
   );
