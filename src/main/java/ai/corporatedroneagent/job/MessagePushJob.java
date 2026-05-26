@@ -50,7 +50,7 @@ public class MessagePushJob {
             Message message = new Message(
                     UUID.randomUUID(),
                     "assistant",
-                    aiChatService.reply(userContent),
+                    aiChatService.reply(conversationId, userContent),
                     Instant.now()
             );
             conversation.getMessages().add(message);
