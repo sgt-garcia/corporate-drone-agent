@@ -30,9 +30,7 @@ public class MessagePushJob {
 
     public void queueAssistantReply(UUID conversationId, String userContent) {
         CompletableFuture.runAsync(() -> {
-            pause(500);
             publishStatus(conversationId);
-            pause(700);
             appendAssistantMessage(conversationId, userContent);
         });
     }
@@ -41,7 +39,7 @@ public class MessagePushJob {
         MessageDto status = new MessageDto(
                 UUID.randomUUID(),
                 "status",
-                "CDA is processing...",
+                "...",
                 Instant.now()
         );
         eventService.publish("message-created", new MessageEventDto(conversationId, status));
@@ -67,11 +65,4 @@ public class MessagePushJob {
         });
     }
 
-    private void pause(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-        }
-    }
 }
