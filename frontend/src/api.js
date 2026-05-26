@@ -38,14 +38,6 @@ export async function getConversation(conversationId) {
   return request(`/api/conversations/${conversationId}`);
 }
 
-export async function saveConversation(conversation) {
-  return request(`/api/conversations/${conversation.id}`, {
-    method: "PUT",
-    headers: jsonHeaders,
-    body: JSON.stringify(conversation)
-  });
-}
-
 export async function sendConversationMessage(conversationId, content) {
   return request(`/api/conversations/${conversationId}/messages`, {
     method: "POST",

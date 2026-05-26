@@ -6,7 +6,6 @@ import ai.corporatedroneagent.dto.ConversationSummaryDto;
 import ai.corporatedroneagent.dto.MessageDto;
 import ai.corporatedroneagent.dto.MessageEventDto;
 import ai.corporatedroneagent.model.Conversation;
-import ai.corporatedroneagent.model.ConversationSettings;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.model.Project;
 import ai.corporatedroneagent.repository.ConversationRepository;
@@ -49,7 +48,6 @@ public class ConversationService {
         conversation.setId(UUID.randomUUID());
         conversation.setProjectId(projectId);
         conversation.setName(Strings.defaultIfBlank(request.name(), "New Conversation"));
-        conversation.setSettings(request.settings() == null ? new ConversationSettings() : request.settings());
         conversation.getMessages().add(new Message(
                 UUID.randomUUID(),
                 "assistant",
@@ -73,7 +71,6 @@ public class ConversationService {
     public synchronized ConversationDto update(UUID conversationId, ConversationRequest request) {
         Conversation conversation = getConversation(conversationId);
         conversation.setName(Strings.defaultIfBlank(request.name(), conversation.getName()));
-        conversation.setSettings(request.settings() == null ? conversation.getSettings() : request.settings());
         conversationRepository.save(conversation);
         ConversationDto dto = toDto(conversation);
         eventService.publish("conversation-updated", dto);
@@ -116,7 +113,6 @@ public class ConversationService {
                 conversation.getId(),
                 conversation.getProjectId(),
                 conversation.getName(),
-                conversation.getSettings(),
                 conversation.getMessages().stream().map(this::toDto).toList()
         );
     }

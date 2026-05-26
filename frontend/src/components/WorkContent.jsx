@@ -5,8 +5,6 @@ export function WorkContent({
   activeItem,
   conversationsById,
   draftsByConversationId,
-  onConversationReload,
-  onConversationSave,
   onDraftChange,
   onProjectSave,
   onSend
@@ -29,9 +27,6 @@ export function WorkContent({
   const conversation = conversationsById[activeItem.item.id] ?? {
     ...activeItem.item,
     projectId: activeItem.project.id,
-    settings: {
-      customInstructions: ""
-    },
     messages: []
   };
 
@@ -41,8 +36,6 @@ export function WorkContent({
       key={activeItem.item.id}
       messages={conversation.messages ?? []}
       onDraftChange={(value) => onDraftChange(activeItem.item.id, value)}
-      onReload={() => onConversationReload(activeItem.item.id)}
-      onSave={onConversationSave}
       onSend={(content) => onSend(activeItem.item.id, content)}
       project={activeItem.project}
       value={draftsByConversationId[activeItem.item.id] ?? ""}

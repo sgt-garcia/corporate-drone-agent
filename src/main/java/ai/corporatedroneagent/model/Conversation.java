@@ -1,15 +1,16 @@
 package ai.corporatedroneagent.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Conversation {
 
     private UUID id;
     private UUID projectId;
     private String name;
-    private ConversationSettings settings = new ConversationSettings();
     private List<Message> messages = new ArrayList<>();
 
     public UUID getId() {
@@ -34,14 +35,6 @@ public class Conversation {
 
     public void setName(String name) {
         this.name = name;
-    }
-
-    public ConversationSettings getSettings() {
-        return settings;
-    }
-
-    public void setSettings(ConversationSettings settings) {
-        this.settings = settings == null ? new ConversationSettings() : settings;
     }
 
     public List<Message> getMessages() {

@@ -6,7 +6,6 @@ import {
   getConversation,
   getProjects,
   getSettings,
-  saveConversation,
   saveProject,
   saveSettings,
   sendConversationMessage
@@ -165,14 +164,6 @@ export default function App() {
     }
   }
 
-  async function reloadConversation(conversationId) {
-    const conversation = await getConversation(conversationId);
-    setConversationsById((currentConversations) => ({
-      ...currentConversations,
-      [conversation.id]: conversation
-    }));
-  }
-
   async function addProject() {
     const project = await createProject({
       name: "New Project",
@@ -185,10 +176,7 @@ export default function App() {
 
   async function addConversation(projectId) {
     const conversation = await createConversation(projectId, {
-      name: "New Conversation",
-      settings: {
-        customInstructions: ""
-      }
+      name: "New Conversation"
     });
 
     setConversationsById((currentConversations) => ({
@@ -250,28 +238,6 @@ export default function App() {
   async function updateProject(project) {
     const savedProject = await saveProject(project);
     setProjects((currentProjects) => upsertById(currentProjects, savedProject));
-  }
-
-  async function updateConversation(conversation) {
-    const savedConversation = await saveConversation(conversation);
-    setConversationsById((currentConversations) => ({
-      ...currentConversations,
-      [savedConversation.id]: savedConversation
-    }));
-    setProjects((currentProjects) =>
-      currentProjects.map((project) =>
-        project.id === savedConversation.projectId
-          ? {
-              ...project,
-              conversations: upsertById(project.conversations, {
-                id: savedConversation.id,
-                projectId: savedConversation.projectId,
-                name: savedConversation.name
-              })
-            }
-          : project
-      )
-    );
   }
 
   async function updateSettings(nextSettings) {
@@ -384,8 +350,6 @@ export default function App() {
               activeItem={activeWorkItem}
               conversationsById={conversationsById}
               draftsByConversationId={draftsByConversationId}
-              onConversationReload={reloadConversation}
-              onConversationSave={updateConversation}
               onDraftChange={updateDraft}
               onProjectSave={updateProject}
               onSend={sendMessage}
