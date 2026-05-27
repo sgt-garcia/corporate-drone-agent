@@ -164,6 +164,55 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
+  if (activeSettingsItem === "Ollama") {
+    return (
+      <SettingsScreen
+        title="Ollama"
+        subtitle="Settings"
+        onReload={() => {
+          setDraft(settings);
+          onReload();
+        }}
+        onSave={() => onSave(draft)}
+      >
+        <label>
+          Ollama Base URL
+          <input
+            type="text"
+            placeholder="http://localhost:11434"
+            value={draft.ollama?.baseUrl ?? ""}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                ollama: {
+                  ...(draft.ollama ?? {}),
+                  baseUrl: event.target.value
+                }
+              })
+            }
+          />
+        </label>
+        <label>
+          Ollama Model
+          <input
+            type="text"
+            placeholder="llama3.2"
+            value={draft.ollama?.model ?? ""}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                ollama: {
+                  ...(draft.ollama ?? {}),
+                  model: event.target.value
+                }
+              })
+            }
+          />
+        </label>
+      </SettingsScreen>
+    );
+  }
+
   return (
     <SettingsScreen
       title="General"
@@ -192,6 +241,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           <option value="openai">OpenAI</option>
           <option value="openai-official">OpenAI (Official)</option>
           <option value="azure-openai">Azure OpenAI</option>
+          <option value="ollama">Ollama</option>
         </select>
       </label>
       <label>

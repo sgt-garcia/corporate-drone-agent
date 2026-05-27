@@ -2,6 +2,7 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.AzureOpenAiSettings;
+import ai.corporatedroneagent.model.OllamaSettings;
 import ai.corporatedroneagent.model.OpenAiOfficialSettings;
 import ai.corporatedroneagent.model.OpenAiSettings;
 import ai.corporatedroneagent.repository.SettingsRepository;
@@ -21,6 +22,9 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.openaisdk.OpenAiSdkChatModel;
 import org.springframework.ai.openaisdk.OpenAiSdkChatOptions;
+import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.ollama.api.OllamaApi;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -46,6 +50,7 @@ public class AiChatService {
             case "azure-openai" -> azureOpenAiReply(conversationId, settings, userContent);
             case "openai" -> openAiReply(conversationId, settings, userContent);
             case "openai-official" -> openAiOfficialReply(conversationId, settings, userContent);
+            case "ollama" -> ollamaReply(conversationId, settings, userContent);
             default -> echoReply(userContent);
         };
     }
@@ -103,6 +108,24 @@ public class AiChatService {
             );
         } catch (RuntimeException exception) {
             return "Azure OpenAI request failed: " + exception.getMessage();
+        }
+    }
+
+    private String ollamaReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+        OllamaSettings ollamaSettings = settings.getOllama();
+        if (isBlank(ollamaSettings.getBaseUrl()) || isBlank(ollamaSettings.getModel())) {
+            return "Ollama is selected, but base URL and model are required before I can call it.";
+        }
+
+        try {
+            return chatModelReply(
+                    conversationId,
+                    settings,
+                    buildOllamaChatModel(ollamaSettings),
+                    userContent
+            );
+        } catch (RuntimeException exception) {
+            return "Ollama request failed: " + exception.getMessage();
         }
     }
 
@@ -168,6 +191,22 @@ public class AiChatService {
 
         return AzureOpenAiChatModel.builder()
                 .openAIClientBuilder(clientBuilder)
+                .defaultOptions(chatOptions)
+                .build();
+    }
+
+    private OllamaChatModel buildOllamaChatModel(OllamaSettings settings) {
+        OllamaApi ollamaApi = OllamaApi.builder()
+                .baseUrl(settings.getBaseUrl())
+                .build();
+
+        OllamaChatOptions chatOptions = OllamaChatOptions.builder()
+                .model(settings.getModel())
+                .temperature(0.2)
+                .build();
+
+        return OllamaChatModel.builder()
+                .ollamaApi(ollamaApi)
                 .defaultOptions(chatOptions)
                 .build();
     }

@@ -28,6 +28,7 @@ public class SettingsService {
         current.setOpenAi(settings.getOpenAi());
         current.setOpenAiOfficial(settings.getOpenAiOfficial());
         current.setAzureOpenAi(settings.getAzureOpenAi());
+        current.setOllama(settings.getOllama());
         settingsRepository.save(current);
         eventService.publish("settings-updated", current);
         return current;
