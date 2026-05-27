@@ -131,25 +131,29 @@ public class AiChatService {
                 .apiKey(settings.getApiKey())
                 .build();
 
-        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
-                .model(settings.getModel())
-                .temperature(0.2)
-                .build();
+        OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
+                .model(settings.getModel());
+
+        if (supportsCustomTemperature(settings.getModel())) {
+            optionsBuilder.temperature(0.2);
+        }
 
         return OpenAiChatModel.builder()
                 .openAiApi(openAiApi)
-                .defaultOptions(chatOptions)
+                .defaultOptions(optionsBuilder.build())
                 .build();
     }
 
     private OpenAiSdkChatModel buildOpenAiOfficialChatModel(OpenAiOfficialSettings settings) {
-        OpenAiSdkChatOptions chatOptions = OpenAiSdkChatOptions.builder()
+        OpenAiSdkChatOptions.Builder optionsBuilder = OpenAiSdkChatOptions.builder()
                 .apiKey(settings.getApiKey())
-                .model(settings.getModel())
-                .temperature(0.2)
-                .build();
+                .model(settings.getModel());
 
-        return new OpenAiSdkChatModel(chatOptions);
+        if (supportsCustomTemperature(settings.getModel())) {
+            optionsBuilder.temperature(0.2);
+        }
+
+        return new OpenAiSdkChatModel(optionsBuilder.build());
     }
 
     private AzureOpenAiChatModel buildAzureChatModel(AzureOpenAiSettings settings) {
@@ -174,5 +178,18 @@ public class AiChatService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private boolean supportsCustomTemperature(String model) {
+        if (model == null) {
+            return true;
+        }
+
+        String normalizedModel = model.toLowerCase();
+        return !normalizedModel.startsWith("gpt-5")
+                && !normalizedModel.startsWith("o1")
+                && !normalizedModel.startsWith("o3")
+                && !normalizedModel.startsWith("o4")
+                && !normalizedModel.contains("codex");
     }
 }
