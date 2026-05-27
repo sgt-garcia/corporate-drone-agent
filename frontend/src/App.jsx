@@ -28,6 +28,10 @@ const emptySettings = {
     apiKey: "",
     model: "gpt-4.1-mini"
   },
+  openAiOfficial: {
+    apiKey: "",
+    model: "gpt-5-mini"
+  },
   azureOpenAi: {
     endpoint: "",
     apiKey: "",

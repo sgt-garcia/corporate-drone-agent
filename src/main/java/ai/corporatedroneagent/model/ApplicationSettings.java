@@ -6,6 +6,7 @@ public class ApplicationSettings {
     private String aiModel = "none";
     private String customInstructions = "Answer with concise, practical guidance using available local project context first.";
     private OpenAiSettings openAi = new OpenAiSettings();
+    private OpenAiOfficialSettings openAiOfficial = new OpenAiOfficialSettings();
     private AzureOpenAiSettings azureOpenAi = new AzureOpenAiSettings();
 
     public String getAgentName() {
@@ -38,6 +39,14 @@ public class ApplicationSettings {
 
     public void setOpenAi(OpenAiSettings openAi) {
         this.openAi = openAi == null ? new OpenAiSettings() : openAi;
+    }
+
+    public OpenAiOfficialSettings getOpenAiOfficial() {
+        return openAiOfficial;
+    }
+
+    public void setOpenAiOfficial(OpenAiOfficialSettings openAiOfficial) {
+        this.openAiOfficial = openAiOfficial == null ? new OpenAiOfficialSettings() : openAiOfficial;
     }
 
     public AzureOpenAiSettings getAzureOpenAi() {

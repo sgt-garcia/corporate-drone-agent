@@ -26,6 +26,7 @@ public class SettingsService {
         current.setAiModel(Strings.defaultIfBlank(settings.getAiModel(), "none"));
         current.setCustomInstructions(Strings.emptyIfNull(settings.getCustomInstructions()));
         current.setOpenAi(settings.getOpenAi());
+        current.setOpenAiOfficial(settings.getOpenAiOfficial());
         current.setAzureOpenAi(settings.getAzureOpenAi());
         settingsRepository.save(current);
         eventService.publish("settings-updated", current);

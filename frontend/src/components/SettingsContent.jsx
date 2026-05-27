@@ -50,6 +50,54 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
+  if (activeSettingsItem === "OpenAI (Official)") {
+    return (
+      <SettingsScreen
+        title="OpenAI (Official)"
+        subtitle="Settings"
+        onReload={() => {
+          setDraft(settings);
+          onReload();
+        }}
+        onSave={() => onSave(draft)}
+      >
+        <label>
+          OpenAI API Key
+          <input
+            type="password"
+            placeholder="sk-..."
+            value={draft.openAiOfficial?.apiKey ?? ""}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                openAiOfficial: {
+                  ...(draft.openAiOfficial ?? {}),
+                  apiKey: event.target.value
+                }
+              })
+            }
+          />
+        </label>
+        <label>
+          OpenAI Model
+          <input
+            type="text"
+            value={draft.openAiOfficial?.model ?? ""}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                openAiOfficial: {
+                  ...(draft.openAiOfficial ?? {}),
+                  model: event.target.value
+                }
+              })
+            }
+          />
+        </label>
+      </SettingsScreen>
+    );
+  }
+
   if (activeSettingsItem === "Azure OpenAI") {
     return (
       <SettingsScreen
@@ -142,6 +190,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         >
           <option value="none">None</option>
           <option value="openai">OpenAI</option>
+          <option value="openai-official">OpenAI (Official)</option>
           <option value="azure-openai">Azure OpenAI</option>
         </select>
       </label>

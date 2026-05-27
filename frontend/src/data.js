@@ -34,7 +34,7 @@ export const pages = {
   },
   settings: {
     title: "Settings",
-    menu: ["General", "OpenAI", "Azure OpenAI"]
+    menu: ["General", "OpenAI", "OpenAI (Official)", "Azure OpenAI"]
   }
 };
 
