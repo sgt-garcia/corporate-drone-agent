@@ -4,6 +4,8 @@ import ai.corporatedroneagent.dto.ApiEvent;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -27,6 +29,18 @@ public class EventService {
         for (SseEmitter emitter : emitters) {
             send(emitter, event);
         }
+    }
+
+    @EventListener(ContextClosedEvent.class)
+    public void closeEmitters() {
+        for (SseEmitter emitter : emitters) {
+            try {
+                emitter.complete();
+            } catch (IllegalStateException exception) {
+                // The client may already have gone away while shutdown is in progress.
+            }
+        }
+        emitters.clear();
     }
 
     private void send(SseEmitter emitter, ApiEvent event) {
