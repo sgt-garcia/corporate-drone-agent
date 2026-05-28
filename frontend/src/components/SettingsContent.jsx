@@ -313,7 +313,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           Google GenAI Model
           <input
             type="text"
-            placeholder="gemini-2.0-flash"
+            placeholder="gemini-3.5-flash"
             value={draft.googleGenAi?.model ?? ""}
             onChange={(event) =>
               setDraft({

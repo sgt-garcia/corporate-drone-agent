@@ -10,7 +10,7 @@ public class GoogleGenAiSettings {
     private boolean clearApiKey;
     private boolean apiKeyConfigured;
     private String apiKeyLastFour = "";
-    private String model = "gemini-2.0-flash";
+    private String model = "gemini-3.5-flash";
 
     public String getApiKey() {
         return apiKey;
