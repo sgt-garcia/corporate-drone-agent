@@ -141,6 +141,14 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
         }
 
         Rectangle bounds = desiredWindowBounds();
+        log.info(
+                "Applying browser window bounds {}x{} at {},{} using scale {}.",
+                bounds.width,
+                bounds.height,
+                bounds.x,
+                bounds.y,
+                properties.getWindowScale()
+        );
         try {
             CDPSession cdp = browserContext.newCDPSession(page);
             JsonObject window = cdp.send("Browser.getWindowForTarget");
