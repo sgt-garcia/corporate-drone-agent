@@ -51,7 +51,7 @@ const emptySettings = {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",
-    model: "mistral-small"
+    model: "mistral-medium"
   }
 };
 

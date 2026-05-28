@@ -25,7 +25,7 @@ class SettingsSecretsServiceTests {
                           },
                           "mistralAi": {
                             "apiKey": "mistral-secret",
-                            "model": "mistral-small"
+                            "model": "mistral-medium"
                           }
                         }
                         """,

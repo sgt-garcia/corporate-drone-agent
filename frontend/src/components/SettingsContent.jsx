@@ -260,7 +260,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           Mistral AI Model
           <input
             type="text"
-            placeholder="mistral-small"
+            placeholder="mistral-medium"
             value={draft.mistralAi?.model ?? ""}
             onChange={(event) =>
               setDraft({

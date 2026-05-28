@@ -10,7 +10,7 @@ public class MistralAiSettings {
     private boolean clearApiKey;
     private boolean apiKeyConfigured;
     private String apiKeyLastFour = "";
-    private String model = "mistral-small";
+    private String model = "mistral-medium";
 
     public String getApiKey() {
         return apiKey;
