@@ -30,7 +30,7 @@ const emptySettings = {
     apiKeyLastFour: "",
     model: "gpt-5.5"
   },
-  openAiOfficial: {
+  openAiOfficialSdk: {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",
@@ -53,7 +53,7 @@ const emptySettings = {
     apiKeyLastFour: "",
     model: "mistral-medium"
   },
-  googleGenAi: {
+  googleGemini: {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",

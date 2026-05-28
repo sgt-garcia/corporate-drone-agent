@@ -2,7 +2,7 @@ package ai.corporatedroneagent.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class GoogleGenAiSettings {
+public class OpenAiOfficialSdkSettings {
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String apiKey = "";
@@ -10,7 +10,7 @@ public class GoogleGenAiSettings {
     private boolean clearApiKey;
     private boolean apiKeyConfigured;
     private String apiKeyLastFour = "";
-    private String model = "gemini-3.5-flash";
+    private String model = "gpt-5.5";
 
     public String getApiKey() {
         return apiKey;

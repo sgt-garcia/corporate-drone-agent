@@ -53,10 +53,10 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
-  if (activeSettingsItem === "OpenAI (Official)") {
+  if (activeSettingsItem === "OpenAI (Official SDK)") {
     return (
       <SettingsScreen
-        title="OpenAI (Official)"
+        title="OpenAI (Official SDK)"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -67,12 +67,12 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <ApiKeyField
           label="OpenAI API Key"
           placeholder="sk-..."
-          settings={draft.openAiOfficial}
+          settings={draft.openAiOfficialSdk}
           onChange={(apiKey) =>
             setDraft({
               ...draft,
-              openAiOfficial: {
-                ...(draft.openAiOfficial ?? {}),
+              openAiOfficialSdk: {
+                ...(draft.openAiOfficialSdk ?? {}),
                 apiKey,
                 clearApiKey: false
               }
@@ -81,7 +81,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           onClear={() =>
             setDraft({
               ...draft,
-              openAiOfficial: clearedApiKeySettings(draft.openAiOfficial)
+              openAiOfficialSdk: clearedApiKeySettings(draft.openAiOfficialSdk)
             })
           }
         />
@@ -89,12 +89,12 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           OpenAI Model
           <input
             type="text"
-            value={draft.openAiOfficial?.model ?? ""}
+            value={draft.openAiOfficialSdk?.model ?? ""}
             onChange={(event) =>
               setDraft({
                 ...draft,
-                openAiOfficial: {
-                  ...(draft.openAiOfficial ?? {}),
+                openAiOfficialSdk: {
+                  ...(draft.openAiOfficialSdk ?? {}),
                   model: event.target.value
                 }
               })
@@ -277,10 +277,10 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
-  if (activeSettingsItem === "Google GenAI") {
+  if (activeSettingsItem === "Google Gemini") {
     return (
       <SettingsScreen
-        title="Google GenAI"
+        title="Google Gemini"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -289,14 +289,14 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         onSave={() => onSave(draft)}
       >
         <ApiKeyField
-          label="Google GenAI API Key"
-          placeholder="Google GenAI API key"
-          settings={draft.googleGenAi}
+          label="Google Gemini API Key"
+          placeholder="Google Gemini API key"
+          settings={draft.googleGemini}
           onChange={(apiKey) =>
             setDraft({
               ...draft,
-              googleGenAi: {
-                ...(draft.googleGenAi ?? {}),
+              googleGemini: {
+                ...(draft.googleGemini ?? {}),
                 apiKey,
                 clearApiKey: false
               }
@@ -305,21 +305,21 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           onClear={() =>
             setDraft({
               ...draft,
-              googleGenAi: clearedApiKeySettings(draft.googleGenAi)
+              googleGemini: clearedApiKeySettings(draft.googleGemini)
             })
           }
         />
         <label>
-          Google GenAI Model
+          Google Gemini Model
           <input
             type="text"
             placeholder="gemini-3.5-flash"
-            value={draft.googleGenAi?.model ?? ""}
+            value={draft.googleGemini?.model ?? ""}
             onChange={(event) =>
               setDraft({
                 ...draft,
-                googleGenAi: {
-                  ...(draft.googleGenAi ?? {}),
+                googleGemini: {
+                  ...(draft.googleGemini ?? {}),
                   model: event.target.value
                 }
               })
@@ -330,10 +330,10 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
-  if (activeSettingsItem === "Anthropic Claude") {
+  if (activeSettingsItem === "Anthropic") {
     return (
       <SettingsScreen
-        title="Anthropic Claude"
+        title="Anthropic"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -363,7 +363,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           }
         />
         <label>
-          Claude Model
+          Anthropic Model
           <input
             type="text"
             placeholder="claude-sonnet-4-6"
@@ -408,13 +408,13 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           onChange={(event) => setDraft({ ...draft, aiModel: event.target.value })}
         >
           <option value="none">None</option>
-          <option value="openai">OpenAI</option>
-          <option value="openai-official">OpenAI (Official)</option>
+          <option value="anthropic">Anthropic</option>
           <option value="azure-openai">Azure OpenAI</option>
-          <option value="ollama">Ollama</option>
+          <option value="google-gemini">Google Gemini</option>
           <option value="mistral-ai">Mistral AI</option>
-          <option value="google-genai">Google GenAI</option>
-          <option value="anthropic">Anthropic Claude</option>
+          <option value="ollama">Ollama</option>
+          <option value="openai">OpenAI</option>
+          <option value="openai-official-sdk">OpenAI (Official SDK)</option>
         </select>
       </label>
       <label>

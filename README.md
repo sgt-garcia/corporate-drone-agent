@@ -16,7 +16,7 @@ The longer-term goal is a local knowledge base that can index and synchronize wo
 
 Write-back to external systems is planned for a later stage. The first priority is safe local reading, indexing, retrieval, summarization, and task support.
 
-The project uses Java 21, Spring Boot, Spring AI, React, Vite, and Maven. LLM configuration is handled in the app settings, with support being developed for OpenAI, the OpenAI official SDK, Azure OpenAI, Ollama, Mistral AI, Google GenAI, and Anthropic Claude. Local application data is stored under `data/`.
+The project uses Java 21, Spring Boot, Spring AI, React, Vite, and Maven. LLM configuration is handled in the app settings, with support being developed for Anthropic, Azure OpenAI, Google Gemini, Mistral AI, Ollama, OpenAI, and OpenAI (Official SDK). Local application data is stored under `data/`.
 
 API keys are not written to `data/application-settings.json` or returned by the settings API. On Windows, keys are stored in `data/secrets.json` after protection with the current user's DPAPI profile. On non-Windows systems, set `CDA_SECRET_KEY` to enable AES-GCM protection for local secrets.
 

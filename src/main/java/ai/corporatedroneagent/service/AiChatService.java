@@ -3,10 +3,10 @@ package ai.corporatedroneagent.service;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.AnthropicSettings;
 import ai.corporatedroneagent.model.AzureOpenAiSettings;
-import ai.corporatedroneagent.model.GoogleGenAiSettings;
+import ai.corporatedroneagent.model.GoogleGeminiSettings;
 import ai.corporatedroneagent.model.MistralAiSettings;
 import ai.corporatedroneagent.model.OllamaSettings;
-import ai.corporatedroneagent.model.OpenAiOfficialSettings;
+import ai.corporatedroneagent.model.OpenAiOfficialSdkSettings;
 import ai.corporatedroneagent.model.OpenAiSettings;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.core.credential.AzureKeyCredential;
@@ -60,10 +60,10 @@ public class AiChatService {
         return switch (settings.getAiModel()) {
             case "azure-openai" -> azureOpenAiReply(conversationId, settings, userContent);
             case "openai" -> openAiReply(conversationId, settings, userContent);
-            case "openai-official" -> openAiOfficialReply(conversationId, settings, userContent);
+            case "openai-official", "openai-official-sdk" -> openAiOfficialSdkReply(conversationId, settings, userContent);
             case "ollama" -> ollamaReply(conversationId, settings, userContent);
             case "mistral-ai" -> mistralAiReply(conversationId, settings, userContent);
-            case "google-genai" -> googleGenAiReply(conversationId, settings, userContent);
+            case "google-genai", "google-gemini" -> googleGeminiReply(conversationId, settings, userContent);
             case "anthropic" -> anthropicReply(conversationId, settings, userContent);
             default -> echoReply(userContent);
         };
@@ -87,21 +87,21 @@ public class AiChatService {
         }
     }
 
-    private String openAiOfficialReply(UUID conversationId, ApplicationSettings settings, String userContent) {
-        OpenAiOfficialSettings openAiSettings = settings.getOpenAiOfficial();
+    private String openAiOfficialSdkReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+        OpenAiOfficialSdkSettings openAiSettings = settings.getOpenAiOfficialSdk();
         if (isBlank(openAiSettings.getApiKey()) || isBlank(openAiSettings.getModel())) {
-            return "OpenAI (Official) is selected, but API key and model are required before I can call it.";
+            return "OpenAI (Official SDK) is selected, but API key and model are required before I can call it.";
         }
 
         try {
             return chatModelReply(
                     conversationId,
                     settings,
-                    buildOpenAiOfficialChatModel(openAiSettings),
+                    buildOpenAiOfficialSdkChatModel(openAiSettings),
                     userContent
             );
         } catch (RuntimeException exception) {
-            return "OpenAI (Official) request failed: " + exception.getMessage();
+            return "OpenAI (Official SDK) request failed: " + exception.getMessage();
         }
     }
 
@@ -161,13 +161,13 @@ public class AiChatService {
         }
     }
 
-    private String googleGenAiReply(UUID conversationId, ApplicationSettings settings, String userContent) {
-        GoogleGenAiSettings googleGenAiSettings = settings.getGoogleGenAi();
-        if (isBlank(googleGenAiSettings.getApiKey()) || isBlank(googleGenAiSettings.getModel())) {
-            return "Google GenAI is selected, but API key and model are required before I can call it.";
+    private String googleGeminiReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+        GoogleGeminiSettings googleGeminiSettings = settings.getGoogleGemini();
+        if (isBlank(googleGeminiSettings.getApiKey()) || isBlank(googleGeminiSettings.getModel())) {
+            return "Google Gemini is selected, but API key and model are required before I can call it.";
         }
 
-        GoogleGenAiChatModel chatModel = buildGoogleGenAiChatModel(googleGenAiSettings);
+        GoogleGenAiChatModel chatModel = buildGoogleGeminiChatModel(googleGeminiSettings);
         try {
             return chatModelReply(
                     conversationId,
@@ -176,16 +176,16 @@ public class AiChatService {
                     userContent
             );
         } catch (RuntimeException exception) {
-            return "Google GenAI request failed: " + exception.getMessage();
+            return "Google Gemini request failed: " + exception.getMessage();
         } finally {
-            destroyGoogleGenAiChatModel(chatModel);
+            destroyGoogleGeminiChatModel(chatModel);
         }
     }
 
     private String anthropicReply(UUID conversationId, ApplicationSettings settings, String userContent) {
         AnthropicSettings anthropicSettings = settings.getAnthropic();
         if (isBlank(anthropicSettings.getApiKey()) || isBlank(anthropicSettings.getModel())) {
-            return "Anthropic Claude is selected, but API key and model are required before I can call it.";
+            return "Anthropic is selected, but API key and model are required before I can call it.";
         }
 
         try {
@@ -196,7 +196,7 @@ public class AiChatService {
                     userContent
             );
         } catch (RuntimeException exception) {
-            return "Anthropic Claude request failed: " + exception.getMessage();
+            return "Anthropic request failed: " + exception.getMessage();
         }
     }
 
@@ -238,7 +238,7 @@ public class AiChatService {
                 .build();
     }
 
-    private OpenAiSdkChatModel buildOpenAiOfficialChatModel(OpenAiOfficialSettings settings) {
+    private OpenAiSdkChatModel buildOpenAiOfficialSdkChatModel(OpenAiOfficialSdkSettings settings) {
         OpenAiSdkChatOptions.Builder optionsBuilder = OpenAiSdkChatOptions.builder()
                 .apiKey(settings.getApiKey())
                 .model(settings.getModel());
@@ -300,7 +300,7 @@ public class AiChatService {
                 .build();
     }
 
-    private GoogleGenAiChatModel buildGoogleGenAiChatModel(GoogleGenAiSettings settings) {
+    private GoogleGenAiChatModel buildGoogleGeminiChatModel(GoogleGeminiSettings settings) {
         Client genAiClient = Client.builder()
                 .apiKey(settings.getApiKey())
                 .build();
@@ -316,7 +316,7 @@ public class AiChatService {
                 .build();
     }
 
-    private void destroyGoogleGenAiChatModel(GoogleGenAiChatModel chatModel) {
+    private void destroyGoogleGeminiChatModel(GoogleGenAiChatModel chatModel) {
         try {
             chatModel.destroy();
         } catch (Exception exception) {

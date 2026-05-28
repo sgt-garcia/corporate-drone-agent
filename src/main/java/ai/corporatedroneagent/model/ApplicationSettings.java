@@ -1,16 +1,20 @@
 package ai.corporatedroneagent.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+
 public class ApplicationSettings {
 
     private String agentName = "Corporate Drone Agent";
     private String aiModel = "none";
     private String customInstructions = "Answer with concise, practical guidance using available local project context first.";
     private OpenAiSettings openAi = new OpenAiSettings();
-    private OpenAiOfficialSettings openAiOfficial = new OpenAiOfficialSettings();
+    @JsonAlias("openAiOfficial")
+    private OpenAiOfficialSdkSettings openAiOfficialSdk = new OpenAiOfficialSdkSettings();
     private AzureOpenAiSettings azureOpenAi = new AzureOpenAiSettings();
     private OllamaSettings ollama = new OllamaSettings();
     private MistralAiSettings mistralAi = new MistralAiSettings();
-    private GoogleGenAiSettings googleGenAi = new GoogleGenAiSettings();
+    @JsonAlias("googleGenAi")
+    private GoogleGeminiSettings googleGemini = new GoogleGeminiSettings();
     private AnthropicSettings anthropic = new AnthropicSettings();
 
     public String getAgentName() {
@@ -45,12 +49,12 @@ public class ApplicationSettings {
         this.openAi = openAi == null ? new OpenAiSettings() : openAi;
     }
 
-    public OpenAiOfficialSettings getOpenAiOfficial() {
-        return openAiOfficial;
+    public OpenAiOfficialSdkSettings getOpenAiOfficialSdk() {
+        return openAiOfficialSdk;
     }
 
-    public void setOpenAiOfficial(OpenAiOfficialSettings openAiOfficial) {
-        this.openAiOfficial = openAiOfficial == null ? new OpenAiOfficialSettings() : openAiOfficial;
+    public void setOpenAiOfficialSdk(OpenAiOfficialSdkSettings openAiOfficialSdk) {
+        this.openAiOfficialSdk = openAiOfficialSdk == null ? new OpenAiOfficialSdkSettings() : openAiOfficialSdk;
     }
 
     public AzureOpenAiSettings getAzureOpenAi() {
@@ -77,12 +81,12 @@ public class ApplicationSettings {
         this.mistralAi = mistralAi == null ? new MistralAiSettings() : mistralAi;
     }
 
-    public GoogleGenAiSettings getGoogleGenAi() {
-        return googleGenAi;
+    public GoogleGeminiSettings getGoogleGemini() {
+        return googleGemini;
     }
 
-    public void setGoogleGenAi(GoogleGenAiSettings googleGenAi) {
-        this.googleGenAi = googleGenAi == null ? new GoogleGenAiSettings() : googleGenAi;
+    public void setGoogleGemini(GoogleGeminiSettings googleGemini) {
+        this.googleGemini = googleGemini == null ? new GoogleGeminiSettings() : googleGemini;
     }
 
     public AnthropicSettings getAnthropic() {

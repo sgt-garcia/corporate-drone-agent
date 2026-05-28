@@ -3,6 +3,7 @@ package ai.corporatedroneagent.service;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.util.Strings;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -43,14 +44,14 @@ public class SettingsService {
         settingsSecretsService.saveSubmittedSecrets(settings);
 
         current.setAgentName(Strings.defaultIfBlank(settings.getAgentName(), "Corporate Drone Agent"));
-        current.setAiModel(Strings.defaultIfBlank(settings.getAiModel(), "none"));
+        current.setAiModel(normalizeAiModel(settings.getAiModel()));
         current.setCustomInstructions(Strings.emptyIfNull(settings.getCustomInstructions()));
         current.setOpenAi(settings.getOpenAi());
-        current.setOpenAiOfficial(settings.getOpenAiOfficial());
+        current.setOpenAiOfficialSdk(settings.getOpenAiOfficialSdk());
         current.setAzureOpenAi(settings.getAzureOpenAi());
         current.setOllama(settings.getOllama());
         current.setMistralAi(settings.getMistralAi());
-        current.setGoogleGenAi(settings.getGoogleGenAi());
+        current.setGoogleGemini(settings.getGoogleGemini());
         current.setAnthropic(settings.getAnthropic());
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
@@ -60,9 +61,24 @@ public class SettingsService {
     }
 
     private void migratePlaintextSecrets(ApplicationSettings settings) {
-        if (settingsSecretsService.migratePlaintextSecrets(settings)) {
+        boolean migrated = settingsSecretsService.migratePlaintextSecrets(settings);
+        String normalizedAiModel = normalizeAiModel(settings.getAiModel());
+        if (!Objects.equals(settings.getAiModel(), normalizedAiModel)) {
+            settings.setAiModel(normalizedAiModel);
+            migrated = true;
+        }
+
+        if (migrated) {
             settingsSecretsService.applySecretStatus(settings);
             settingsRepository.save(settings);
         }
+    }
+
+    private String normalizeAiModel(String aiModel) {
+        return switch (Strings.defaultIfBlank(aiModel, "none")) {
+            case "openai-official" -> "openai-official-sdk";
+            case "google-genai" -> "google-gemini";
+            default -> Strings.defaultIfBlank(aiModel, "none");
+        };
     }
 }
