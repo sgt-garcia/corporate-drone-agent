@@ -11,6 +11,7 @@ import {
   sendConversationMessage
 } from "./api.js";
 import { AddButton } from "./components/IconButtons.jsx";
+import { ProviderLabel } from "./components/ProviderLabel.jsx";
 import { SettingsContent } from "./components/SettingsContent.jsx";
 import { WorkContent } from "./components/WorkContent.jsx";
 import { WorkMenu } from "./components/WorkMenu.jsx";
@@ -360,7 +361,7 @@ export default function App() {
                   type="button"
                   onClick={() => setActiveSettingsItem(item)}
                 >
-                  {formatSettingsProviderLabel(item)}
+                  <ProviderLabel name={item} />
                 </button>
               ))}
             </nav>
@@ -409,8 +410,4 @@ function upsertById(items, nextItem) {
   return items.some((item) => item.id === nextItem.id)
     ? items.map((item) => (item.id === nextItem.id ? nextItem : item))
     : [...items, nextItem];
-}
-
-function formatSettingsProviderLabel(item) {
-  return item === "Mistral AI" ? "Mistral AI 🇪🇺" : item;
 }

@@ -1,3 +1,5 @@
+import { EuFlagIcon } from "./EuFlagIcon.jsx";
+import { ProviderLabel } from "./ProviderLabel.jsx";
 import { SettingsScreen } from "./SettingsScreen.jsx";
 import { useEffect, useState } from "react";
 
@@ -227,7 +229,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Mistral AI") {
     return (
       <SettingsScreen
-        title="Mistral AI 🇪🇺"
+        title={<ProviderLabel name="Mistral AI" />}
+        titleLabel="Mistral AI"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -403,19 +406,23 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
       </label>
       <label>
         AI model
-        <select
-          value={draft.aiModel ?? "none"}
-          onChange={(event) => setDraft({ ...draft, aiModel: event.target.value })}
-        >
-          <option value="none">None</option>
-          <option value="mistral-ai">Mistral AI 🇪🇺</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="azure-openai">Azure OpenAI</option>
-          <option value="google-gemini">Google Gemini</option>
-          <option value="ollama">Ollama</option>
-          <option value="openai">OpenAI</option>
-          <option value="openai-official-sdk">OpenAI (Official SDK)</option>
-        </select>
+        <span className="select-with-provider-icon">
+          {draft.aiModel === "mistral-ai" && <EuFlagIcon className="select-provider-icon" />}
+          <select
+            className={draft.aiModel === "mistral-ai" ? "has-provider-icon" : undefined}
+            value={draft.aiModel ?? "none"}
+            onChange={(event) => setDraft({ ...draft, aiModel: event.target.value })}
+          >
+            <option value="none">None</option>
+            <option value="mistral-ai">Mistral AI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="azure-openai">Azure OpenAI</option>
+            <option value="google-gemini">Google Gemini</option>
+            <option value="ollama">Ollama</option>
+            <option value="openai">OpenAI</option>
+            <option value="openai-official-sdk">OpenAI (Official SDK)</option>
+          </select>
+        </span>
       </label>
       <label>
         Custom instructions

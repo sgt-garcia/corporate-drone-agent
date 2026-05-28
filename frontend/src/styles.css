@@ -294,6 +294,28 @@ a {
   text-align: left;
 }
 
+.provider-label {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: 8px;
+  vertical-align: middle;
+}
+
+.provider-label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eu-flag-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 18px;
+  box-shadow: 0 0 0 1px rgba(15, 61, 114, 0.12);
+}
+
 .side-button:hover,
 .side-button:focus-visible {
   background: #edf5ff;
@@ -461,6 +483,24 @@ a {
   color: #344255;
   font-size: 0.9rem;
   font-weight: 680;
+}
+
+.select-with-provider-icon {
+  position: relative;
+  display: block;
+}
+
+.select-with-provider-icon .select-provider-icon {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.settings-panel select.has-provider-icon {
+  padding-left: 50px;
 }
 
 .secret-field {
