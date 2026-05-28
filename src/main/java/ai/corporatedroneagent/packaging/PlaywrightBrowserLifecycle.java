@@ -118,7 +118,11 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
     }
 
     private List<String> windowArgs() {
-        if (properties.isHeadless() || GraphicsEnvironment.isHeadless()) {
+        if (properties.isHeadless()) {
+            return List.of();
+        }
+        if (GraphicsEnvironment.isHeadless()) {
+            log.warn("Skipping browser launch window args because Java AWT is running in headless mode.");
             return List.of();
         }
 
@@ -136,7 +140,12 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
     }
 
     private void applyWindowBounds(Page page) {
-        if (properties.isHeadless() || GraphicsEnvironment.isHeadless()) {
+        if (properties.isHeadless()) {
+            log.info("Skipping browser window bounds because cda.browser.headless is enabled.");
+            return;
+        }
+        if (GraphicsEnvironment.isHeadless()) {
+            log.warn("Skipping browser window bounds because Java AWT is running in headless mode.");
             return;
         }
 

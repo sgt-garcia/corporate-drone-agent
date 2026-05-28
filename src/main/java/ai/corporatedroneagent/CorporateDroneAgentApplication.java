@@ -7,6 +7,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class CorporateDroneAgentApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(CorporateDroneAgentApplication.class, args);
+        SpringApplication application = new SpringApplication(CorporateDroneAgentApplication.class);
+        application.setHeadless(false);
+        application.run(args);
     }
 }
