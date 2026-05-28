@@ -330,6 +330,59 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
+  if (activeSettingsItem === "Anthropic Claude") {
+    return (
+      <SettingsScreen
+        title="Anthropic Claude"
+        subtitle="Settings"
+        onReload={() => {
+          setDraft(settings);
+          onReload();
+        }}
+        onSave={() => onSave(draft)}
+      >
+        <ApiKeyField
+          label="Anthropic API Key"
+          placeholder="Anthropic API key"
+          settings={draft.anthropic}
+          onChange={(apiKey) =>
+            setDraft({
+              ...draft,
+              anthropic: {
+                ...(draft.anthropic ?? {}),
+                apiKey,
+                clearApiKey: false
+              }
+            })
+          }
+          onClear={() =>
+            setDraft({
+              ...draft,
+              anthropic: clearedApiKeySettings(draft.anthropic)
+            })
+          }
+        />
+        <label>
+          Claude Model
+          <input
+            type="text"
+            placeholder="claude-3-5-sonnet-latest"
+            value={draft.anthropic?.model ?? ""}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                anthropic: {
+                  ...(draft.anthropic ?? {}),
+                  model: event.target.value
+                }
+              })
+            }
+          />
+        </label>
+      </SettingsScreen>
+    );
+  }
+
   return (
     <SettingsScreen
       title="General"
@@ -361,6 +414,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           <option value="ollama">Ollama</option>
           <option value="mistral-ai">Mistral AI</option>
           <option value="google-genai">Google GenAI</option>
+          <option value="anthropic">Anthropic Claude</option>
         </select>
       </label>
       <label>

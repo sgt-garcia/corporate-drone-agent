@@ -58,6 +58,12 @@ const emptySettings = {
     apiKeyConfigured: false,
     apiKeyLastFour: "",
     model: "gemini-3.5-flash"
+  },
+  anthropic: {
+    apiKey: "",
+    apiKeyConfigured: false,
+    apiKeyLastFour: "",
+    model: "claude-3-5-sonnet-latest"
   }
 };
 

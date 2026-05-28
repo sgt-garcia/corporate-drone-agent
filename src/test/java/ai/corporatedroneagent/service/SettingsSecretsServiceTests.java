@@ -30,6 +30,10 @@ class SettingsSecretsServiceTests {
                           "googleGenAi": {
                             "apiKey": "google-secret",
                             "model": "gemini-3.5-flash"
+                          },
+                          "anthropic": {
+                            "apiKey": "anthropic-secret",
+                            "model": "claude-3-5-sonnet-latest"
                           }
                         }
                         """,
@@ -39,12 +43,14 @@ class SettingsSecretsServiceTests {
         assertThat(settings.getOpenAi().getApiKey()).isEqualTo("sk-openai-secret");
         assertThat(settings.getMistralAi().getApiKey()).isEqualTo("mistral-secret");
         assertThat(settings.getGoogleGenAi().getApiKey()).isEqualTo("google-secret");
+        assertThat(settings.getAnthropic().getApiKey()).isEqualTo("anthropic-secret");
 
         String json = objectMapper.writeValueAsString(settings);
 
         assertThat(json).doesNotContain("sk-openai-secret");
         assertThat(json).doesNotContain("mistral-secret");
         assertThat(json).doesNotContain("google-secret");
+        assertThat(json).doesNotContain("anthropic-secret");
         assertThat(json).doesNotContain("\"apiKey\"");
     }
 
@@ -56,6 +62,7 @@ class SettingsSecretsServiceTests {
         settings.getOpenAi().setApiKey("sk-openai-secret");
         settings.getMistralAi().setApiKey("mistral-secret");
         settings.getGoogleGenAi().setApiKey("google-secret");
+        settings.getAnthropic().setApiKey("anthropic-secret");
 
         boolean migrated = service.migratePlaintextSecrets(settings);
         service.applySecretStatus(settings);
@@ -70,9 +77,13 @@ class SettingsSecretsServiceTests {
         assertThat(settings.getGoogleGenAi().getApiKey()).isEmpty();
         assertThat(settings.getGoogleGenAi().isApiKeyConfigured()).isTrue();
         assertThat(settings.getGoogleGenAi().getApiKeyLastFour()).isEqualTo("cret");
+        assertThat(settings.getAnthropic().getApiKey()).isEmpty();
+        assertThat(settings.getAnthropic().isApiKeyConfigured()).isTrue();
+        assertThat(settings.getAnthropic().getApiKeyLastFour()).isEqualTo("cret");
         assertThat(secretStore.get("settings.openAi.apiKey")).contains("sk-openai-secret");
         assertThat(secretStore.get("settings.mistralAi.apiKey")).contains("mistral-secret");
         assertThat(secretStore.get("settings.googleGenAi.apiKey")).contains("google-secret");
+        assertThat(secretStore.get("settings.anthropic.apiKey")).contains("anthropic-secret");
     }
 
     private static class InMemorySecretStore implements SecretStore {

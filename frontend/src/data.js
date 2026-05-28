@@ -21,7 +21,8 @@ export const pages = {
       "Azure OpenAI",
       "Ollama",
       "Mistral AI",
-      "Google GenAI"
+      "Google GenAI",
+      "Anthropic Claude"
     ]
   }
 };

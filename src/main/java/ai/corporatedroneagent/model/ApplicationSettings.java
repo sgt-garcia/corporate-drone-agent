@@ -11,6 +11,7 @@ public class ApplicationSettings {
     private OllamaSettings ollama = new OllamaSettings();
     private MistralAiSettings mistralAi = new MistralAiSettings();
     private GoogleGenAiSettings googleGenAi = new GoogleGenAiSettings();
+    private AnthropicSettings anthropic = new AnthropicSettings();
 
     public String getAgentName() {
         return agentName;
@@ -82,5 +83,13 @@ public class ApplicationSettings {
 
     public void setGoogleGenAi(GoogleGenAiSettings googleGenAi) {
         this.googleGenAi = googleGenAi == null ? new GoogleGenAiSettings() : googleGenAi;
+    }
+
+    public AnthropicSettings getAnthropic() {
+        return anthropic;
+    }
+
+    public void setAnthropic(AnthropicSettings anthropic) {
+        this.anthropic = anthropic == null ? new AnthropicSettings() : anthropic;
     }
 }

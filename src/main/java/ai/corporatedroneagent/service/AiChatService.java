@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.ApplicationSettings;
+import ai.corporatedroneagent.model.AnthropicSettings;
 import ai.corporatedroneagent.model.AzureOpenAiSettings;
 import ai.corporatedroneagent.model.GoogleGenAiSettings;
 import ai.corporatedroneagent.model.MistralAiSettings;
@@ -11,6 +12,9 @@ import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.core.credential.AzureKeyCredential;
 import com.google.genai.Client;
 import java.util.UUID;
+import org.springframework.ai.anthropic.AnthropicChatModel;
+import org.springframework.ai.anthropic.AnthropicChatOptions;
+import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.azure.openai.AzureOpenAiChatModel;
 import org.springframework.ai.azure.openai.AzureOpenAiChatOptions;
 import org.springframework.ai.chat.client.ChatClient;
@@ -60,6 +64,7 @@ public class AiChatService {
             case "ollama" -> ollamaReply(conversationId, settings, userContent);
             case "mistral-ai" -> mistralAiReply(conversationId, settings, userContent);
             case "google-genai" -> googleGenAiReply(conversationId, settings, userContent);
+            case "anthropic" -> anthropicReply(conversationId, settings, userContent);
             default -> echoReply(userContent);
         };
     }
@@ -171,6 +176,24 @@ public class AiChatService {
             );
         } catch (RuntimeException exception) {
             return "Google GenAI request failed: " + exception.getMessage();
+        }
+    }
+
+    private String anthropicReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+        AnthropicSettings anthropicSettings = settings.getAnthropic();
+        if (isBlank(anthropicSettings.getApiKey()) || isBlank(anthropicSettings.getModel())) {
+            return "Anthropic Claude is selected, but API key and model are required before I can call it.";
+        }
+
+        try {
+            return chatModelReply(
+                    conversationId,
+                    settings,
+                    buildAnthropicChatModel(anthropicSettings),
+                    userContent
+            );
+        } catch (RuntimeException exception) {
+            return "Anthropic Claude request failed: " + exception.getMessage();
         }
     }
 
@@ -286,6 +309,23 @@ public class AiChatService {
 
         return GoogleGenAiChatModel.builder()
                 .genAiClient(genAiClient)
+                .defaultOptions(chatOptions)
+                .build();
+    }
+
+    private AnthropicChatModel buildAnthropicChatModel(AnthropicSettings settings) {
+        AnthropicApi anthropicApi = AnthropicApi.builder()
+                .apiKey(settings.getApiKey())
+                .build();
+
+        AnthropicChatOptions chatOptions = AnthropicChatOptions.builder()
+                .model(settings.getModel())
+                .temperature(0.2)
+                .maxTokens(4096)
+                .build();
+
+        return AnthropicChatModel.builder()
+                .anthropicApi(anthropicApi)
                 .defaultOptions(chatOptions)
                 .build();
     }

@@ -13,6 +13,7 @@ public class SettingsSecretsService {
     private static final String AZURE_OPENAI_API_KEY = "settings.azureOpenAi.apiKey";
     private static final String MISTRAL_AI_API_KEY = "settings.mistralAi.apiKey";
     private static final String GOOGLE_GENAI_API_KEY = "settings.googleGenAi.apiKey";
+    private static final String ANTHROPIC_API_KEY = "settings.anthropic.apiKey";
 
     private final SecretStore secretStore;
 
@@ -53,6 +54,12 @@ public class SettingsSecretsService {
             migrated = true;
         }
 
+        if (hasText(settings.getAnthropic().getApiKey())) {
+            secretStore.put(ANTHROPIC_API_KEY, settings.getAnthropic().getApiKey());
+            settings.getAnthropic().setApiKey("");
+            migrated = true;
+        }
+
         return migrated;
     }
 
@@ -86,6 +93,12 @@ public class SettingsSecretsService {
         } else if (hasText(settings.getGoogleGenAi().getApiKey())) {
             secretStore.put(GOOGLE_GENAI_API_KEY, settings.getGoogleGenAi().getApiKey());
         }
+
+        if (settings.getAnthropic().isClearApiKey()) {
+            secretStore.delete(ANTHROPIC_API_KEY);
+        } else if (hasText(settings.getAnthropic().getApiKey())) {
+            secretStore.put(ANTHROPIC_API_KEY, settings.getAnthropic().getApiKey());
+        }
     }
 
     public void applySecretValues(ApplicationSettings settings) {
@@ -94,6 +107,7 @@ public class SettingsSecretsService {
         settings.getAzureOpenAi().setApiKey(secretStore.get(AZURE_OPENAI_API_KEY).orElse(""));
         settings.getMistralAi().setApiKey(secretStore.get(MISTRAL_AI_API_KEY).orElse(""));
         settings.getGoogleGenAi().setApiKey(secretStore.get(GOOGLE_GENAI_API_KEY).orElse(""));
+        settings.getAnthropic().setApiKey(secretStore.get(ANTHROPIC_API_KEY).orElse(""));
     }
 
     public void applySecretStatus(ApplicationSettings settings) {
@@ -102,6 +116,7 @@ public class SettingsSecretsService {
         applyAzureOpenAiStatus(settings, secretStore.get(AZURE_OPENAI_API_KEY));
         applyMistralAiStatus(settings, secretStore.get(MISTRAL_AI_API_KEY));
         applyGoogleGenAiStatus(settings, secretStore.get(GOOGLE_GENAI_API_KEY));
+        applyAnthropicStatus(settings, secretStore.get(ANTHROPIC_API_KEY));
     }
 
     public void clearSecretValues(ApplicationSettings settings) {
@@ -115,6 +130,8 @@ public class SettingsSecretsService {
         settings.getMistralAi().setClearApiKey(false);
         settings.getGoogleGenAi().setApiKey("");
         settings.getGoogleGenAi().setClearApiKey(false);
+        settings.getAnthropic().setApiKey("");
+        settings.getAnthropic().setClearApiKey(false);
     }
 
     private void applyOpenAiStatus(ApplicationSettings settings, Optional<String> secret) {
@@ -140,6 +157,11 @@ public class SettingsSecretsService {
     private void applyGoogleGenAiStatus(ApplicationSettings settings, Optional<String> secret) {
         settings.getGoogleGenAi().setApiKeyConfigured(secret.isPresent());
         settings.getGoogleGenAi().setApiKeyLastFour(secret.map(this::lastFour).orElse(""));
+    }
+
+    private void applyAnthropicStatus(ApplicationSettings settings, Optional<String> secret) {
+        settings.getAnthropic().setApiKeyConfigured(secret.isPresent());
+        settings.getAnthropic().setApiKeyLastFour(secret.map(this::lastFour).orElse(""));
     }
 
     private String lastFour(String value) {

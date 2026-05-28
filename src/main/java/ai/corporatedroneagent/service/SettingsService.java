@@ -51,6 +51,7 @@ public class SettingsService {
         current.setOllama(settings.getOllama());
         current.setMistralAi(settings.getMistralAi());
         current.setGoogleGenAi(settings.getGoogleGenAi());
+        current.setAnthropic(settings.getAnthropic());
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);
