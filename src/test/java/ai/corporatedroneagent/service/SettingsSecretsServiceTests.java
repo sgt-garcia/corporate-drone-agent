@@ -33,7 +33,7 @@ class SettingsSecretsServiceTests {
                           },
                           "anthropic": {
                             "apiKey": "anthropic-secret",
-                            "model": "claude-3-5-sonnet-latest"
+                            "model": "claude-sonnet-4-6"
                           }
                         }
                         """,

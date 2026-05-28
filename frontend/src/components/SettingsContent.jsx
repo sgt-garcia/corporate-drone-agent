@@ -366,7 +366,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           Claude Model
           <input
             type="text"
-            placeholder="claude-3-5-sonnet-latest"
+            placeholder="claude-sonnet-4-6"
             value={draft.anthropic?.model ?? ""}
             onChange={(event) =>
               setDraft({
