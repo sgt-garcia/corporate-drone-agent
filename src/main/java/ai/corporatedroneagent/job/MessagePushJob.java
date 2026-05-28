@@ -6,17 +6,29 @@ import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.service.AiChatService;
 import ai.corporatedroneagent.service.EventService;
+import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.stereotype.Component;
 
 @Component
 public class MessagePushJob {
 
+    private static final long LLM_TIMEOUT_SECONDS = 60;
+    private static final String TIMEOUT_REPLY =
+            "The model did not respond within 60 seconds. Please try again, or check whether the selected provider is running.";
+
     private final ConversationRepository conversationRepository;
     private final EventService eventService;
     private final AiChatService aiChatService;
+    private final ExecutorService llmExecutor;
+    private final ExecutorService replyExecutor;
 
     public MessagePushJob(
             ConversationRepository conversationRepository,
@@ -26,13 +38,24 @@ public class MessagePushJob {
         this.conversationRepository = conversationRepository;
         this.eventService = eventService;
         this.aiChatService = aiChatService;
+        this.llmExecutor = Executors.newFixedThreadPool(4, namedThreadFactory("cda-llm"));
+        this.replyExecutor = Executors.newSingleThreadExecutor(namedThreadFactory("cda-reply"));
     }
 
     public void queueAssistantReply(UUID conversationId, String userContent) {
-        CompletableFuture.runAsync(() -> {
-            publishStatus(conversationId);
-            appendAssistantMessage(conversationId, userContent);
-        });
+        publishStatus(conversationId);
+
+        CompletableFuture
+                .supplyAsync(() -> aiChatService.reply(conversationId, userContent), llmExecutor)
+                .completeOnTimeout(TIMEOUT_REPLY, LLM_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .exceptionally(error -> "LLM request failed: " + rootMessage(error))
+                .thenAcceptAsync(reply -> appendAssistantMessage(conversationId, reply), replyExecutor);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        llmExecutor.shutdownNow();
+        replyExecutor.shutdownNow();
     }
 
     private void publishStatus(UUID conversationId) {
@@ -45,11 +68,11 @@ public class MessagePushJob {
         eventService.publish("message-created", new MessageEventDto(conversationId, status));
     }
 
-    private void appendAssistantMessage(UUID conversationId, String userContent) {
+    private void appendAssistantMessage(UUID conversationId, String content) {
         Message message = new Message(
                 UUID.randomUUID(),
                 "assistant",
-                aiChatService.reply(conversationId, userContent),
+                content,
                 Instant.now()
         );
 
@@ -58,6 +81,23 @@ public class MessagePushJob {
                         "message-created",
                         new MessageEventDto(conversationId, toDto(message))
                 ));
+    }
+
+    private ThreadFactory namedThreadFactory(String prefix) {
+        AtomicInteger counter = new AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable, prefix + "-" + counter.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
+    private String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
     }
 
     private MessageDto toDto(Message message) {
