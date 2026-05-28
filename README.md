@@ -28,10 +28,12 @@ Run the full application with Maven:
 mvn spring-boot:run
 ```
 
-Then open:
+The app starts on `http://localhost:8080`, opens Microsoft Edge automatically, and exits when the browser window is closed.
 
-```text
-http://localhost:8080
+To run the backend without opening a browser:
+
+```powershell
+mvn spring-boot:run -Dspring-boot.run.arguments="--cda.browser.enabled=false"
 ```
 
 For frontend-only development:
@@ -46,6 +48,18 @@ Build the packaged application:
 
 ```powershell
 mvn clean package
+```
+
+Run the packaged jar:
+
+```powershell
+java -jar target/corporate-drone-agent-0.0.1-SNAPSHOT.jar
+```
+
+That jar includes the built React frontend and opens the same Playwright-managed Edge window by default. For server-style jar runs, disable the browser shell:
+
+```powershell
+java -jar target/corporate-drone-agent-0.0.1-SNAPSHOT.jar --cda.browser.enabled=false
 ```
 
 This project is early. The current codebase establishes the local application shell, the project and conversation model, settings, and the basic LLM chat path. The next work is connector support, local indexing, retrieval, scheduled jobs, and packaging for non-technical corporate users.
