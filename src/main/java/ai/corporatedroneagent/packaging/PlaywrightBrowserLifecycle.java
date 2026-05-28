@@ -16,7 +16,6 @@ import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -125,17 +124,11 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
             return List.of();
         }
 
-        double scale = Math.max(0.1, Math.min(1.0, properties.getWindowScale()));
-        Rectangle bounds = usableScreenBounds();
-        int width = Math.max(640, (int) Math.round(bounds.width * scale));
-        int height = Math.max(480, (int) Math.round(bounds.height * scale));
-        int left = bounds.x + Math.max(0, (bounds.width - width) / 2);
-        int top = bounds.y + Math.max(0, (bounds.height - height) / 2);
-
-        List<String> args = new ArrayList<>();
-        args.add("--window-size=" + width + "," + height);
-        args.add("--window-position=" + left + "," + top);
-        return args;
+        Rectangle bounds = desiredWindowBounds();
+        return List.of(
+                "--window-size=" + bounds.width + "," + bounds.height,
+                "--window-position=" + bounds.x + "," + bounds.y
+        );
     }
 
     private void applyWindowBounds(Page page) {
