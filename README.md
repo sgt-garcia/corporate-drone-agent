@@ -10,7 +10,7 @@ Corporate Drone Agent is meant to be a personal enterprise context agent. It con
 
 The application runs as a local Spring Boot backend with a React frontend at [http://localhost:8080](http://localhost:8080). The UI is organized around projects and conversations. A project represents a workspace. Each conversation keeps its own history and context, so separate work streams stay separate.
 
-On startup, the app opens its home page in a Playwright-managed browser window. By default this uses the installed Microsoft Edge browser on Windows, skips Playwright's bundled browser downloads, and opens the window at 80% of the primary screen size centered on screen. Closing that browser window terminates the local app process. For headless or server-style runs, disable this with `--cda.browser.enabled=false`.
+On startup, the app opens its home page in a Playwright-managed browser window. By default this uses the installed Microsoft Edge browser on Windows, skips Playwright's bundled browser downloads, and opens the window at 90% of the primary screen size centered on screen. Closing that browser window terminates the local app process. For headless or server-style runs, disable this with `--cda.browser.enabled=false`.
 
 The longer-term goal is a local knowledge base that can index and synchronize work context from local folders and corporate systems such as Jira, Confluence, GitHub, SharePoint, OneDrive, ServiceNow, and Salesforce. With that context available locally, the assistant should be able to answer questions, summarize work, draft updates, identify risks, prepare follow-ups, and eventually run scheduled jobs in the relevant conversation.
 
