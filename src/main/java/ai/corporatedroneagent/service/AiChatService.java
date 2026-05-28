@@ -184,14 +184,16 @@ public class AiChatService {
                 .credential(new AzureKeyCredential(settings.getApiKey()))
                 .endpoint(settings.getEndpoint());
 
-        AzureOpenAiChatOptions chatOptions = AzureOpenAiChatOptions.builder()
-                .deploymentName(settings.getDeploymentName())
-                .temperature(0.2)
-                .build();
+        AzureOpenAiChatOptions.Builder optionsBuilder = AzureOpenAiChatOptions.builder()
+                .deploymentName(settings.getDeploymentName());
+
+        if (supportsCustomTemperature(settings.getDeploymentName())) {
+            optionsBuilder.temperature(0.2);
+        }
 
         return AzureOpenAiChatModel.builder()
                 .openAIClientBuilder(clientBuilder)
-                .defaultOptions(chatOptions)
+                .defaultOptions(optionsBuilder.build())
                 .build();
     }
 
