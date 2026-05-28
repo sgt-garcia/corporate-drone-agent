@@ -1,26 +1,82 @@
 # Corporate Drone Agent
 
-An AI agent for corporate drones like me.
+Corporate Drone Agent is a local-first personal AI assistant for corporate work.
+It runs on your machine, stores its data locally, and lets you configure the LLM
+provider you want to use.
 
-Corporate Drone Agent is a local-first personal AI assistant for corporate workers. The idea is simple: download the app, configure an LLM, connect the work systems you already have access to, and run the assistant on your own machine.
+The application is currently an early desktop-style local web app: a Spring Boot
+backend serves a React/Vite frontend, opens the UI in a Playwright-managed
+browser window, and keeps projects, conversations, settings, and secrets on the
+local filesystem.
 
-Corporate work is spread across project documents, Jira tickets, Confluence pages, SharePoint files, OneDrive documents, GitHub repositories, ServiceNow tickets, Salesforce data, local files, notes, logs, and settings. An assistant is only useful if it can work with that context without requiring a company-wide platform, a large rollout, or a long approval process.
+## Current status
 
-Corporate Drone Agent is meant to be a personal enterprise context agent. It connects through standard APIs, uses the user's existing permissions, and stays practical enough for one person to set up and use. The focus is not another general AI workspace. The focus is helping a corporate worker use the systems, documents, tickets, repositories, and notes they already work with every day.
+Working today:
 
-The application runs as a local Spring Boot backend with a React frontend at [http://localhost:8080](http://localhost:8080). The UI is organized around projects and conversations. A project represents a workspace. Each conversation keeps its own history and context, so separate work streams stay separate.
+- Local Spring Boot application served at `http://localhost:8080`.
+- React UI with two main areas: Work and Settings.
+- Project creation and editing, including a project name, optional working
+  folder, and project-level custom instructions.
+- Conversation creation inside projects.
+- Persistent conversation history stored as local JSON files.
+- Async assistant replies with status updates pushed to the UI over server-sent
+  events.
+- Configurable global assistant name, active AI provider, and custom
+  instructions.
+- LLM chat support for OpenAI, OpenAI Official SDK, Azure OpenAI, Ollama,
+  Mistral AI, Google Gemini, and Anthropic through Spring AI.
+- Local API-key storage that avoids returning secrets from the settings API.
+- Automatic browser launch on startup, with app shutdown when the browser closes
+  by default.
 
-On startup, the app opens its home page in a Playwright-managed browser window. By default this uses the installed Microsoft Edge browser on Windows, skips Playwright's bundled browser downloads, and opens the window at 90% of the primary screen size centered on screen. Closing that browser window terminates the local app process. For headless or server-style runs, disable this with `--cda.browser.enabled=false`.
+Still planned:
 
-The longer-term goal is a local knowledge base that can index and synchronize work context from local folders and corporate systems such as Jira, Confluence, GitHub, SharePoint, OneDrive, ServiceNow, and Salesforce. With that context available locally, the assistant should be able to answer questions, summarize work, draft updates, identify risks, prepare follow-ups, and eventually run scheduled jobs in the relevant conversation.
+- Connectors for corporate systems such as Jira, Confluence, GitHub,
+  SharePoint, OneDrive, ServiceNow, and Salesforce.
+- Local indexing and retrieval over files, repositories, tickets, and documents.
+- Scheduled jobs tied to conversations and projects.
+- Write-back workflows for external systems.
+- End-user packaging beyond the current runnable jar.
 
-Write-back to external systems is planned for a later stage. The first priority is safe local reading, indexing, retrieval, summarization, and task support.
+## Technology
 
-The project uses Java 21, Spring Boot, Spring AI, React, Vite, and Maven. LLM configuration is handled in the app settings, with support being developed for Anthropic, Azure OpenAI, Google Gemini, Mistral AI, Ollama, OpenAI, and OpenAI (Official SDK). Local application data is stored under `data/`.
+- Java 21
+- Spring Boot 3.5
+- Spring AI 1.1
+- Maven
+- React 19
+- Vite 8
+- Playwright for the local browser shell
 
-API keys are not written to `data/application-settings.json` or returned by the settings API. On Windows, keys are stored in `data/secrets.json` after protection with the current user's DPAPI profile. On non-Windows systems, set `CDA_SECRET_KEY` to enable AES-GCM protection for local secrets.
+The Maven build installs the configured Node.js and npm versions, builds the
+frontend, copies `frontend/dist` into the Spring Boot static resources, and then
+packages the backend.
 
-## Development
+## Local data
+
+By default, application data is written under `data/`:
+
+- `data/application-settings.json` stores non-secret settings.
+- `data/projects/*.json` stores projects.
+- `data/conversations/*.json` stores conversations and message history.
+- `data/secrets.json` stores protected API keys.
+
+The storage root can be changed with:
+
+```powershell
+--cda.storage.root=path\to\data
+```
+
+API keys are accepted through the settings UI/API, then moved into the secret
+store. They are not written to `application-settings.json` and are not returned
+by `GET /api/settings`.
+
+Secret protection:
+
+- On Windows, secrets are protected with the current user's DPAPI profile.
+- On non-Windows systems, set `CDA_SECRET_KEY` to enable AES-GCM protection.
+
+## Running the app
 
 Run the full application with Maven:
 
@@ -28,21 +84,41 @@ Run the full application with Maven:
 mvn spring-boot:run
 ```
 
-The app starts on `http://localhost:8080`, opens Microsoft Edge automatically, and exits when the browser window is closed.
+The app starts on `http://localhost:8080`, opens Microsoft Edge by default, and
+exits when the browser window is closed.
 
-To run the backend without opening a browser:
+Run the backend without opening the browser shell:
 
 ```powershell
 mvn spring-boot:run -Dspring-boot.run.arguments="--cda.browser.enabled=false"
 ```
 
-For frontend-only development:
+Useful browser options:
 
 ```powershell
+--cda.browser.enabled=false
+--cda.browser.channel=msedge
+--cda.browser.headless=false
+--cda.browser.terminate-on-close=true
+--cda.browser.window-scale=0.9
+--cda.browser.url=http://localhost:8080/
+```
+
+## Frontend development
+
+For frontend-only development, run the backend in server mode first, then start
+Vite:
+
+```powershell
+mvn spring-boot:run -Dspring-boot.run.arguments="--cda.browser.enabled=false"
 cd frontend
 npm install
 npm run dev
 ```
+
+The Vite dev server proxies `/api` requests to `http://localhost:8080`.
+
+## Build and package
 
 Build the packaged application:
 
@@ -56,10 +132,38 @@ Run the packaged jar:
 java -jar target/corporate-drone-agent-0.0.1-SNAPSHOT.jar
 ```
 
-That jar includes the built React frontend and opens the same Playwright-managed Edge window by default. For server-style jar runs, disable the browser shell:
+Run the jar without opening the browser shell:
 
 ```powershell
 java -jar target/corporate-drone-agent-0.0.1-SNAPSHOT.jar --cda.browser.enabled=false
 ```
 
-This project is early. The current codebase establishes the local application shell, the project and conversation model, settings, and the basic LLM chat path. The next work is connector support, local indexing, retrieval, scheduled jobs, and packaging for non-technical corporate users.
+## API surface
+
+The current backend exposes:
+
+- `GET /api/projects`
+- `POST /api/projects`
+- `PUT /api/projects/{projectId}`
+- `GET /api/projects/{projectId}/conversations`
+- `POST /api/projects/{projectId}/conversations`
+- `GET /api/conversations/{conversationId}`
+- `PUT /api/conversations/{conversationId}`
+- `POST /api/conversations/{conversationId}/messages`
+- `GET /api/settings`
+- `PUT /api/settings`
+- `GET /api/events`
+
+`/api/events` is an SSE stream used by the frontend for project, conversation,
+message, and settings updates.
+
+## Tests
+
+Run the test suite with:
+
+```powershell
+mvn test
+```
+
+The current tests cover Spring context startup, browser/headless mode selection,
+and API-key serialization/migration behavior.
