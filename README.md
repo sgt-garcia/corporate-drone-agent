@@ -1,83 +1,24 @@
 # Corporate Drone Agent
 
-Corporate Drone Agent is a local-first personal AI assistant for corporate workers.
+An AI agent for corporate drones like me.
 
-Most office employees do not need another chatbot. They need an assistant that understands the context of their real work: project documents, Jira tickets, Confluence pages, SharePoint files, OneDrive documents, GitHub repositories, ServiceNow tickets, Salesforce data, local files, notes, logs, and settings. Today that context is scattered across many tools, while enterprise AI solutions are often too centralized, too expensive, too heavy to roll out, or blocked by governance.
+The Corporate Drone's Agent is a local-first personal AI assistant for corporate workers. It is built around a simple idea: a corporate employee should be able to download an app, configure an LLM, connect the work systems they already have access to, and run a useful assistant on their own machine.
 
-Corporate Drone Agent is meant to be the simpler alternative: download it, configure an LLM, connect the tools you already have access to, and run a personal agent on your own machine.
+Real work is spread across project documents, Jira tickets, Confluence pages, SharePoint files, OneDrive documents, GitHub repositories, ServiceNow tickets, Salesforce data, local files, notes, logs, and settings. A useful assistant needs to understand that working environment without requiring a company-wide AI platform, a heavy rollout, or a long chain of approvals.
 
-## Positioning
+The Corporate Drone's Agent is meant to be a personal enterprise context agent. It should connect through standard APIs, use the user's existing permissions, and stay practical enough for one worker to set up and use. The focus is not on becoming another general AI workspace. The focus is helping a corporate worker reason over the systems, documents, tickets, repositories, and notes they already touch every day.
 
-Corporate Drone Agent is a personal enterprise context agent.
+The application currently runs as a local Spring Boot backend with a React frontend served at [http://localhost:8080](http://localhost:8080). The main UI is organized around projects and conversations. A project represents a workspace, and each conversation keeps its own history and context, so different work streams do not collapse into one long chat.
 
-It is not:
+The longer-term goal is a local knowledge base that can index and synchronize work context from local folders and corporate systems such as Jira, Confluence, GitHub, SharePoint, OneDrive, ServiceNow, and Salesforce. Once that context is available locally, the assistant should be able to answer questions, summarize work, draft updates, identify risks, prepare follow-ups, and eventually run scheduled jobs inside the relevant conversation.
 
-- an enterprise-wide AI platform
-- a generic chat interface
-- an enterprise search replacement
-- a marketplace app that requires central approval
-- a technical framework that needs complex infrastructure
+Write-back to external systems is planned for a later stage. The first priority is safe local reading, indexing, retrieval, summarization, and task support.
 
-The goal is practical and deliberately small in scope: help one corporate worker work better with the systems they already use every day.
-
-Corporate Drone Agent should connect through standard APIs, use the user's existing permissions, and avoid requiring Rovo, marketplace apps, enterprise-wide rollout, custom CORS setups, authentication layers, or heavy administration. Compared with tools like AnythingLLM, Open WebUI, LibreChat, OpenClaw, or enterprise search platforms, the focus is less on being a general AI workspace and more on being a personal assistant grounded in corporate work context.
-
-## What It Does
-
-The application runs locally and exposes a React interface at [http://localhost:8080](http://localhost:8080), served by a Spring Boot backend.
-
-The main UI is organized around projects. A project represents a workspace, and each project contains conversations. A conversation has its own history and context, making it possible to keep work streams separate instead of mixing everything into one long chat.
-
-The current application includes:
-
-- local Spring Boot backend bound to `127.0.0.1`
-- React frontend built with Vite
-- project and conversation management
-- local JSON-backed persistence under `data/`
-- chat settings for OpenAI, OpenAI official SDK, Azure OpenAI, and Ollama
-- conversation memory through Spring AI
-- server-sent events for live message updates
-- an echo mode when no model is configured
-
-## Product Direction
-
-The longer-term goal is a local knowledge base that can index and synchronize work context from sources such as:
-
-- local folders
-- Jira projects
-- Confluence spaces
-- GitHub repositories
-- SharePoint sites
-- OneDrive documents
-- ServiceNow tickets
-- Salesforce records
-- notes, logs, and configuration files
-
-The intended flow is:
-
-1. Configure the LLM provider you are allowed to use.
-2. Configure the work sources you already have access to.
-3. Let the agent build a local searchable context layer.
-4. Ask questions, summarize work, draft updates, identify risks, and prepare follow-ups from that context.
-5. Optionally schedule recurring jobs inside conversations.
-
-Write-back to external systems is planned for a later stage. The first priority is safe local reading, indexing, summarization, and task support.
-
-## Architecture
-
-Corporate Drone Agent is currently scaffolded as a Spring Boot application with a packaged React frontend.
-
-- Backend: Java 21, Spring Boot, Spring AI
-- Frontend: React, Vite
-- Build: Maven with `frontend-maven-plugin`
-- Storage: local JSON files under `data/`
-- LLM providers: OpenAI, OpenAI official SDK, Azure OpenAI, Ollama
-
-The Maven build installs local Node/npm tooling, builds the frontend from `frontend/`, and packages the generated assets into the Spring Boot application.
+The project is built with Java 21, Spring Boot, Spring AI, React, Vite, and Maven. LLM configuration is handled through the app settings, with support being developed around OpenAI, the OpenAI official SDK, Azure OpenAI, and Ollama. Local application data is stored under `data/`.
 
 ## Development
 
-Run the full application:
+Run the full application with Maven:
 
 ```powershell
 mvn spring-boot:run
@@ -89,7 +30,7 @@ Then open:
 http://localhost:8080
 ```
 
-Run the frontend only:
+For frontend-only development:
 
 ```powershell
 cd frontend
@@ -103,6 +44,4 @@ Build the packaged application:
 mvn clean package
 ```
 
-## Status
-
-This project is early and intentionally focused. The current codebase establishes the local app shell, project/conversation model, settings, and LLM chat path. The major upcoming work is connector support, local indexing, retrieval, scheduled jobs, and stronger packaging for non-technical corporate users.
+This project is early. The current codebase establishes the local application shell, the project and conversation model, settings, and the basic LLM chat path. The next substantial work is connector support, local indexing, retrieval, scheduled jobs, and packaging that feels approachable for non-technical corporate users.
