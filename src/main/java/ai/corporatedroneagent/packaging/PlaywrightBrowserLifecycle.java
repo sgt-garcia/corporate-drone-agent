@@ -74,16 +74,15 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
                     .setEnv(Map.of("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")));
             browser = launchBrowser();
             browserContext = newBrowserContext();
-            AtomicBoolean closed = new AtomicBoolean(false);
-            browser.onDisconnected(closedBrowser -> closed.set(true));
-            browserContext.onClose(closedContext -> closed.set(true));
+            AtomicBoolean browserClosed = new AtomicBoolean(false);
+            browser.onDisconnected(closedBrowser -> browserClosed.set(true));
+            browserContext.onClose(closedContext -> browserClosed.set(true));
             Page page = browserContext.newPage();
-            page.onClose(closedPage -> closed.set(true));
             applyWindowBounds(page);
             page.navigate(homeUrl);
             launched = true;
             log.info("Opened Corporate Drone Agent in browser at {}", homeUrl);
-            waitForBrowserClose(page, closed);
+            waitForBrowserClose(browserClosed);
         } catch (Exception ex) {
             log.error("Could not launch browser for Corporate Drone Agent. The app is still available at {}.", homeUrl, ex);
         } finally {
@@ -214,27 +213,52 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
         );
     }
 
-    private void waitForBrowserClose(Page page, AtomicBoolean closed) {
-        while (!stopping.get() && !closed.get() && isBrowserOpen(page)) {
+    private void waitForBrowserClose(AtomicBoolean browserClosed) {
+        while (!stopping.get() && !browserClosed.get() && isBrowserOpen()) {
             try {
+                Page page = firstOpenPage();
+                if (page == null) {
+                    return;
+                }
                 page.waitForTimeout(500);
             } catch (PlaywrightException ex) {
-                return;
+                if (!hasOpenPages()) {
+                    return;
+                }
             }
         }
     }
 
-    private boolean isBrowserOpen(Page page) {
+    private boolean isBrowserOpen() {
         try {
             return browser != null
                     && browser.isConnected()
                     && browserContext != null
                     && !browserContext.isClosed()
-                    && page != null
-                    && !page.isClosed();
+                    && hasOpenPages();
         } catch (PlaywrightException ex) {
             return false;
         }
+    }
+
+    private boolean hasOpenPages() {
+        return firstOpenPage() != null;
+    }
+
+    private Page firstOpenPage() {
+        try {
+            if (browserContext == null || browserContext.isClosed()) {
+                return null;
+            }
+            for (Page page : browserContext.pages()) {
+                if (!page.isClosed()) {
+                    return page;
+                }
+            }
+        } catch (PlaywrightException ex) {
+            return null;
+        }
+        return null;
     }
 
     private String resolveHomeUrl(WebServerInitializedEvent event) {
