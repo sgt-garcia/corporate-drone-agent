@@ -46,6 +46,12 @@ const emptySettings = {
   ollama: {
     baseUrl: "http://localhost:11434",
     model: "gemma4"
+  },
+  mistralAi: {
+    apiKey: "",
+    apiKeyConfigured: false,
+    apiKeyLastFour: "",
+    model: "mistral-small"
   }
 };
 

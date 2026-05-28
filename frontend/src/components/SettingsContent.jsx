@@ -224,6 +224,59 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
+  if (activeSettingsItem === "Mistral AI") {
+    return (
+      <SettingsScreen
+        title="Mistral AI"
+        subtitle="Settings"
+        onReload={() => {
+          setDraft(settings);
+          onReload();
+        }}
+        onSave={() => onSave(draft)}
+      >
+        <ApiKeyField
+          label="Mistral AI API Key"
+          placeholder="Mistral AI API key"
+          settings={draft.mistralAi}
+          onChange={(apiKey) =>
+            setDraft({
+              ...draft,
+              mistralAi: {
+                ...(draft.mistralAi ?? {}),
+                apiKey,
+                clearApiKey: false
+              }
+            })
+          }
+          onClear={() =>
+            setDraft({
+              ...draft,
+              mistralAi: clearedApiKeySettings(draft.mistralAi)
+            })
+          }
+        />
+        <label>
+          Mistral AI Model
+          <input
+            type="text"
+            placeholder="mistral-small"
+            value={draft.mistralAi?.model ?? ""}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                mistralAi: {
+                  ...(draft.mistralAi ?? {}),
+                  model: event.target.value
+                }
+              })
+            }
+          />
+        </label>
+      </SettingsScreen>
+    );
+  }
+
   return (
     <SettingsScreen
       title="General"
@@ -253,6 +306,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           <option value="openai-official">OpenAI (Official)</option>
           <option value="azure-openai">Azure OpenAI</option>
           <option value="ollama">Ollama</option>
+          <option value="mistral-ai">Mistral AI</option>
         </select>
       </label>
       <label>

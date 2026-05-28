@@ -49,6 +49,7 @@ public class SettingsService {
         current.setOpenAiOfficial(settings.getOpenAiOfficial());
         current.setAzureOpenAi(settings.getAzureOpenAi());
         current.setOllama(settings.getOllama());
+        current.setMistralAi(settings.getMistralAi());
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);

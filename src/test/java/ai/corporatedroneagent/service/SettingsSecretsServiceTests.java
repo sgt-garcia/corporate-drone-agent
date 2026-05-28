@@ -22,6 +22,10 @@ class SettingsSecretsServiceTests {
                           "openAi": {
                             "apiKey": "sk-openai-secret",
                             "model": "gpt-5.5"
+                          },
+                          "mistralAi": {
+                            "apiKey": "mistral-secret",
+                            "model": "mistral-small"
                           }
                         }
                         """,
@@ -29,10 +33,12 @@ class SettingsSecretsServiceTests {
         );
 
         assertThat(settings.getOpenAi().getApiKey()).isEqualTo("sk-openai-secret");
+        assertThat(settings.getMistralAi().getApiKey()).isEqualTo("mistral-secret");
 
         String json = objectMapper.writeValueAsString(settings);
 
         assertThat(json).doesNotContain("sk-openai-secret");
+        assertThat(json).doesNotContain("mistral-secret");
         assertThat(json).doesNotContain("\"apiKey\"");
     }
 
@@ -42,6 +48,7 @@ class SettingsSecretsServiceTests {
         SettingsSecretsService service = new SettingsSecretsService(secretStore);
         ApplicationSettings settings = new ApplicationSettings();
         settings.getOpenAi().setApiKey("sk-openai-secret");
+        settings.getMistralAi().setApiKey("mistral-secret");
 
         boolean migrated = service.migratePlaintextSecrets(settings);
         service.applySecretStatus(settings);
@@ -50,7 +57,11 @@ class SettingsSecretsServiceTests {
         assertThat(settings.getOpenAi().getApiKey()).isEmpty();
         assertThat(settings.getOpenAi().isApiKeyConfigured()).isTrue();
         assertThat(settings.getOpenAi().getApiKeyLastFour()).isEqualTo("cret");
+        assertThat(settings.getMistralAi().getApiKey()).isEmpty();
+        assertThat(settings.getMistralAi().isApiKeyConfigured()).isTrue();
+        assertThat(settings.getMistralAi().getApiKeyLastFour()).isEqualTo("cret");
         assertThat(secretStore.get("settings.openAi.apiKey")).contains("sk-openai-secret");
+        assertThat(secretStore.get("settings.mistralAi.apiKey")).contains("mistral-secret");
     }
 
     private static class InMemorySecretStore implements SecretStore {

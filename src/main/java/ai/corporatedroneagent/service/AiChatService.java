@@ -2,6 +2,7 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.AzureOpenAiSettings;
+import ai.corporatedroneagent.model.MistralAiSettings;
 import ai.corporatedroneagent.model.OllamaSettings;
 import ai.corporatedroneagent.model.OpenAiOfficialSettings;
 import ai.corporatedroneagent.model.OpenAiSettings;
@@ -16,6 +17,9 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.mistralai.MistralAiChatModel;
+import org.springframework.ai.mistralai.MistralAiChatOptions;
+import org.springframework.ai.mistralai.api.MistralAiApi;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
@@ -50,6 +54,7 @@ public class AiChatService {
             case "openai" -> openAiReply(conversationId, settings, userContent);
             case "openai-official" -> openAiOfficialReply(conversationId, settings, userContent);
             case "ollama" -> ollamaReply(conversationId, settings, userContent);
+            case "mistral-ai" -> mistralAiReply(conversationId, settings, userContent);
             default -> echoReply(userContent);
         };
     }
@@ -125,6 +130,24 @@ public class AiChatService {
             );
         } catch (RuntimeException exception) {
             return "Ollama request failed: " + exception.getMessage();
+        }
+    }
+
+    private String mistralAiReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+        MistralAiSettings mistralAiSettings = settings.getMistralAi();
+        if (isBlank(mistralAiSettings.getApiKey()) || isBlank(mistralAiSettings.getModel())) {
+            return "Mistral AI is selected, but API key and model are required before I can call it.";
+        }
+
+        try {
+            return chatModelReply(
+                    conversationId,
+                    settings,
+                    buildMistralAiChatModel(mistralAiSettings),
+                    userContent
+            );
+        } catch (RuntimeException exception) {
+            return "Mistral AI request failed: " + exception.getMessage();
         }
     }
 
@@ -208,6 +231,22 @@ public class AiChatService {
 
         return OllamaChatModel.builder()
                 .ollamaApi(ollamaApi)
+                .defaultOptions(chatOptions)
+                .build();
+    }
+
+    private MistralAiChatModel buildMistralAiChatModel(MistralAiSettings settings) {
+        MistralAiApi mistralAiApi = MistralAiApi.builder()
+                .apiKey(settings.getApiKey())
+                .build();
+
+        MistralAiChatOptions chatOptions = MistralAiChatOptions.builder()
+                .model(settings.getModel())
+                .temperature(0.2)
+                .build();
+
+        return MistralAiChatModel.builder()
+                .mistralAiApi(mistralAiApi)
                 .defaultOptions(chatOptions)
                 .build();
     }

@@ -11,6 +11,7 @@ public class SettingsSecretsService {
     private static final String OPENAI_API_KEY = "settings.openAi.apiKey";
     private static final String OPENAI_OFFICIAL_API_KEY = "settings.openAiOfficial.apiKey";
     private static final String AZURE_OPENAI_API_KEY = "settings.azureOpenAi.apiKey";
+    private static final String MISTRAL_AI_API_KEY = "settings.mistralAi.apiKey";
 
     private final SecretStore secretStore;
 
@@ -39,6 +40,12 @@ public class SettingsSecretsService {
             migrated = true;
         }
 
+        if (hasText(settings.getMistralAi().getApiKey())) {
+            secretStore.put(MISTRAL_AI_API_KEY, settings.getMistralAi().getApiKey());
+            settings.getMistralAi().setApiKey("");
+            migrated = true;
+        }
+
         return migrated;
     }
 
@@ -60,18 +67,26 @@ public class SettingsSecretsService {
         } else if (hasText(settings.getAzureOpenAi().getApiKey())) {
             secretStore.put(AZURE_OPENAI_API_KEY, settings.getAzureOpenAi().getApiKey());
         }
+
+        if (settings.getMistralAi().isClearApiKey()) {
+            secretStore.delete(MISTRAL_AI_API_KEY);
+        } else if (hasText(settings.getMistralAi().getApiKey())) {
+            secretStore.put(MISTRAL_AI_API_KEY, settings.getMistralAi().getApiKey());
+        }
     }
 
     public void applySecretValues(ApplicationSettings settings) {
         settings.getOpenAi().setApiKey(secretStore.get(OPENAI_API_KEY).orElse(""));
         settings.getOpenAiOfficial().setApiKey(secretStore.get(OPENAI_OFFICIAL_API_KEY).orElse(""));
         settings.getAzureOpenAi().setApiKey(secretStore.get(AZURE_OPENAI_API_KEY).orElse(""));
+        settings.getMistralAi().setApiKey(secretStore.get(MISTRAL_AI_API_KEY).orElse(""));
     }
 
     public void applySecretStatus(ApplicationSettings settings) {
         applyOpenAiStatus(settings, secretStore.get(OPENAI_API_KEY));
         applyOpenAiOfficialStatus(settings, secretStore.get(OPENAI_OFFICIAL_API_KEY));
         applyAzureOpenAiStatus(settings, secretStore.get(AZURE_OPENAI_API_KEY));
+        applyMistralAiStatus(settings, secretStore.get(MISTRAL_AI_API_KEY));
     }
 
     public void clearSecretValues(ApplicationSettings settings) {
@@ -81,6 +96,8 @@ public class SettingsSecretsService {
         settings.getOpenAiOfficial().setClearApiKey(false);
         settings.getAzureOpenAi().setApiKey("");
         settings.getAzureOpenAi().setClearApiKey(false);
+        settings.getMistralAi().setApiKey("");
+        settings.getMistralAi().setClearApiKey(false);
     }
 
     private void applyOpenAiStatus(ApplicationSettings settings, Optional<String> secret) {
@@ -96,6 +113,11 @@ public class SettingsSecretsService {
     private void applyAzureOpenAiStatus(ApplicationSettings settings, Optional<String> secret) {
         settings.getAzureOpenAi().setApiKeyConfigured(secret.isPresent());
         settings.getAzureOpenAi().setApiKeyLastFour(secret.map(this::lastFour).orElse(""));
+    }
+
+    private void applyMistralAiStatus(ApplicationSettings settings, Optional<String> secret) {
+        settings.getMistralAi().setApiKeyConfigured(secret.isPresent());
+        settings.getMistralAi().setApiKeyLastFour(secret.map(this::lastFour).orElse(""));
     }
 
     private String lastFour(String value) {

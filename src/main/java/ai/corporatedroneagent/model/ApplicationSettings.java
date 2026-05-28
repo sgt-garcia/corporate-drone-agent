@@ -9,6 +9,7 @@ public class ApplicationSettings {
     private OpenAiOfficialSettings openAiOfficial = new OpenAiOfficialSettings();
     private AzureOpenAiSettings azureOpenAi = new AzureOpenAiSettings();
     private OllamaSettings ollama = new OllamaSettings();
+    private MistralAiSettings mistralAi = new MistralAiSettings();
 
     public String getAgentName() {
         return agentName;
@@ -64,5 +65,13 @@ public class ApplicationSettings {
 
     public void setOllama(OllamaSettings ollama) {
         this.ollama = ollama == null ? new OllamaSettings() : ollama;
+    }
+
+    public MistralAiSettings getMistralAi() {
+        return mistralAi;
+    }
+
+    public void setMistralAi(MistralAiSettings mistralAi) {
+        this.mistralAi = mistralAi == null ? new MistralAiSettings() : mistralAi;
     }
 }
