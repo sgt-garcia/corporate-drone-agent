@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -47,6 +48,15 @@ public class ConversationRepository {
 
     public Conversation save(Conversation conversation) {
         jsonFiles.write(filePath(conversation.getId()), conversation);
+        return conversation;
+    }
+
+    public synchronized Optional<Conversation> update(UUID id, Consumer<Conversation> updater) {
+        Optional<Conversation> conversation = findById(id);
+        conversation.ifPresent(currentConversation -> {
+            updater.accept(currentConversation);
+            save(currentConversation);
+        });
         return conversation;
     }
 

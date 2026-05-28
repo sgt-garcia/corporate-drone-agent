@@ -78,7 +78,6 @@ public class ConversationService {
     }
 
     public synchronized MessageDto sendUserMessage(UUID conversationId, String content) {
-        Conversation conversation = getConversation(conversationId);
         Message message = new Message(
                 UUID.randomUUID(),
                 "user",
@@ -90,8 +89,8 @@ public class ConversationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Message content is required");
         }
 
-        conversation.getMessages().add(message);
-        conversationRepository.save(conversation);
+        conversationRepository.update(conversationId, conversation -> conversation.getMessages().add(message))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
         MessageDto dto = toDto(message);
         eventService.publish("message-created", new MessageEventDto(conversationId, dto));
         messagePushJob.queueAssistantReply(conversationId, message.getContent());

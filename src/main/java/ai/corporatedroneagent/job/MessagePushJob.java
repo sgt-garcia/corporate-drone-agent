@@ -46,23 +46,27 @@ public class MessagePushJob {
     }
 
     private void appendAssistantMessage(UUID conversationId, String userContent) {
-        conversationRepository.findById(conversationId).ifPresent(conversation -> {
-            Message message = new Message(
-                    UUID.randomUUID(),
-                    "assistant",
-                    aiChatService.reply(conversationId, userContent),
-                    Instant.now()
-            );
-            conversation.getMessages().add(message);
-            conversationRepository.save(conversation);
-            MessageDto dto = new MessageDto(
-                    message.getId(),
-                    message.getRole(),
-                    message.getContent(),
-                    message.getCreatedAt()
-            );
-            eventService.publish("message-created", new MessageEventDto(conversationId, dto));
-        });
+        Message message = new Message(
+                UUID.randomUUID(),
+                "assistant",
+                aiChatService.reply(conversationId, userContent),
+                Instant.now()
+        );
+
+        conversationRepository.update(conversationId, conversation -> conversation.getMessages().add(message))
+                .ifPresent(conversation -> eventService.publish(
+                        "message-created",
+                        new MessageEventDto(conversationId, toDto(message))
+                ));
+    }
+
+    private MessageDto toDto(Message message) {
+        return new MessageDto(
+                message.getId(),
+                message.getRole(),
+                message.getContent(),
+                message.getCreatedAt()
+        );
     }
 
 }
