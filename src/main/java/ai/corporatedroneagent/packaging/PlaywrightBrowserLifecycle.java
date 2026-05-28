@@ -4,12 +4,16 @@ import ai.corporatedroneagent.config.BrowserLaunchProperties;
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.CDPSession;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.PlaywrightException;
 import com.microsoft.playwright.options.ViewportSize;
-import java.awt.Dimension;
+import com.google.gson.JsonObject;
+import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
+import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -75,6 +79,7 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
             browserContext.onClose(closedContext -> closed.set(true));
             Page page = browserContext.newPage();
             page.onClose(closedPage -> closed.set(true));
+            applyWindowBounds(page);
             page.navigate(homeUrl);
             launched = true;
             log.info("Opened Corporate Drone Agent in browser at {}", homeUrl);
@@ -118,16 +123,78 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
         }
 
         double scale = Math.max(0.1, Math.min(1.0, properties.getWindowScale()));
-        Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        int width = Math.max(640, (int) Math.round(screenSize.width * scale));
-        int height = Math.max(480, (int) Math.round(screenSize.height * scale));
-        int left = Math.max(0, (screenSize.width - width) / 2);
-        int top = Math.max(0, (screenSize.height - height) / 2);
+        Rectangle bounds = usableScreenBounds();
+        int width = Math.max(640, (int) Math.round(bounds.width * scale));
+        int height = Math.max(480, (int) Math.round(bounds.height * scale));
+        int left = bounds.x + Math.max(0, (bounds.width - width) / 2);
+        int top = bounds.y + Math.max(0, (bounds.height - height) / 2);
 
         List<String> args = new ArrayList<>();
         args.add("--window-size=" + width + "," + height);
         args.add("--window-position=" + left + "," + top);
         return args;
+    }
+
+    private void applyWindowBounds(Page page) {
+        if (properties.isHeadless() || GraphicsEnvironment.isHeadless()) {
+            return;
+        }
+
+        Rectangle bounds = desiredWindowBounds();
+        try {
+            CDPSession cdp = browserContext.newCDPSession(page);
+            JsonObject window = cdp.send("Browser.getWindowForTarget");
+            JsonObject setBounds = new JsonObject();
+            setBounds.addProperty("windowId", window.get("windowId").getAsInt());
+
+            JsonObject cdpBounds = new JsonObject();
+            cdpBounds.addProperty("windowState", "normal");
+            cdpBounds.addProperty("left", bounds.x);
+            cdpBounds.addProperty("top", bounds.y);
+            cdpBounds.addProperty("width", bounds.width);
+            cdpBounds.addProperty("height", bounds.height);
+            setBounds.add("bounds", cdpBounds);
+
+            cdp.send("Browser.setWindowBounds", setBounds);
+            log.info("Set browser window bounds to {}x{} at {},{}.", bounds.width, bounds.height, bounds.x, bounds.y);
+        } catch (Exception ex) {
+            log.warn(
+                    "Could not set browser window bounds to {}x{} at {},{}.",
+                    bounds.width,
+                    bounds.height,
+                    bounds.x,
+                    bounds.y,
+                    ex
+            );
+        }
+    }
+
+    private Rectangle desiredWindowBounds() {
+        double scale = Math.max(0.1, Math.min(1.0, properties.getWindowScale()));
+        Rectangle screenBounds = usableScreenBounds();
+        int width = Math.max(640, (int) Math.round(screenBounds.width * scale));
+        int height = Math.max(480, (int) Math.round(screenBounds.height * scale));
+        int left = screenBounds.x + Math.max(0, (screenBounds.width - width) / 2);
+        int top = screenBounds.y + Math.max(0, (screenBounds.height - height) / 2);
+        return new Rectangle(left, top, width, height);
+    }
+
+    private Rectangle usableScreenBounds() {
+        if (GraphicsEnvironment.isHeadless()) {
+            return new Rectangle(0, 0, 1280, 720);
+        }
+        GraphicsConfiguration configuration = GraphicsEnvironment
+                .getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice()
+                .getDefaultConfiguration();
+        Rectangle bounds = configuration.getBounds();
+        Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(configuration);
+        return new Rectangle(
+                bounds.x + insets.left,
+                bounds.y + insets.top,
+                bounds.width - insets.left - insets.right,
+                bounds.height - insets.top - insets.bottom
+        );
     }
 
     private void waitForBrowserClose(Page page, AtomicBoolean closed) {
