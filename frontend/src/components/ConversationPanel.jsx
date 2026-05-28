@@ -34,7 +34,10 @@ export function ConversationPanel({
         {messages.map((message) => (
           <article className={`chat-message ${message.role}`} key={message.id}>
             <div className="message-author">
-              {formatMessageTimestamp(message.createdAt)}
+              <span>{formatMessageRole(message.role)}</span>
+              <time dateTime={message.createdAt}>
+                {formatMessageTimestamp(message.createdAt)}
+              </time>
             </div>
             <div className="message-bubble">
               {message.role === "status" ? (
@@ -68,6 +71,18 @@ export function ConversationPanel({
       </form>
     </section>
   );
+}
+
+function formatMessageRole(role) {
+  if (role === "user") {
+    return "You";
+  }
+
+  if (role === "status") {
+    return "Status";
+  }
+
+  return "Assistant";
 }
 
 function formatMessageTimestamp(value) {

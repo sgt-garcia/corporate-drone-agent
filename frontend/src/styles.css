@@ -616,13 +616,21 @@ a {
 }
 
 .message-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: #64748b;
   font-size: 0.78rem;
   font-weight: 760;
 }
 
 .chat-message.user .message-author {
+  justify-content: flex-end;
   text-align: right;
+}
+
+.message-author span {
+  color: #344255;
 }
 
 .message-bubble {
