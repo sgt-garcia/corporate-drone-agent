@@ -26,6 +26,10 @@ class SettingsSecretsServiceTests {
                           "mistralAi": {
                             "apiKey": "mistral-secret",
                             "model": "mistral-medium"
+                          },
+                          "googleGenAi": {
+                            "apiKey": "google-secret",
+                            "model": "gemini-2.0-flash"
                           }
                         }
                         """,
@@ -34,11 +38,13 @@ class SettingsSecretsServiceTests {
 
         assertThat(settings.getOpenAi().getApiKey()).isEqualTo("sk-openai-secret");
         assertThat(settings.getMistralAi().getApiKey()).isEqualTo("mistral-secret");
+        assertThat(settings.getGoogleGenAi().getApiKey()).isEqualTo("google-secret");
 
         String json = objectMapper.writeValueAsString(settings);
 
         assertThat(json).doesNotContain("sk-openai-secret");
         assertThat(json).doesNotContain("mistral-secret");
+        assertThat(json).doesNotContain("google-secret");
         assertThat(json).doesNotContain("\"apiKey\"");
     }
 
@@ -49,6 +55,7 @@ class SettingsSecretsServiceTests {
         ApplicationSettings settings = new ApplicationSettings();
         settings.getOpenAi().setApiKey("sk-openai-secret");
         settings.getMistralAi().setApiKey("mistral-secret");
+        settings.getGoogleGenAi().setApiKey("google-secret");
 
         boolean migrated = service.migratePlaintextSecrets(settings);
         service.applySecretStatus(settings);
@@ -60,8 +67,12 @@ class SettingsSecretsServiceTests {
         assertThat(settings.getMistralAi().getApiKey()).isEmpty();
         assertThat(settings.getMistralAi().isApiKeyConfigured()).isTrue();
         assertThat(settings.getMistralAi().getApiKeyLastFour()).isEqualTo("cret");
+        assertThat(settings.getGoogleGenAi().getApiKey()).isEmpty();
+        assertThat(settings.getGoogleGenAi().isApiKeyConfigured()).isTrue();
+        assertThat(settings.getGoogleGenAi().getApiKeyLastFour()).isEqualTo("cret");
         assertThat(secretStore.get("settings.openAi.apiKey")).contains("sk-openai-secret");
         assertThat(secretStore.get("settings.mistralAi.apiKey")).contains("mistral-secret");
+        assertThat(secretStore.get("settings.googleGenAi.apiKey")).contains("google-secret");
     }
 
     private static class InMemorySecretStore implements SecretStore {

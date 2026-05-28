@@ -277,6 +277,59 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
+  if (activeSettingsItem === "Google GenAI") {
+    return (
+      <SettingsScreen
+        title="Google GenAI"
+        subtitle="Settings"
+        onReload={() => {
+          setDraft(settings);
+          onReload();
+        }}
+        onSave={() => onSave(draft)}
+      >
+        <ApiKeyField
+          label="Google GenAI API Key"
+          placeholder="Google GenAI API key"
+          settings={draft.googleGenAi}
+          onChange={(apiKey) =>
+            setDraft({
+              ...draft,
+              googleGenAi: {
+                ...(draft.googleGenAi ?? {}),
+                apiKey,
+                clearApiKey: false
+              }
+            })
+          }
+          onClear={() =>
+            setDraft({
+              ...draft,
+              googleGenAi: clearedApiKeySettings(draft.googleGenAi)
+            })
+          }
+        />
+        <label>
+          Google GenAI Model
+          <input
+            type="text"
+            placeholder="gemini-2.0-flash"
+            value={draft.googleGenAi?.model ?? ""}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                googleGenAi: {
+                  ...(draft.googleGenAi ?? {}),
+                  model: event.target.value
+                }
+              })
+            }
+          />
+        </label>
+      </SettingsScreen>
+    );
+  }
+
   return (
     <SettingsScreen
       title="General"
@@ -307,6 +360,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           <option value="azure-openai">Azure OpenAI</option>
           <option value="ollama">Ollama</option>
           <option value="mistral-ai">Mistral AI</option>
+          <option value="google-genai">Google GenAI</option>
         </select>
       </label>
       <label>

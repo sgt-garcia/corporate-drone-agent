@@ -52,6 +52,12 @@ const emptySettings = {
     apiKeyConfigured: false,
     apiKeyLastFour: "",
     model: "mistral-medium"
+  },
+  googleGenAi: {
+    apiKey: "",
+    apiKeyConfigured: false,
+    apiKeyLastFour: "",
+    model: "gemini-2.0-flash"
   }
 };
 

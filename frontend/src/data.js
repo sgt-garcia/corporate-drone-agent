@@ -14,7 +14,15 @@ export const pages = {
   },
   settings: {
     title: "Settings",
-    menu: ["General", "OpenAI", "OpenAI (Official)", "Azure OpenAI", "Ollama", "Mistral AI"]
+    menu: [
+      "General",
+      "OpenAI",
+      "OpenAI (Official)",
+      "Azure OpenAI",
+      "Ollama",
+      "Mistral AI",
+      "Google GenAI"
+    ]
   }
 };
 

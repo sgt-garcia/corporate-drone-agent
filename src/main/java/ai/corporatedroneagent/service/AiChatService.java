@@ -2,12 +2,14 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.AzureOpenAiSettings;
+import ai.corporatedroneagent.model.GoogleGenAiSettings;
 import ai.corporatedroneagent.model.MistralAiSettings;
 import ai.corporatedroneagent.model.OllamaSettings;
 import ai.corporatedroneagent.model.OpenAiOfficialSettings;
 import ai.corporatedroneagent.model.OpenAiSettings;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.core.credential.AzureKeyCredential;
+import com.google.genai.Client;
 import java.util.UUID;
 import org.springframework.ai.azure.openai.AzureOpenAiChatModel;
 import org.springframework.ai.azure.openai.AzureOpenAiChatOptions;
@@ -17,6 +19,8 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.google.genai.GoogleGenAiChatModel;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.ai.mistralai.MistralAiChatModel;
 import org.springframework.ai.mistralai.MistralAiChatOptions;
 import org.springframework.ai.mistralai.api.MistralAiApi;
@@ -55,6 +59,7 @@ public class AiChatService {
             case "openai-official" -> openAiOfficialReply(conversationId, settings, userContent);
             case "ollama" -> ollamaReply(conversationId, settings, userContent);
             case "mistral-ai" -> mistralAiReply(conversationId, settings, userContent);
+            case "google-genai" -> googleGenAiReply(conversationId, settings, userContent);
             default -> echoReply(userContent);
         };
     }
@@ -148,6 +153,24 @@ public class AiChatService {
             );
         } catch (RuntimeException exception) {
             return "Mistral AI request failed: " + exception.getMessage();
+        }
+    }
+
+    private String googleGenAiReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+        GoogleGenAiSettings googleGenAiSettings = settings.getGoogleGenAi();
+        if (isBlank(googleGenAiSettings.getApiKey()) || isBlank(googleGenAiSettings.getModel())) {
+            return "Google GenAI is selected, but API key and model are required before I can call it.";
+        }
+
+        try {
+            return chatModelReply(
+                    conversationId,
+                    settings,
+                    buildGoogleGenAiChatModel(googleGenAiSettings),
+                    userContent
+            );
+        } catch (RuntimeException exception) {
+            return "Google GenAI request failed: " + exception.getMessage();
         }
     }
 
@@ -247,6 +270,22 @@ public class AiChatService {
 
         return MistralAiChatModel.builder()
                 .mistralAiApi(mistralAiApi)
+                .defaultOptions(chatOptions)
+                .build();
+    }
+
+    private GoogleGenAiChatModel buildGoogleGenAiChatModel(GoogleGenAiSettings settings) {
+        Client genAiClient = Client.builder()
+                .apiKey(settings.getApiKey())
+                .build();
+
+        GoogleGenAiChatOptions chatOptions = GoogleGenAiChatOptions.builder()
+                .model(settings.getModel())
+                .temperature(0.2)
+                .build();
+
+        return GoogleGenAiChatModel.builder()
+                .genAiClient(genAiClient)
                 .defaultOptions(chatOptions)
                 .build();
     }
