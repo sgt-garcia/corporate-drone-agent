@@ -5,7 +5,6 @@ import ai.corporatedroneagent.model.AzureOpenAiSettings;
 import ai.corporatedroneagent.model.OllamaSettings;
 import ai.corporatedroneagent.model.OpenAiOfficialSettings;
 import ai.corporatedroneagent.model.OpenAiSettings;
-import ai.corporatedroneagent.repository.SettingsRepository;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.core.credential.AzureKeyCredential;
 import java.util.UUID;
@@ -32,11 +31,11 @@ public class AiChatService {
 
     private static final int MAX_MEMORY_MESSAGES = 20;
 
-    private final SettingsRepository settingsRepository;
+    private final SettingsService settingsService;
     private final ChatMemory chatMemory;
 
-    public AiChatService(SettingsRepository settingsRepository) {
-        this.settingsRepository = settingsRepository;
+    public AiChatService(SettingsService settingsService) {
+        this.settingsService = settingsService;
         this.chatMemory = MessageWindowChatMemory.builder()
                 .chatMemoryRepository(new InMemoryChatMemoryRepository())
                 .maxMessages(MAX_MEMORY_MESSAGES)
@@ -44,7 +43,7 @@ public class AiChatService {
     }
 
     public String reply(UUID conversationId, String userContent) {
-        ApplicationSettings settings = settingsRepository.get();
+        ApplicationSettings settings = settingsService.getWithSecrets();
 
         return switch (settings.getAiModel()) {
             case "azure-openai" -> azureOpenAiReply(conversationId, settings, userContent);

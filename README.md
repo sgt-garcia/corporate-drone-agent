@@ -16,6 +16,8 @@ Write-back to external systems is planned for a later stage. The first priority 
 
 The project uses Java 21, Spring Boot, Spring AI, React, Vite, and Maven. LLM configuration is handled in the app settings, with support being developed for OpenAI, the OpenAI official SDK, Azure OpenAI, and Ollama. Local application data is stored under `data/`.
 
+API keys are not written to `data/application-settings.json` or returned by the settings API. On Windows, keys are stored in `data/secrets.json` after protection with the current user's DPAPI profile. On non-Windows systems, set `CDA_SECRET_KEY` to enable AES-GCM protection for local secrets.
+
 ## Development
 
 Run the full application with Maven:

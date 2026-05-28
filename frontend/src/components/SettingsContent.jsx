@@ -19,20 +19,23 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         }}
         onSave={() => onSave(draft)}
       >
-        <label>
-          OpenAI API Key
-          <input
-            type="password"
-            placeholder="sk-..."
-            value={draft.openAi?.apiKey ?? ""}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                openAi: { ...(draft.openAi ?? {}), apiKey: event.target.value }
-              })
-            }
-          />
-        </label>
+        <ApiKeyField
+          label="OpenAI API Key"
+          placeholder="sk-..."
+          settings={draft.openAi}
+          onChange={(apiKey) =>
+            setDraft({
+              ...draft,
+              openAi: { ...(draft.openAi ?? {}), apiKey, clearApiKey: false }
+            })
+          }
+          onClear={() =>
+            setDraft({
+              ...draft,
+              openAi: clearedApiKeySettings(draft.openAi)
+            })
+          }
+        />
         <label>
           OpenAI Model
           <input
@@ -61,23 +64,27 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         }}
         onSave={() => onSave(draft)}
       >
-        <label>
-          OpenAI API Key
-          <input
-            type="password"
-            placeholder="sk-..."
-            value={draft.openAiOfficial?.apiKey ?? ""}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                openAiOfficial: {
-                  ...(draft.openAiOfficial ?? {}),
-                  apiKey: event.target.value
-                }
-              })
-            }
-          />
-        </label>
+        <ApiKeyField
+          label="OpenAI API Key"
+          placeholder="sk-..."
+          settings={draft.openAiOfficial}
+          onChange={(apiKey) =>
+            setDraft({
+              ...draft,
+              openAiOfficial: {
+                ...(draft.openAiOfficial ?? {}),
+                apiKey,
+                clearApiKey: false
+              }
+            })
+          }
+          onClear={() =>
+            setDraft({
+              ...draft,
+              openAiOfficial: clearedApiKeySettings(draft.openAiOfficial)
+            })
+          }
+        />
         <label>
           OpenAI Model
           <input
@@ -126,23 +133,27 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
             }
           />
         </label>
-        <label>
-          Azure OpenAI API Key
-          <input
-            type="password"
-            placeholder="Azure OpenAI API key"
-            value={draft.azureOpenAi?.apiKey ?? ""}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                azureOpenAi: {
-                  ...(draft.azureOpenAi ?? {}),
-                  apiKey: event.target.value
-                }
-              })
-            }
-          />
-        </label>
+        <ApiKeyField
+          label="Azure OpenAI API Key"
+          placeholder="Azure OpenAI API key"
+          settings={draft.azureOpenAi}
+          onChange={(apiKey) =>
+            setDraft({
+              ...draft,
+              azureOpenAi: {
+                ...(draft.azureOpenAi ?? {}),
+                apiKey,
+                clearApiKey: false
+              }
+            })
+          }
+          onClear={() =>
+            setDraft({
+              ...draft,
+              azureOpenAi: clearedApiKeySettings(draft.azureOpenAi)
+            })
+          }
+        />
         <label>
           Azure OpenAI Deployment Name
           <input
@@ -256,4 +267,44 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
       </label>
     </SettingsScreen>
   );
+}
+
+function ApiKeyField({ label, onChange, onClear, placeholder, settings }) {
+  const hasSavedKey = settings?.apiKeyConfigured && !settings?.clearApiKey;
+  const lastFour = settings?.apiKeyLastFour ? ` ending ${settings.apiKeyLastFour}` : "";
+
+  return (
+    <div className="secret-field">
+      <label>
+        {label}
+        <input
+          type="password"
+          placeholder={hasSavedKey ? `Saved key${lastFour}` : placeholder}
+          value={settings?.apiKey ?? ""}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </label>
+      {hasSavedKey && (
+        <div className="secret-status">
+          <span>Saved key{lastFour}</span>
+          <button type="button" onClick={onClear}>
+            Clear
+          </button>
+        </div>
+      )}
+      {settings?.clearApiKey && (
+        <p className="secret-status-text">Key will be cleared when you save.</p>
+      )}
+    </div>
+  );
+}
+
+function clearedApiKeySettings(settings) {
+  return {
+    ...(settings ?? {}),
+    apiKey: "",
+    apiKeyConfigured: false,
+    apiKeyLastFour: "",
+    clearApiKey: true
+  };
 }

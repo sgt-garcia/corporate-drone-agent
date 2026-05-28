@@ -26,15 +26,21 @@ const emptySettings = {
     "Answer with concise, practical guidance using available local project context first.",
   openAi: {
     apiKey: "",
+    apiKeyConfigured: false,
+    apiKeyLastFour: "",
     model: "gpt-5.5"
   },
   openAiOfficial: {
     apiKey: "",
+    apiKeyConfigured: false,
+    apiKeyLastFour: "",
     model: "gpt-5.5"
   },
   azureOpenAi: {
     endpoint: "",
     apiKey: "",
+    apiKeyConfigured: false,
+    apiKeyLastFour: "",
     deploymentName: "gpt-5.5"
   },
   ollama: {
