@@ -167,15 +167,18 @@ public class AiChatService {
             return "Google GenAI is selected, but API key and model are required before I can call it.";
         }
 
+        GoogleGenAiChatModel chatModel = buildGoogleGenAiChatModel(googleGenAiSettings);
         try {
             return chatModelReply(
                     conversationId,
                     settings,
-                    buildGoogleGenAiChatModel(googleGenAiSettings),
+                    chatModel,
                     userContent
             );
         } catch (RuntimeException exception) {
             return "Google GenAI request failed: " + exception.getMessage();
+        } finally {
+            destroyGoogleGenAiChatModel(chatModel);
         }
     }
 
@@ -311,6 +314,14 @@ public class AiChatService {
                 .genAiClient(genAiClient)
                 .defaultOptions(chatOptions)
                 .build();
+    }
+
+    private void destroyGoogleGenAiChatModel(GoogleGenAiChatModel chatModel) {
+        try {
+            chatModel.destroy();
+        } catch (Exception exception) {
+            // Keep provider cleanup failures from replacing the chat response or original request error.
+        }
     }
 
     private AnthropicChatModel buildAnthropicChatModel(AnthropicSettings settings) {
