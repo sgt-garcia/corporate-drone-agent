@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.SpringApplication;
 import org.springframework.boot.web.context.WebServerInitializedEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -36,6 +35,7 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
 
     private final BrowserLaunchProperties properties;
     private final ConfigurableApplicationContext applicationContext;
+    private final ApplicationTerminator applicationTerminator;
     private final Environment environment;
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final AtomicBoolean stopping = new AtomicBoolean(false);
@@ -47,10 +47,12 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
     public PlaywrightBrowserLifecycle(
             BrowserLaunchProperties properties,
             ConfigurableApplicationContext applicationContext,
+            ApplicationTerminator applicationTerminator,
             Environment environment
     ) {
         this.properties = properties;
         this.applicationContext = applicationContext;
+        this.applicationTerminator = applicationTerminator;
         this.environment = environment;
     }
 
@@ -88,8 +90,7 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
             closePlaywright();
             if (launched && properties.isTerminateOnClose() && !stopping.get()) {
                 log.info("Browser closed; terminating Corporate Drone Agent.");
-                int exitCode = SpringApplication.exit(applicationContext, () -> 0);
-                System.exit(exitCode);
+                applicationTerminator.terminate(applicationContext);
             }
         }
     }
