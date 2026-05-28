@@ -107,9 +107,7 @@ public class ProjectService {
             return;
         }
 
-        createSeedProject("Northwind Migration", List.of("Kickoff notes", "Data inventory", "Risk review"));
-        createSeedProject("Atlas Reporting", List.of("Dashboard scope", "Finance metrics", "Release checklist"));
-        createSeedProject("Helix Operations", List.of("Weekly status", "Vendor follow-up", "Incident summary"));
+        createSeedProject("New Project", List.of("New Conversation"));
     }
 
     private void createSeedProject(String name, List<String> conversationNames) {

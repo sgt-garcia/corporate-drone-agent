@@ -1,29 +1,9 @@
 export const initialProjects = [
   {
-    id: "northwind",
-    name: "Northwind Migration",
+    id: "new-project",
+    name: "New Project",
     conversations: [
-      { id: "northwind-kickoff", name: "Kickoff notes" },
-      { id: "northwind-inventory", name: "Data inventory" },
-      { id: "northwind-risks", name: "Risk review" }
-    ]
-  },
-  {
-    id: "atlas",
-    name: "Atlas Reporting",
-    conversations: [
-      { id: "atlas-dashboard", name: "Dashboard scope" },
-      { id: "atlas-finance", name: "Finance metrics" },
-      { id: "atlas-release", name: "Release checklist" }
-    ]
-  },
-  {
-    id: "helix",
-    name: "Helix Operations",
-    conversations: [
-      { id: "helix-status", name: "Weekly status" },
-      { id: "helix-vendor", name: "Vendor follow-up" },
-      { id: "helix-incident", name: "Incident summary" }
+      { id: "new-conversation", name: "New Conversation" }
     ]
   }
 ];

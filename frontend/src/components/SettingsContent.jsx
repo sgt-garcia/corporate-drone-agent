@@ -147,7 +147,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           Azure OpenAI Deployment Name
           <input
             type="text"
-            placeholder="deployment-name"
+            placeholder="gpt-5.5"
             value={draft.azureOpenAi?.deploymentName ?? ""}
             onChange={(event) =>
               setDraft({
@@ -196,7 +196,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           Ollama Model
           <input
             type="text"
-            placeholder="llama3.2"
+            placeholder="gemma4"
             value={draft.ollama?.model ?? ""}
             onChange={(event) =>
               setDraft({

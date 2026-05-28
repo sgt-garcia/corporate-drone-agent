@@ -26,20 +26,20 @@ const emptySettings = {
     "Answer with concise, practical guidance using available local project context first.",
   openAi: {
     apiKey: "",
-    model: "gpt-4.1-mini"
+    model: "gpt-5.5"
   },
   openAiOfficial: {
     apiKey: "",
-    model: "gpt-5-mini"
+    model: "gpt-5.5"
   },
   azureOpenAi: {
     endpoint: "",
     apiKey: "",
-    deploymentName: ""
+    deploymentName: "gpt-5.5"
   },
   ollama: {
     baseUrl: "http://localhost:11434",
-    model: "llama3.2"
+    model: "gemma4"
   }
 };
 

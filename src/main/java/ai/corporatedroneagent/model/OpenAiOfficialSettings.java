@@ -3,7 +3,7 @@ package ai.corporatedroneagent.model;
 public class OpenAiOfficialSettings {
 
     private String apiKey = "";
-    private String model = "gpt-5-mini";
+    private String model = "gpt-5.5";
 
     public String getApiKey() {
         return apiKey;
