@@ -11,6 +11,7 @@ public class BrowserLaunchProperties {
     private boolean terminateOnClose = true;
     private String channel = "msedge";
     private String url = "";
+    private double windowScale = 0.8;
     private Duration launchTimeout = Duration.ofSeconds(30);
 
     public boolean isEnabled() {
@@ -51,6 +52,14 @@ public class BrowserLaunchProperties {
 
     public void setUrl(String url) {
         this.url = url;
+    }
+
+    public double getWindowScale() {
+        return windowScale;
+    }
+
+    public void setWindowScale(double windowScale) {
+        this.windowScale = windowScale;
     }
 
     public Duration getLaunchTimeout() {
