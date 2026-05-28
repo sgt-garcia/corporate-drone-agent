@@ -227,7 +227,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Mistral AI") {
     return (
       <SettingsScreen
-        title="Mistral AI"
+        title="Mistral AI 🇪🇺"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -408,10 +408,10 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           onChange={(event) => setDraft({ ...draft, aiModel: event.target.value })}
         >
           <option value="none">None</option>
+          <option value="mistral-ai">Mistral AI 🇪🇺</option>
           <option value="anthropic">Anthropic</option>
           <option value="azure-openai">Azure OpenAI</option>
           <option value="google-gemini">Google Gemini</option>
-          <option value="mistral-ai">Mistral AI</option>
           <option value="ollama">Ollama</option>
           <option value="openai">OpenAI</option>
           <option value="openai-official-sdk">OpenAI (Official SDK)</option>

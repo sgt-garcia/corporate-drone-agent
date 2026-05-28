@@ -360,7 +360,7 @@ export default function App() {
                   type="button"
                   onClick={() => setActiveSettingsItem(item)}
                 >
-                  {item}
+                  {formatSettingsProviderLabel(item)}
                 </button>
               ))}
             </nav>
@@ -409,4 +409,8 @@ function upsertById(items, nextItem) {
   return items.some((item) => item.id === nextItem.id)
     ? items.map((item) => (item.id === nextItem.id ? nextItem : item))
     : [...items, nextItem];
+}
+
+function formatSettingsProviderLabel(item) {
+  return item === "Mistral AI" ? "Mistral AI 🇪🇺" : item;
 }
