@@ -4,7 +4,33 @@ import java.util.Locale;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication
+// Provider clients are created lazily from local app settings in AiChatService.
+@SpringBootApplication(excludeName = {
+        "org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatAutoConfiguration",
+        "org.springframework.ai.model.azure.openai.autoconfigure.AzureOpenAiAudioTranscriptionAutoConfiguration",
+        "org.springframework.ai.model.azure.openai.autoconfigure.AzureOpenAiChatAutoConfiguration",
+        "org.springframework.ai.model.azure.openai.autoconfigure.AzureOpenAiEmbeddingAutoConfiguration",
+        "org.springframework.ai.model.azure.openai.autoconfigure.AzureOpenAiImageAutoConfiguration",
+        "org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration",
+        "org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiEmbeddingConnectionAutoConfiguration",
+        "org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiTextEmbeddingAutoConfiguration",
+        "org.springframework.ai.model.mistralai.autoconfigure.MistralAiChatAutoConfiguration",
+        "org.springframework.ai.model.mistralai.autoconfigure.MistralAiEmbeddingAutoConfiguration",
+        "org.springframework.ai.model.mistralai.autoconfigure.MistralAiModerationAutoConfiguration",
+        "org.springframework.ai.model.mistralai.autoconfigure.MistralAiOcrAutoConfiguration",
+        "org.springframework.ai.model.ollama.autoconfigure.OllamaApiAutoConfiguration",
+        "org.springframework.ai.model.ollama.autoconfigure.OllamaChatAutoConfiguration",
+        "org.springframework.ai.model.ollama.autoconfigure.OllamaEmbeddingAutoConfiguration",
+        "org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration",
+        "org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration",
+        "org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration",
+        "org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration",
+        "org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration",
+        "org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration",
+        "org.springframework.ai.model.openaisdk.autoconfigure.OpenAiSdkChatAutoConfiguration",
+        "org.springframework.ai.model.openaisdk.autoconfigure.OpenAiSdkEmbeddingAutoConfiguration",
+        "org.springframework.ai.model.openaisdk.autoconfigure.OpenAiSdkImageAutoConfiguration"
+})
 public class CorporateDroneAgentApplication {
 
     public static void main(String[] args) {
