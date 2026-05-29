@@ -2,6 +2,8 @@ package ai.corporatedroneagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ai.corporatedroneagent.config.StorageProperties;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -31,5 +33,13 @@ class CorporateDroneAgentApplicationTests {
         )).isTrue();
         assertThat(CorporateDroneAgentApplication.shouldRunHeadless(new String[0], "false", null)).isTrue();
         assertThat(CorporateDroneAgentApplication.shouldRunHeadless(new String[0], null, "0")).isTrue();
+    }
+
+    @Test
+    void storageDefaultsToUserProfileApplicationDirectory() {
+        StorageProperties storageProperties = new StorageProperties();
+
+        assertThat(storageProperties.getRoot())
+                .isEqualTo(Path.of(System.getProperty("user.home"), ".corporate-drone-agent"));
     }
 }

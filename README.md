@@ -54,12 +54,16 @@ packages the backend.
 
 ## Local data
 
-By default, application data is written under `data/`:
+By default, application data is written under your user profile in
+`.corporate-drone-agent`. On Windows this is typically
+`C:\Users\your-user\.corporate-drone-agent`:
 
-- `data/application-settings.json` stores non-secret settings.
-- `data/projects/*.json` stores projects.
-- `data/conversations/*.json` stores conversations and message history.
-- `data/secrets.json` stores protected API keys.
+- `.corporate-drone-agent/application-settings.json` stores non-secret
+  settings.
+- `.corporate-drone-agent/projects/*.json` stores projects.
+- `.corporate-drone-agent/conversations/*.json` stores conversations and
+  message history.
+- `.corporate-drone-agent/secrets.json` stores protected API keys.
 
 The storage root can be changed with:
 
