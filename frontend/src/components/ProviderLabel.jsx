@@ -40,5 +40,5 @@ export function providerOptionLabel(name) {
   if (flags.length === 0) {
     return name;
   }
-  return `${flags.join(" ")} ${name}`;
+  return `${name} ${flags.join(" ")}`;
 }
