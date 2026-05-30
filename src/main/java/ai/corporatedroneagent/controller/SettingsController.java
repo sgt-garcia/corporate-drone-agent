@@ -1,7 +1,9 @@
 package ai.corporatedroneagent.controller;
 
-import ai.corporatedroneagent.model.ApplicationSettings;
+import ai.corporatedroneagent.dto.MistralModelsRequest;
 import ai.corporatedroneagent.dto.OpenAiModelsRequest;
+import ai.corporatedroneagent.model.ApplicationSettings;
+import ai.corporatedroneagent.service.MistralModelsService;
 import ai.corporatedroneagent.service.OpenAiModelsService;
 import ai.corporatedroneagent.service.SettingsService;
 import java.util.List;
@@ -18,10 +20,16 @@ public class SettingsController {
 
     private final SettingsService settingsService;
     private final OpenAiModelsService openAiModelsService;
+    private final MistralModelsService mistralModelsService;
 
-    public SettingsController(SettingsService settingsService, OpenAiModelsService openAiModelsService) {
+    public SettingsController(
+            SettingsService settingsService,
+            OpenAiModelsService openAiModelsService,
+            MistralModelsService mistralModelsService
+    ) {
         this.settingsService = settingsService;
         this.openAiModelsService = openAiModelsService;
+        this.mistralModelsService = mistralModelsService;
     }
 
     @GetMapping
@@ -37,5 +45,10 @@ public class SettingsController {
     @PostMapping("/openai-models")
     public List<String> listOpenAiModels(@RequestBody OpenAiModelsRequest request) {
         return openAiModelsService.listModels(request);
+    }
+
+    @PostMapping("/mistral-models")
+    public List<String> listMistralModels(@RequestBody MistralModelsRequest request) {
+        return mistralModelsService.listModels(request);
     }
 }

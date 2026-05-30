@@ -66,6 +66,14 @@ export async function getOpenAiModels({ apiKey, provider, useSavedKey }) {
   });
 }
 
+export async function getMistralModels({ apiKey, useSavedKey }) {
+  return request("/api/settings/mistral-models", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ apiKey, useSavedKey })
+  });
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
 

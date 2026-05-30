@@ -1,7 +1,7 @@
 import { EuFlagIcon } from "./EuFlagIcon.jsx";
 import { ProviderLabel } from "./ProviderLabel.jsx";
 import { SettingsScreen } from "./SettingsScreen.jsx";
-import { getOpenAiModels } from "../api.js";
+import { getMistralModels, getOpenAiModels } from "../api.js";
 import { useEffect, useState } from "react";
 
 export function SettingsContent({ activeSettingsItem, onReload, onSave, settings }) {
@@ -41,8 +41,11 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         />
         <label>
           OpenAI Model
-          <OpenAiModelSelect
+          <ProviderModelSelect
             apiKey={draft.openAi?.apiKey ?? ""}
+            errorLabel="Unable to load OpenAI models."
+            loadModels={getOpenAiModels}
+            loadingLabel="Loading OpenAI models..."
             provider="openai"
             useSavedKey={Boolean(draft.openAi?.apiKeyConfigured && !draft.openAi?.clearApiKey)}
             value={draft.openAi?.model ?? ""}
@@ -92,8 +95,11 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         />
         <label>
           OpenAI Model
-          <OpenAiModelSelect
+          <ProviderModelSelect
             apiKey={draft.openAiOfficialSdk?.apiKey ?? ""}
+            errorLabel="Unable to load OpenAI models."
+            loadModels={getOpenAiModels}
+            loadingLabel="Loading OpenAI models..."
             provider="openai-official-sdk"
             useSavedKey={Boolean(
               draft.openAiOfficialSdk?.apiKeyConfigured && !draft.openAiOfficialSdk?.clearApiKey
@@ -268,16 +274,19 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         />
         <label>
           Mistral AI Model
-          <input
-            type="text"
-            placeholder="mistral-medium"
+          <ProviderModelSelect
+            apiKey={draft.mistralAi?.apiKey ?? ""}
+            errorLabel="Unable to load Mistral models."
+            loadModels={getMistralModels}
+            loadingLabel="Loading Mistral models..."
+            useSavedKey={Boolean(draft.mistralAi?.apiKeyConfigured && !draft.mistralAi?.clearApiKey)}
             value={draft.mistralAi?.model ?? ""}
-            onChange={(event) =>
+            onChange={(model) =>
               setDraft({
                 ...draft,
                 mistralAi: {
                   ...(draft.mistralAi ?? {}),
-                  model: event.target.value
+                  model
                 }
               })
             }
@@ -445,7 +454,16 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   );
 }
 
-function OpenAiModelSelect({ apiKey, onChange, provider, useSavedKey, value }) {
+function ProviderModelSelect({
+  apiKey,
+  errorLabel,
+  loadModels,
+  loadingLabel,
+  onChange,
+  provider,
+  useSavedKey,
+  value
+}) {
   const [models, setModels] = useState([]);
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
@@ -466,7 +484,7 @@ function OpenAiModelSelect({ apiKey, onChange, provider, useSavedKey, value }) {
       setMessage("");
 
       try {
-        const loadedModels = await getOpenAiModels({ apiKey, provider, useSavedKey });
+        const loadedModels = await loadModels({ apiKey, provider, useSavedKey });
         if (!isActive) {
           return;
         }
@@ -479,7 +497,7 @@ function OpenAiModelSelect({ apiKey, onChange, provider, useSavedKey, value }) {
         }
         setModels([]);
         setStatus("error");
-        setMessage(error.message || "Unable to load OpenAI models.");
+        setMessage(error.message || errorLabel);
       }
     }, apiKey ? 500 : 0);
 
@@ -487,7 +505,7 @@ function OpenAiModelSelect({ apiKey, onChange, provider, useSavedKey, value }) {
       isActive = false;
       window.clearTimeout(timeout);
     };
-  }, [apiKey, provider, useSavedKey]);
+  }, [apiKey, errorLabel, loadModels, provider, useSavedKey]);
 
   const options = [...models];
   if (value && !options.includes(value)) {
@@ -503,7 +521,7 @@ function OpenAiModelSelect({ apiKey, onChange, provider, useSavedKey, value }) {
       >
         {!value && (
           <option value="" disabled>
-            {status === "loading" ? "Loading OpenAI models..." : "Select a model"}
+            {status === "loading" ? loadingLabel : "Select a model"}
           </option>
         )}
         {options.map((model) => (
