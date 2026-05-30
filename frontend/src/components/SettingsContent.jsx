@@ -1,4 +1,3 @@
-import { ProviderLabel } from "./ProviderLabel.jsx";
 import { SettingsScreen } from "./SettingsScreen.jsx";
 import {
   getAnthropicModels,
@@ -22,7 +21,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "OpenAI") {
     return (
       <SettingsScreen
-        title={<ProviderLabel name="OpenAI" />}
+        title="OpenAI"
         titleLabel="OpenAI"
         subtitle="Settings"
         onReload={() => {
@@ -73,7 +72,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "OpenAI (SDK)") {
     return (
       <SettingsScreen
-        title={<ProviderLabel name="OpenAI (SDK)" />}
+        title="OpenAI (SDK)"
         titleLabel="OpenAI (SDK)"
         subtitle="Settings"
         onReload={() => {
@@ -133,7 +132,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Azure OpenAI") {
     return (
       <SettingsScreen
-        title={<ProviderLabel name="Azure OpenAI" />}
+        title="Azure OpenAI"
         titleLabel="Azure OpenAI"
         subtitle="Settings"
         onReload={() => {
@@ -224,7 +223,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Ollama") {
     return (
       <SettingsScreen
-        title={<ProviderLabel name="Ollama" />}
+        title="Ollama"
         titleLabel="Ollama"
         subtitle="Settings"
         onReload={() => {
@@ -277,7 +276,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Mistral") {
     return (
       <SettingsScreen
-        title={<ProviderLabel name="Mistral" />}
+        title="Mistral"
         titleLabel="Mistral"
         subtitle="Settings"
         onReload={() => {
@@ -334,7 +333,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Gemini") {
     return (
       <SettingsScreen
-        title={<ProviderLabel name="Gemini" />}
+        title="Gemini"
         titleLabel="Gemini"
         subtitle="Settings"
         onReload={() => {
@@ -391,7 +390,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Groq") {
     return (
       <SettingsScreen
-        title={<ProviderLabel name="Groq" />}
+        title="Groq"
         titleLabel="Groq"
         subtitle="Settings"
         onReload={() => {
@@ -448,7 +447,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "DeepSeek") {
     return (
       <SettingsScreen
-        title={<ProviderLabel name="DeepSeek" />}
+        title="DeepSeek"
         titleLabel="DeepSeek"
         subtitle="Settings"
         onReload={() => {
@@ -505,7 +504,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Anthropic") {
     return (
       <SettingsScreen
-        title={<ProviderLabel name="Anthropic" />}
+        title="Anthropic"
         titleLabel="Anthropic"
         subtitle="Settings"
         onReload={() => {
