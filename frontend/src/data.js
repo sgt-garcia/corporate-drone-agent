@@ -16,15 +16,15 @@ export const pages = {
     title: "Settings",
     menu: [
       "General",
-      "Mistral AI",
+      "Mistral",
       "Anthropic",
       "Groq",
       "DeepSeek",
       "Azure OpenAI",
-      "Google Gemini",
+      "Gemini",
       "Ollama",
       "OpenAI",
-      "OpenAI (Official SDK)"
+      "OpenAI (SDK)"
     ]
   }
 };

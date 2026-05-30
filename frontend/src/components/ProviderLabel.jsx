@@ -1,7 +1,7 @@
 import { EuFlagIcon } from "./EuFlagIcon.jsx";
 
 export function ProviderLabel({ name }) {
-  if (name !== "Mistral AI") {
+  if (name !== "Mistral") {
     return name;
   }
 

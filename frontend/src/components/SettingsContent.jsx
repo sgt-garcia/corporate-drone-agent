@@ -70,10 +70,10 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
-  if (activeSettingsItem === "OpenAI (Official SDK)") {
+  if (activeSettingsItem === "OpenAI (SDK)") {
     return (
       <SettingsScreen
-        title="OpenAI (Official SDK)"
+        title="OpenAI (SDK)"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -271,11 +271,11 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
-  if (activeSettingsItem === "Mistral AI") {
+  if (activeSettingsItem === "Mistral") {
     return (
       <SettingsScreen
-        title={<ProviderLabel name="Mistral AI" />}
-        titleLabel="Mistral AI"
+        title={<ProviderLabel name="Mistral" />}
+        titleLabel="Mistral"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -284,8 +284,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         onSave={() => onSave(draft)}
       >
         <ApiKeyField
-          label="Mistral AI API Key"
-          placeholder="Mistral AI API key"
+          label="Mistral API Key"
+          placeholder="Mistral API key"
           settings={draft.mistralAi}
           onChange={(apiKey) =>
             setDraft({
@@ -305,7 +305,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           }
         />
         <label>
-          Mistral AI Model
+          Mistral Model
           <ProviderModelSelect
             errorLabel="Unable to load Mistral models."
             lookupValue={draft.mistralAi?.apiKey ?? ""}
@@ -328,10 +328,10 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
-  if (activeSettingsItem === "Google Gemini") {
+  if (activeSettingsItem === "Gemini") {
     return (
       <SettingsScreen
-        title="Google Gemini"
+        title="Gemini"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -340,8 +340,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         onSave={() => onSave(draft)}
       >
         <ApiKeyField
-          label="Google Gemini API Key"
-          placeholder="Google Gemini API key"
+          label="Gemini API Key"
+          placeholder="Gemini API key"
           settings={draft.googleGemini}
           onChange={(apiKey) =>
             setDraft({
@@ -361,12 +361,12 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           }
         />
         <label>
-          Google Gemini Model
+          Gemini Model
           <ProviderModelSelect
-            errorLabel="Unable to load Google Gemini models."
+            errorLabel="Unable to load Gemini models."
             lookupValue={draft.googleGemini?.apiKey ?? ""}
             loadModels={getGoogleGeminiModels}
-            loadingLabel="Loading Google Gemini models..."
+            loadingLabel="Loading Gemini models..."
             useSavedKey={Boolean(draft.googleGemini?.apiKeyConfigured && !draft.googleGemini?.clearApiKey)}
             value={draft.googleGemini?.model ?? ""}
             onChange={(model) =>
@@ -571,7 +571,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         />
       </label>
       <label>
-        AI model
+        Model provider
         <span className="select-with-provider-icon">
           {draft.aiModel === "mistral-ai" && <EuFlagIcon className="select-provider-icon" />}
           <select
@@ -580,15 +580,15 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
             onChange={(event) => setDraft({ ...draft, aiModel: event.target.value })}
           >
             <option value="none">None</option>
-            <option value="mistral-ai">Mistral AI</option>
+            <option value="mistral-ai">Mistral</option>
             <option value="anthropic">Anthropic</option>
             <option value="groq">Groq</option>
             <option value="deepseek">DeepSeek</option>
             <option value="azure-openai">Azure OpenAI</option>
-            <option value="google-gemini">Google Gemini</option>
+            <option value="google-gemini">Gemini</option>
             <option value="ollama">Ollama</option>
             <option value="openai">OpenAI</option>
-            <option value="openai-official-sdk">OpenAI (Official SDK)</option>
+            <option value="openai-official-sdk">OpenAI (SDK)</option>
           </select>
         </span>
       </label>

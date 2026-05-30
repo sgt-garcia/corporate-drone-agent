@@ -104,7 +104,7 @@ public class AiChatService {
     private String openAiOfficialSdkReply(ApplicationSettings settings, Conversation conversation, Project project) {
         OpenAiOfficialSdkSettings openAiSettings = settings.getOpenAiOfficialSdk();
         if (isBlank(openAiSettings.getApiKey()) || isBlank(openAiSettings.getModel())) {
-            return "OpenAI (Official SDK) is selected, but API key and model are required before I can call it.";
+            return "OpenAI (SDK) is selected, but API key and model are required before I can call it.";
         }
 
         try {
@@ -115,7 +115,7 @@ public class AiChatService {
                     project
             );
         } catch (RuntimeException exception) {
-            return "OpenAI (Official SDK) request failed: " + exception.getMessage();
+            return "OpenAI (SDK) request failed: " + exception.getMessage();
         }
     }
 
@@ -160,7 +160,7 @@ public class AiChatService {
     private String mistralAiReply(ApplicationSettings settings, Conversation conversation, Project project) {
         MistralAiSettings mistralAiSettings = settings.getMistralAi();
         if (isBlank(mistralAiSettings.getApiKey()) || isBlank(mistralAiSettings.getModel())) {
-            return "Mistral AI is selected, but API key and model are required before I can call it.";
+            return "Mistral is selected, but API key and model are required before I can call it.";
         }
 
         try {
@@ -171,14 +171,14 @@ public class AiChatService {
                     project
             );
         } catch (RuntimeException exception) {
-            return "Mistral AI request failed: " + exception.getMessage();
+            return "Mistral request failed: " + exception.getMessage();
         }
     }
 
     private String googleGeminiReply(ApplicationSettings settings, Conversation conversation, Project project) {
         GoogleGeminiSettings googleGeminiSettings = settings.getGoogleGemini();
         if (isBlank(googleGeminiSettings.getApiKey()) || isBlank(googleGeminiSettings.getModel())) {
-            return "Google Gemini is selected, but API key and model are required before I can call it.";
+            return "Gemini is selected, but API key and model are required before I can call it.";
         }
 
         GoogleGenAiChatModel chatModel = buildGoogleGeminiChatModel(googleGeminiSettings);
@@ -190,7 +190,7 @@ public class AiChatService {
                     project
             );
         } catch (RuntimeException exception) {
-            return "Google Gemini request failed: " + exception.getMessage();
+            return "Gemini request failed: " + exception.getMessage();
         } finally {
             destroyGoogleGeminiChatModel(chatModel);
         }

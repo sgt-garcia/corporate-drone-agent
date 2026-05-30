@@ -43,13 +43,13 @@ public class GoogleGeminiModelsService {
         } catch (RestClientResponseException exception) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY,
-                    "Google Gemini models request failed: "
+                    "Gemini models request failed: "
                             + exception.getStatusCode().value()
                             + " "
                             + exception.getStatusText()
             );
         } catch (RestClientException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Google Gemini models request failed.");
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini models request failed.");
         }
 
         if (response == null || !response.path("models").isArray()) {
