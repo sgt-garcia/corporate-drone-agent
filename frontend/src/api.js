@@ -58,6 +58,14 @@ export async function saveSettings(settings) {
   });
 }
 
+export async function getOpenAiModels({ apiKey, provider, useSavedKey }) {
+  return request("/api/settings/openai-models", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ apiKey, provider, useSavedKey })
+  });
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
 

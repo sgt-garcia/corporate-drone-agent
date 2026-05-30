@@ -542,6 +542,13 @@ a {
   font-size: 0.84rem;
 }
 
+.model-select-status {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.84rem;
+  font-weight: 520;
+}
+
 .settings-panel input[type="password"],
 .settings-panel input[type="text"],
 .settings-panel select,

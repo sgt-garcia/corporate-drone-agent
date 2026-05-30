@@ -21,6 +21,7 @@ frontend/dist/
 
 # Local application data
 data/
+.codex-run/
 
 # IDEs and OS files
 .idea/

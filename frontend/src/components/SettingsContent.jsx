@@ -1,6 +1,7 @@
 import { EuFlagIcon } from "./EuFlagIcon.jsx";
 import { ProviderLabel } from "./ProviderLabel.jsx";
 import { SettingsScreen } from "./SettingsScreen.jsx";
+import { getOpenAiModels } from "../api.js";
 import { useEffect, useState } from "react";
 
 export function SettingsContent({ activeSettingsItem, onReload, onSave, settings }) {
@@ -40,13 +41,15 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         />
         <label>
           OpenAI Model
-          <input
-            type="text"
+          <OpenAiModelSelect
+            apiKey={draft.openAi?.apiKey ?? ""}
+            provider="openai"
+            useSavedKey={Boolean(draft.openAi?.apiKeyConfigured && !draft.openAi?.clearApiKey)}
             value={draft.openAi?.model ?? ""}
-            onChange={(event) =>
+            onChange={(model) =>
               setDraft({
                 ...draft,
-                openAi: { ...(draft.openAi ?? {}), model: event.target.value }
+                openAi: { ...(draft.openAi ?? {}), model }
               })
             }
           />
@@ -89,15 +92,19 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         />
         <label>
           OpenAI Model
-          <input
-            type="text"
+          <OpenAiModelSelect
+            apiKey={draft.openAiOfficialSdk?.apiKey ?? ""}
+            provider="openai-official-sdk"
+            useSavedKey={Boolean(
+              draft.openAiOfficialSdk?.apiKeyConfigured && !draft.openAiOfficialSdk?.clearApiKey
+            )}
             value={draft.openAiOfficialSdk?.model ?? ""}
-            onChange={(event) =>
+            onChange={(model) =>
               setDraft({
                 ...draft,
                 openAiOfficialSdk: {
                   ...(draft.openAiOfficialSdk ?? {}),
-                  model: event.target.value
+                  model
                 }
               })
             }
@@ -435,6 +442,69 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         />
       </label>
     </SettingsScreen>
+  );
+}
+
+function OpenAiModelSelect({ apiKey, onChange, provider, useSavedKey, value }) {
+  const [models, setModels] = useState([]);
+  const [status, setStatus] = useState("idle");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let isActive = true;
+    const timeout = window.setTimeout(async () => {
+      setStatus("loading");
+      setMessage("");
+
+      try {
+        const loadedModels = await getOpenAiModels({ apiKey, provider, useSavedKey });
+        if (!isActive) {
+          return;
+        }
+        setModels(loadedModels);
+        setStatus("loaded");
+        setMessage(loadedModels.length === 0 ? "No models returned by OpenAI." : "");
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+        setModels([]);
+        setStatus("error");
+        setMessage(error.message || "Unable to load OpenAI models.");
+      }
+    }, apiKey ? 500 : 0);
+
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeout);
+    };
+  }, [apiKey, provider, useSavedKey]);
+
+  const options = [...models];
+  if (value && !options.includes(value)) {
+    options.unshift(value);
+  }
+
+  return (
+    <>
+      <select
+        disabled={status === "loading" && options.length === 0}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {!value && (
+          <option value="" disabled>
+            {status === "loading" ? "Loading OpenAI models..." : "Select a model"}
+          </option>
+        )}
+        {options.map((model) => (
+          <option key={model} value={model}>
+            {model}
+          </option>
+        ))}
+      </select>
+      {message && <p className="model-select-status">{message}</p>}
+    </>
   );
 }
 
