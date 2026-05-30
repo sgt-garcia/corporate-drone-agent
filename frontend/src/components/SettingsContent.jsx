@@ -177,22 +177,38 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           }
         />
         <label>
-          Azure OpenAI Deployment Name
+          Azure OpenAI Deployment
           <ProviderModelSelect
-            allowCustom
             apiKey={draft.azureOpenAi?.apiKey ?? ""}
             errorLabel="Unable to load Azure OpenAI deployments."
             loadModels={loadAzureOpenAiDeployments}
             loadingLabel="Loading Azure OpenAI deployments..."
             provider={draft.azureOpenAi?.endpoint ?? ""}
             useSavedKey={Boolean(draft.azureOpenAi?.apiKeyConfigured && !draft.azureOpenAi?.clearApiKey)}
-            value={draft.azureOpenAi?.deploymentName ?? ""}
+            value=""
             onChange={(deploymentName) =>
               setDraft({
                 ...draft,
                 azureOpenAi: {
                   ...(draft.azureOpenAi ?? {}),
                   deploymentName
+                }
+              })
+            }
+          />
+        </label>
+        <label>
+          Azure OpenAI Deployment Name
+          <input
+            type="text"
+            placeholder="gpt-5.5"
+            value={draft.azureOpenAi?.deploymentName ?? ""}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                azureOpenAi: {
+                  ...(draft.azureOpenAi ?? {}),
+                  deploymentName: event.target.value
                 }
               })
             }
@@ -484,7 +500,6 @@ function loadAzureOpenAiDeployments({ apiKey, provider, useSavedKey }) {
 }
 
 function ProviderModelSelect({
-  allowCustom = false,
   apiKey,
   errorLabel,
   loadModels,
@@ -544,39 +559,18 @@ function ProviderModelSelect({
 
   return (
     <>
-      {allowCustom ? (
-        <>
-          <input
-            list={`${loadingLabel.replaceAll(" ", "-").toLowerCase()}-list`}
-            placeholder={status === "loading" ? loadingLabel : "Select or enter a deployment"}
-            type="text"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-          />
-          <datalist id={`${loadingLabel.replaceAll(" ", "-").toLowerCase()}-list`}>
-            {options.map((model) => (
-              <option key={model} value={model} />
-            ))}
-          </datalist>
-        </>
-      ) : (
-        <select
-          disabled={status === "loading" && options.length === 0}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {!value && (
-            <option value="" disabled>
-              {status === "loading" ? loadingLabel : "Select a model"}
-            </option>
-          )}
-          {options.map((model) => (
-            <option key={model} value={model}>
-              {model}
-            </option>
-          ))}
-        </select>
-      )}
+      <select
+        disabled={status === "loading" && options.length === 0}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">{status === "loading" ? loadingLabel : ""}</option>
+        {options.map((model) => (
+          <option key={model} value={model}>
+            {model}
+          </option>
+        ))}
+      </select>
       {message && <p className="model-select-status">{message}</p>}
     </>
   );
