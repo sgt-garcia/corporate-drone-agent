@@ -1,8 +1,10 @@
 package ai.corporatedroneagent.controller;
 
+import ai.corporatedroneagent.dto.AnthropicModelsRequest;
 import ai.corporatedroneagent.dto.MistralModelsRequest;
 import ai.corporatedroneagent.dto.OpenAiModelsRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
+import ai.corporatedroneagent.service.AnthropicModelsService;
 import ai.corporatedroneagent.service.MistralModelsService;
 import ai.corporatedroneagent.service.OpenAiModelsService;
 import ai.corporatedroneagent.service.SettingsService;
@@ -21,15 +23,18 @@ public class SettingsController {
     private final SettingsService settingsService;
     private final OpenAiModelsService openAiModelsService;
     private final MistralModelsService mistralModelsService;
+    private final AnthropicModelsService anthropicModelsService;
 
     public SettingsController(
             SettingsService settingsService,
             OpenAiModelsService openAiModelsService,
-            MistralModelsService mistralModelsService
+            MistralModelsService mistralModelsService,
+            AnthropicModelsService anthropicModelsService
     ) {
         this.settingsService = settingsService;
         this.openAiModelsService = openAiModelsService;
         this.mistralModelsService = mistralModelsService;
+        this.anthropicModelsService = anthropicModelsService;
     }
 
     @GetMapping
@@ -50,5 +55,10 @@ public class SettingsController {
     @PostMapping("/mistral-models")
     public List<String> listMistralModels(@RequestBody MistralModelsRequest request) {
         return mistralModelsService.listModels(request);
+    }
+
+    @PostMapping("/anthropic-models")
+    public List<String> listAnthropicModels(@RequestBody AnthropicModelsRequest request) {
+        return anthropicModelsService.listModels(request);
     }
 }

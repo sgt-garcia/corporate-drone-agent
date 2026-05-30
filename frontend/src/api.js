@@ -74,6 +74,14 @@ export async function getMistralModels({ apiKey, useSavedKey }) {
   });
 }
 
+export async function getAnthropicModels({ apiKey, useSavedKey }) {
+  return request("/api/settings/anthropic-models", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ apiKey, useSavedKey })
+  });
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
 

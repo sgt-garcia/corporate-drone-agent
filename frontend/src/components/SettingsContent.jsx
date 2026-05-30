@@ -1,7 +1,7 @@
 import { EuFlagIcon } from "./EuFlagIcon.jsx";
 import { ProviderLabel } from "./ProviderLabel.jsx";
 import { SettingsScreen } from "./SettingsScreen.jsx";
-import { getMistralModels, getOpenAiModels } from "../api.js";
+import { getAnthropicModels, getMistralModels, getOpenAiModels } from "../api.js";
 import { useEffect, useState } from "react";
 
 export function SettingsContent({ activeSettingsItem, onReload, onSave, settings }) {
@@ -383,16 +383,19 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         />
         <label>
           Anthropic Model
-          <input
-            type="text"
-            placeholder="claude-sonnet-4-6"
+          <ProviderModelSelect
+            apiKey={draft.anthropic?.apiKey ?? ""}
+            errorLabel="Unable to load Anthropic models."
+            loadModels={getAnthropicModels}
+            loadingLabel="Loading Anthropic models..."
+            useSavedKey={Boolean(draft.anthropic?.apiKeyConfigured && !draft.anthropic?.clearApiKey)}
             value={draft.anthropic?.model ?? ""}
-            onChange={(event) =>
+            onChange={(model) =>
               setDraft({
                 ...draft,
                 anthropic: {
                   ...(draft.anthropic ?? {}),
-                  model: event.target.value
+                  model
                 }
               })
             }
