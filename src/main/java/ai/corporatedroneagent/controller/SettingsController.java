@@ -1,10 +1,12 @@
 package ai.corporatedroneagent.controller;
 
 import ai.corporatedroneagent.dto.AnthropicModelsRequest;
+import ai.corporatedroneagent.dto.GoogleGeminiModelsRequest;
 import ai.corporatedroneagent.dto.MistralModelsRequest;
 import ai.corporatedroneagent.dto.OpenAiModelsRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.service.AnthropicModelsService;
+import ai.corporatedroneagent.service.GoogleGeminiModelsService;
 import ai.corporatedroneagent.service.MistralModelsService;
 import ai.corporatedroneagent.service.OpenAiModelsService;
 import ai.corporatedroneagent.service.SettingsService;
@@ -24,17 +26,20 @@ public class SettingsController {
     private final OpenAiModelsService openAiModelsService;
     private final MistralModelsService mistralModelsService;
     private final AnthropicModelsService anthropicModelsService;
+    private final GoogleGeminiModelsService googleGeminiModelsService;
 
     public SettingsController(
             SettingsService settingsService,
             OpenAiModelsService openAiModelsService,
             MistralModelsService mistralModelsService,
-            AnthropicModelsService anthropicModelsService
+            AnthropicModelsService anthropicModelsService,
+            GoogleGeminiModelsService googleGeminiModelsService
     ) {
         this.settingsService = settingsService;
         this.openAiModelsService = openAiModelsService;
         this.mistralModelsService = mistralModelsService;
         this.anthropicModelsService = anthropicModelsService;
+        this.googleGeminiModelsService = googleGeminiModelsService;
     }
 
     @GetMapping
@@ -60,5 +65,10 @@ public class SettingsController {
     @PostMapping("/anthropic-models")
     public List<String> listAnthropicModels(@RequestBody AnthropicModelsRequest request) {
         return anthropicModelsService.listModels(request);
+    }
+
+    @PostMapping("/google-gemini-models")
+    public List<String> listGoogleGeminiModels(@RequestBody GoogleGeminiModelsRequest request) {
+        return googleGeminiModelsService.listModels(request);
     }
 }

@@ -1,7 +1,12 @@
 import { EuFlagIcon } from "./EuFlagIcon.jsx";
 import { ProviderLabel } from "./ProviderLabel.jsx";
 import { SettingsScreen } from "./SettingsScreen.jsx";
-import { getAnthropicModels, getMistralModels, getOpenAiModels } from "../api.js";
+import {
+  getAnthropicModels,
+  getGoogleGeminiModels,
+  getMistralModels,
+  getOpenAiModels
+} from "../api.js";
 import { useEffect, useState } from "react";
 
 export function SettingsContent({ activeSettingsItem, onReload, onSave, settings }) {
@@ -330,16 +335,19 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         />
         <label>
           Google Gemini Model
-          <input
-            type="text"
-            placeholder="gemini-3.5-flash"
+          <ProviderModelSelect
+            apiKey={draft.googleGemini?.apiKey ?? ""}
+            errorLabel="Unable to load Google Gemini models."
+            loadModels={getGoogleGeminiModels}
+            loadingLabel="Loading Google Gemini models..."
+            useSavedKey={Boolean(draft.googleGemini?.apiKeyConfigured && !draft.googleGemini?.clearApiKey)}
             value={draft.googleGemini?.model ?? ""}
-            onChange={(event) =>
+            onChange={(model) =>
               setDraft({
                 ...draft,
                 googleGemini: {
                   ...(draft.googleGemini ?? {}),
-                  model: event.target.value
+                  model
                 }
               })
             }
