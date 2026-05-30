@@ -189,7 +189,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
             loadingLabel="Loading Azure OpenAI deployments..."
             provider={draft.azureOpenAi?.endpoint ?? ""}
             useSavedKey={Boolean(draft.azureOpenAi?.apiKeyConfigured && !draft.azureOpenAi?.clearApiKey)}
-            value=""
+            value={draft.azureOpenAi?.deploymentName ?? ""}
             onChange={(deploymentName) =>
               setDraft({
                 ...draft,
