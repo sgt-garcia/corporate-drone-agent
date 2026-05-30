@@ -3,14 +3,22 @@ package ai.corporatedroneagent.service;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.AnthropicSettings;
 import ai.corporatedroneagent.model.AzureOpenAiSettings;
+import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.GoogleGeminiSettings;
+import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.model.MistralAiSettings;
 import ai.corporatedroneagent.model.OllamaSettings;
 import ai.corporatedroneagent.model.OpenAiOfficialSdkSettings;
 import ai.corporatedroneagent.model.OpenAiSettings;
+import ai.corporatedroneagent.model.Project;
+import ai.corporatedroneagent.repository.ConversationRepository;
+import ai.corporatedroneagent.repository.ProjectRepository;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.core.credential.AzureKeyCredential;
 import com.google.genai.Client;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
@@ -18,10 +26,9 @@ import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.azure.openai.AzureOpenAiChatModel;
 import org.springframework.ai.azure.openai.AzureOpenAiChatOptions;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
@@ -41,35 +48,38 @@ import org.springframework.stereotype.Service;
 @Service
 public class AiChatService {
 
-    private static final int MAX_MEMORY_MESSAGES = 20;
-
     private final SettingsService settingsService;
-    private final ChatMemory chatMemory;
+    private final ConversationRepository conversationRepository;
+    private final ProjectRepository projectRepository;
 
-    public AiChatService(SettingsService settingsService) {
+    public AiChatService(
+            SettingsService settingsService,
+            ConversationRepository conversationRepository,
+            ProjectRepository projectRepository
+    ) {
         this.settingsService = settingsService;
-        this.chatMemory = MessageWindowChatMemory.builder()
-                .chatMemoryRepository(new InMemoryChatMemoryRepository())
-                .maxMessages(MAX_MEMORY_MESSAGES)
-                .build();
+        this.conversationRepository = conversationRepository;
+        this.projectRepository = projectRepository;
     }
 
     public String reply(UUID conversationId, String userContent) {
         ApplicationSettings settings = settingsService.getWithSecrets();
+        Conversation conversation = getConversation(conversationId);
+        Project project = getProject(conversation.getProjectId());
 
         return switch (settings.getAiModel()) {
-            case "azure-openai" -> azureOpenAiReply(conversationId, settings, userContent);
-            case "openai" -> openAiReply(conversationId, settings, userContent);
-            case "openai-official", "openai-official-sdk" -> openAiOfficialSdkReply(conversationId, settings, userContent);
-            case "ollama" -> ollamaReply(conversationId, settings, userContent);
-            case "mistral-ai" -> mistralAiReply(conversationId, settings, userContent);
-            case "google-genai", "google-gemini" -> googleGeminiReply(conversationId, settings, userContent);
-            case "anthropic" -> anthropicReply(conversationId, settings, userContent);
+            case "azure-openai" -> azureOpenAiReply(settings, conversation, project);
+            case "openai" -> openAiReply(settings, conversation, project);
+            case "openai-official", "openai-official-sdk" -> openAiOfficialSdkReply(settings, conversation, project);
+            case "ollama" -> ollamaReply(settings, conversation, project);
+            case "mistral-ai" -> mistralAiReply(settings, conversation, project);
+            case "google-genai", "google-gemini" -> googleGeminiReply(settings, conversation, project);
+            case "anthropic" -> anthropicReply(settings, conversation, project);
             default -> echoReply(userContent);
         };
     }
 
-    private String openAiReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+    private String openAiReply(ApplicationSettings settings, Conversation conversation, Project project) {
         OpenAiSettings openAiSettings = settings.getOpenAi();
         if (isBlank(openAiSettings.getApiKey()) || isBlank(openAiSettings.getModel())) {
             return "OpenAI is selected, but API key and model are required before I can call it.";
@@ -77,17 +87,17 @@ public class AiChatService {
 
         try {
             return chatModelReply(
-                    conversationId,
                     settings,
                     buildOpenAiChatModel(openAiSettings),
-                    userContent
+                    conversation,
+                    project
             );
         } catch (RuntimeException exception) {
             return "OpenAI request failed: " + exception.getMessage();
         }
     }
 
-    private String openAiOfficialSdkReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+    private String openAiOfficialSdkReply(ApplicationSettings settings, Conversation conversation, Project project) {
         OpenAiOfficialSdkSettings openAiSettings = settings.getOpenAiOfficialSdk();
         if (isBlank(openAiSettings.getApiKey()) || isBlank(openAiSettings.getModel())) {
             return "OpenAI (Official SDK) is selected, but API key and model are required before I can call it.";
@@ -95,17 +105,17 @@ public class AiChatService {
 
         try {
             return chatModelReply(
-                    conversationId,
                     settings,
                     buildOpenAiOfficialSdkChatModel(openAiSettings),
-                    userContent
+                    conversation,
+                    project
             );
         } catch (RuntimeException exception) {
             return "OpenAI (Official SDK) request failed: " + exception.getMessage();
         }
     }
 
-    private String azureOpenAiReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+    private String azureOpenAiReply(ApplicationSettings settings, Conversation conversation, Project project) {
         AzureOpenAiSettings azureSettings = settings.getAzureOpenAi();
         if (isBlank(azureSettings.getEndpoint())
                 || isBlank(azureSettings.getApiKey())
@@ -115,17 +125,17 @@ public class AiChatService {
 
         try {
             return chatModelReply(
-                    conversationId,
                     settings,
                     buildAzureChatModel(azureSettings),
-                    userContent
+                    conversation,
+                    project
             );
         } catch (RuntimeException exception) {
             return "Azure OpenAI request failed: " + exception.getMessage();
         }
     }
 
-    private String ollamaReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+    private String ollamaReply(ApplicationSettings settings, Conversation conversation, Project project) {
         OllamaSettings ollamaSettings = settings.getOllama();
         if (isBlank(ollamaSettings.getBaseUrl()) || isBlank(ollamaSettings.getModel())) {
             return "Ollama is selected, but base URL and model are required before I can call it.";
@@ -133,17 +143,17 @@ public class AiChatService {
 
         try {
             return chatModelReply(
-                    conversationId,
                     settings,
                     buildOllamaChatModel(ollamaSettings),
-                    userContent
+                    conversation,
+                    project
             );
         } catch (RuntimeException exception) {
             return "Ollama request failed: " + exception.getMessage();
         }
     }
 
-    private String mistralAiReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+    private String mistralAiReply(ApplicationSettings settings, Conversation conversation, Project project) {
         MistralAiSettings mistralAiSettings = settings.getMistralAi();
         if (isBlank(mistralAiSettings.getApiKey()) || isBlank(mistralAiSettings.getModel())) {
             return "Mistral AI is selected, but API key and model are required before I can call it.";
@@ -151,17 +161,17 @@ public class AiChatService {
 
         try {
             return chatModelReply(
-                    conversationId,
                     settings,
                     buildMistralAiChatModel(mistralAiSettings),
-                    userContent
+                    conversation,
+                    project
             );
         } catch (RuntimeException exception) {
             return "Mistral AI request failed: " + exception.getMessage();
         }
     }
 
-    private String googleGeminiReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+    private String googleGeminiReply(ApplicationSettings settings, Conversation conversation, Project project) {
         GoogleGeminiSettings googleGeminiSettings = settings.getGoogleGemini();
         if (isBlank(googleGeminiSettings.getApiKey()) || isBlank(googleGeminiSettings.getModel())) {
             return "Google Gemini is selected, but API key and model are required before I can call it.";
@@ -170,10 +180,10 @@ public class AiChatService {
         GoogleGenAiChatModel chatModel = buildGoogleGeminiChatModel(googleGeminiSettings);
         try {
             return chatModelReply(
-                    conversationId,
                     settings,
                     chatModel,
-                    userContent
+                    conversation,
+                    project
             );
         } catch (RuntimeException exception) {
             return "Google Gemini request failed: " + exception.getMessage();
@@ -182,7 +192,7 @@ public class AiChatService {
         }
     }
 
-    private String anthropicReply(UUID conversationId, ApplicationSettings settings, String userContent) {
+    private String anthropicReply(ApplicationSettings settings, Conversation conversation, Project project) {
         AnthropicSettings anthropicSettings = settings.getAnthropic();
         if (isBlank(anthropicSettings.getApiKey()) || isBlank(anthropicSettings.getModel())) {
             return "Anthropic is selected, but API key and model are required before I can call it.";
@@ -190,10 +200,10 @@ public class AiChatService {
 
         try {
             return chatModelReply(
-                    conversationId,
                     settings,
                     buildAnthropicChatModel(anthropicSettings),
-                    userContent
+                    conversation,
+                    project
             );
         } catch (RuntimeException exception) {
             return "Anthropic request failed: " + exception.getMessage();
@@ -201,23 +211,56 @@ public class AiChatService {
     }
 
     private String chatModelReply(
-            UUID conversationId,
             ApplicationSettings settings,
             ChatModel chatModel,
-            String userContent
+            Conversation conversation,
+            Project project
     ) {
-        ChatClient chatClient = ChatClient.builder(chatModel)
-                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
-                .build();
+        ChatClient chatClient = ChatClient.builder(chatModel).build();
 
-        ChatClient.ChatClientRequestSpec request = chatClient.prompt()
-                .advisors(advisor -> advisor.param(ChatMemory.CONVERSATION_ID, conversationId.toString()));
+        return chatClient.prompt()
+                .messages(buildPromptMessages(settings, project, conversation))
+                .call()
+                .content();
+    }
 
-        if (!isBlank(settings.getCustomInstructions())) {
-            request = request.system(settings.getCustomInstructions());
+    static List<org.springframework.ai.chat.messages.Message> buildPromptMessages(
+            ApplicationSettings settings,
+            Project project,
+            Conversation conversation
+    ) {
+        List<org.springframework.ai.chat.messages.Message> promptMessages = new ArrayList<>();
+        String systemInstructions = composeSystemInstructions(settings, project);
+        if (!isBlank(systemInstructions)) {
+            promptMessages.add(new SystemMessage(systemInstructions));
         }
 
-        return request.user(userContent).call().content();
+        for (Message message : conversation.getMessages()) {
+            if (isBlank(message.getContent())) {
+                continue;
+            }
+
+            String role = message.getRole() == null ? "" : message.getRole().toLowerCase(Locale.ROOT);
+            switch (role) {
+                case "user" -> promptMessages.add(new UserMessage(message.getContent()));
+                case "assistant" -> promptMessages.add(new AssistantMessage(message.getContent()));
+                default -> {
+                }
+            }
+        }
+
+        return promptMessages;
+    }
+
+    static String composeSystemInstructions(ApplicationSettings settings, Project project) {
+        List<String> sections = new ArrayList<>();
+        if (!isBlank(settings.getCustomInstructions())) {
+            sections.add("Global instructions:\n" + settings.getCustomInstructions().trim());
+        }
+        if (!isBlank(project.getCustomInstructions())) {
+            sections.add("Project instructions:\n" + project.getCustomInstructions().trim());
+        }
+        return String.join("\n\n", sections);
     }
 
     private OpenAiChatModel buildOpenAiChatModel(OpenAiSettings settings) {
@@ -345,7 +388,17 @@ public class AiChatService {
         return "You said:\n\n" + userContent;
     }
 
-    private boolean isBlank(String value) {
+    private Conversation getConversation(UUID conversationId) {
+        return conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new IllegalStateException("Conversation not found: " + conversationId));
+    }
+
+    private Project getProject(UUID projectId) {
+        return projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalStateException("Project not found: " + projectId));
+    }
+
+    private static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
 
