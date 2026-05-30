@@ -49,8 +49,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <label>
           OpenAI Model
           <ProviderModelSelect
-            apiKey={draft.openAi?.apiKey ?? ""}
             errorLabel="Unable to load OpenAI models."
+            lookupValue={draft.openAi?.apiKey ?? ""}
             loadModels={getOpenAiModels}
             loadingLabel="Loading OpenAI models..."
             provider="openai"
@@ -103,8 +103,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <label>
           OpenAI Model
           <ProviderModelSelect
-            apiKey={draft.openAiOfficialSdk?.apiKey ?? ""}
             errorLabel="Unable to load OpenAI models."
+            lookupValue={draft.openAiOfficialSdk?.apiKey ?? ""}
             loadModels={getOpenAiModels}
             loadingLabel="Loading OpenAI models..."
             provider="openai-official-sdk"
@@ -179,8 +179,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <label>
           Azure OpenAI Deployment
           <ProviderModelSelect
-            apiKey={draft.azureOpenAi?.apiKey ?? ""}
             errorLabel="Unable to load Azure OpenAI deployments."
+            lookupValue={draft.azureOpenAi?.apiKey ?? ""}
             loadModels={loadAzureOpenAiDeployments}
             loadingLabel="Loading Azure OpenAI deployments..."
             provider={draft.azureOpenAi?.endpoint ?? ""}
@@ -249,8 +249,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <label>
           Ollama Model
           <ProviderModelSelect
-            apiKey={draft.ollama?.baseUrl ?? ""}
             errorLabel="Unable to load Ollama models."
+            lookupValue={draft.ollama?.baseUrl ?? ""}
             loadModels={loadOllamaModels}
             loadingLabel="Loading Ollama models..."
             useSavedKey={false}
@@ -306,8 +306,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <label>
           Mistral AI Model
           <ProviderModelSelect
-            apiKey={draft.mistralAi?.apiKey ?? ""}
             errorLabel="Unable to load Mistral models."
+            lookupValue={draft.mistralAi?.apiKey ?? ""}
             loadModels={getMistralModels}
             loadingLabel="Loading Mistral models..."
             useSavedKey={Boolean(draft.mistralAi?.apiKeyConfigured && !draft.mistralAi?.clearApiKey)}
@@ -362,8 +362,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <label>
           Google Gemini Model
           <ProviderModelSelect
-            apiKey={draft.googleGemini?.apiKey ?? ""}
             errorLabel="Unable to load Google Gemini models."
+            lookupValue={draft.googleGemini?.apiKey ?? ""}
             loadModels={getGoogleGeminiModels}
             loadingLabel="Loading Google Gemini models..."
             useSavedKey={Boolean(draft.googleGemini?.apiKeyConfigured && !draft.googleGemini?.clearApiKey)}
@@ -418,8 +418,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <label>
           Anthropic Model
           <ProviderModelSelect
-            apiKey={draft.anthropic?.apiKey ?? ""}
             errorLabel="Unable to load Anthropic models."
+            lookupValue={draft.anthropic?.apiKey ?? ""}
             loadModels={getAnthropicModels}
             loadingLabel="Loading Anthropic models..."
             useSavedKey={Boolean(draft.anthropic?.apiKeyConfigured && !draft.anthropic?.clearApiKey)}
@@ -491,17 +491,17 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   );
 }
 
-function loadOllamaModels({ apiKey }) {
-  return getOllamaModels({ baseUrl: apiKey });
+function loadOllamaModels({ lookupValue }) {
+  return getOllamaModels({ baseUrl: lookupValue });
 }
 
-function loadAzureOpenAiDeployments({ apiKey, provider, useSavedKey }) {
-  return getAzureOpenAiDeployments({ apiKey, endpoint: provider, useSavedKey });
+function loadAzureOpenAiDeployments({ lookupValue, provider, useSavedKey }) {
+  return getAzureOpenAiDeployments({ apiKey: lookupValue, endpoint: provider, useSavedKey });
 }
 
 function ProviderModelSelect({
-  apiKey,
   errorLabel,
+  lookupValue,
   loadModels,
   loadingLabel,
   onChange,
@@ -515,7 +515,7 @@ function ProviderModelSelect({
 
   useEffect(() => {
     let isActive = true;
-    if (!apiKey && !useSavedKey) {
+    if (!lookupValue && !useSavedKey) {
       setModels([]);
       setStatus("idle");
       setMessage("");
@@ -529,7 +529,7 @@ function ProviderModelSelect({
       setMessage("");
 
       try {
-        const loadedModels = await loadModels({ apiKey, provider, useSavedKey });
+        const loadedModels = await loadModels({ lookupValue, apiKey: lookupValue, provider, useSavedKey });
         if (!isActive) {
           return;
         }
@@ -544,13 +544,13 @@ function ProviderModelSelect({
         setStatus("error");
         setMessage(error.message || errorLabel);
       }
-    }, apiKey ? 500 : 0);
+    }, lookupValue ? 500 : 0);
 
     return () => {
       isActive = false;
       window.clearTimeout(timeout);
     };
-  }, [apiKey, errorLabel, loadModels, provider, useSavedKey]);
+  }, [errorLabel, loadModels, lookupValue, provider, useSavedKey]);
 
   const options = [...models];
   if (value && !options.includes(value)) {
