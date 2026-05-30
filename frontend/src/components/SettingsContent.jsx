@@ -3,6 +3,7 @@ import { ProviderLabel } from "./ProviderLabel.jsx";
 import { SettingsScreen } from "./SettingsScreen.jsx";
 import {
   getAnthropicModels,
+  getAzureOpenAiDeployments,
   getGoogleGeminiModels,
   getMistralModels,
   getOllamaModels,
@@ -177,16 +178,20 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         />
         <label>
           Azure OpenAI Deployment Name
-          <input
-            type="text"
-            placeholder="gpt-5.5"
+          <ProviderModelSelect
+            apiKey={draft.azureOpenAi?.apiKey ?? ""}
+            errorLabel="Unable to load Azure OpenAI deployments."
+            loadModels={loadAzureOpenAiDeployments}
+            loadingLabel="Loading Azure OpenAI deployments..."
+            provider={draft.azureOpenAi?.endpoint ?? ""}
+            useSavedKey={Boolean(draft.azureOpenAi?.apiKeyConfigured && !draft.azureOpenAi?.clearApiKey)}
             value={draft.azureOpenAi?.deploymentName ?? ""}
-            onChange={(event) =>
+            onChange={(deploymentName) =>
               setDraft({
                 ...draft,
                 azureOpenAi: {
                   ...(draft.azureOpenAi ?? {}),
-                  deploymentName: event.target.value
+                  deploymentName
                 }
               })
             }
@@ -471,6 +476,10 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
 
 function loadOllamaModels({ apiKey }) {
   return getOllamaModels({ baseUrl: apiKey });
+}
+
+function loadAzureOpenAiDeployments({ apiKey, provider, useSavedKey }) {
+  return getAzureOpenAiDeployments({ apiKey, endpoint: provider, useSavedKey });
 }
 
 function ProviderModelSelect({

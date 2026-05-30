@@ -1,12 +1,14 @@
 package ai.corporatedroneagent.controller;
 
 import ai.corporatedroneagent.dto.AnthropicModelsRequest;
+import ai.corporatedroneagent.dto.AzureOpenAiDeploymentsRequest;
 import ai.corporatedroneagent.dto.GoogleGeminiModelsRequest;
 import ai.corporatedroneagent.dto.MistralModelsRequest;
 import ai.corporatedroneagent.dto.OllamaModelsRequest;
 import ai.corporatedroneagent.dto.OpenAiModelsRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.service.AnthropicModelsService;
+import ai.corporatedroneagent.service.AzureOpenAiDeploymentsService;
 import ai.corporatedroneagent.service.GoogleGeminiModelsService;
 import ai.corporatedroneagent.service.MistralModelsService;
 import ai.corporatedroneagent.service.OllamaModelsService;
@@ -30,6 +32,7 @@ public class SettingsController {
     private final AnthropicModelsService anthropicModelsService;
     private final GoogleGeminiModelsService googleGeminiModelsService;
     private final OllamaModelsService ollamaModelsService;
+    private final AzureOpenAiDeploymentsService azureOpenAiDeploymentsService;
 
     public SettingsController(
             SettingsService settingsService,
@@ -37,7 +40,8 @@ public class SettingsController {
             MistralModelsService mistralModelsService,
             AnthropicModelsService anthropicModelsService,
             GoogleGeminiModelsService googleGeminiModelsService,
-            OllamaModelsService ollamaModelsService
+            OllamaModelsService ollamaModelsService,
+            AzureOpenAiDeploymentsService azureOpenAiDeploymentsService
     ) {
         this.settingsService = settingsService;
         this.openAiModelsService = openAiModelsService;
@@ -45,6 +49,7 @@ public class SettingsController {
         this.anthropicModelsService = anthropicModelsService;
         this.googleGeminiModelsService = googleGeminiModelsService;
         this.ollamaModelsService = ollamaModelsService;
+        this.azureOpenAiDeploymentsService = azureOpenAiDeploymentsService;
     }
 
     @GetMapping
@@ -80,5 +85,10 @@ public class SettingsController {
     @PostMapping("/ollama-models")
     public List<String> listOllamaModels(@RequestBody OllamaModelsRequest request) {
         return ollamaModelsService.listModels(request);
+    }
+
+    @PostMapping("/azure-openai-deployments")
+    public List<String> listAzureOpenAiDeployments(@RequestBody AzureOpenAiDeploymentsRequest request) {
+        return azureOpenAiDeploymentsService.listDeployments(request);
     }
 }

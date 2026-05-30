@@ -98,6 +98,14 @@ export async function getOllamaModels({ baseUrl }) {
   });
 }
 
+export async function getAzureOpenAiDeployments({ apiKey, endpoint, useSavedKey }) {
+  return request("/api/settings/azure-openai-deployments", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ apiKey, endpoint, useSavedKey })
+  });
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
 
