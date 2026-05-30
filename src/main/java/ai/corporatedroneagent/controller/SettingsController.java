@@ -3,11 +3,13 @@ package ai.corporatedroneagent.controller;
 import ai.corporatedroneagent.dto.AnthropicModelsRequest;
 import ai.corporatedroneagent.dto.GoogleGeminiModelsRequest;
 import ai.corporatedroneagent.dto.MistralModelsRequest;
+import ai.corporatedroneagent.dto.OllamaModelsRequest;
 import ai.corporatedroneagent.dto.OpenAiModelsRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.service.AnthropicModelsService;
 import ai.corporatedroneagent.service.GoogleGeminiModelsService;
 import ai.corporatedroneagent.service.MistralModelsService;
+import ai.corporatedroneagent.service.OllamaModelsService;
 import ai.corporatedroneagent.service.OpenAiModelsService;
 import ai.corporatedroneagent.service.SettingsService;
 import java.util.List;
@@ -27,19 +29,22 @@ public class SettingsController {
     private final MistralModelsService mistralModelsService;
     private final AnthropicModelsService anthropicModelsService;
     private final GoogleGeminiModelsService googleGeminiModelsService;
+    private final OllamaModelsService ollamaModelsService;
 
     public SettingsController(
             SettingsService settingsService,
             OpenAiModelsService openAiModelsService,
             MistralModelsService mistralModelsService,
             AnthropicModelsService anthropicModelsService,
-            GoogleGeminiModelsService googleGeminiModelsService
+            GoogleGeminiModelsService googleGeminiModelsService,
+            OllamaModelsService ollamaModelsService
     ) {
         this.settingsService = settingsService;
         this.openAiModelsService = openAiModelsService;
         this.mistralModelsService = mistralModelsService;
         this.anthropicModelsService = anthropicModelsService;
         this.googleGeminiModelsService = googleGeminiModelsService;
+        this.ollamaModelsService = ollamaModelsService;
     }
 
     @GetMapping
@@ -70,5 +75,10 @@ public class SettingsController {
     @PostMapping("/google-gemini-models")
     public List<String> listGoogleGeminiModels(@RequestBody GoogleGeminiModelsRequest request) {
         return googleGeminiModelsService.listModels(request);
+    }
+
+    @PostMapping("/ollama-models")
+    public List<String> listOllamaModels(@RequestBody OllamaModelsRequest request) {
+        return ollamaModelsService.listModels(request);
     }
 }

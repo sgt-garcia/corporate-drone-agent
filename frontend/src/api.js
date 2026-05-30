@@ -90,6 +90,14 @@ export async function getGoogleGeminiModels({ apiKey, useSavedKey }) {
   });
 }
 
+export async function getOllamaModels({ baseUrl }) {
+  return request("/api/settings/ollama-models", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ baseUrl })
+  });
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
 

@@ -5,6 +5,7 @@ import {
   getAnthropicModels,
   getGoogleGeminiModels,
   getMistralModels,
+  getOllamaModels,
   getOpenAiModels
 } from "../api.js";
 import { useEffect, useState } from "react";
@@ -225,16 +226,19 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         </label>
         <label>
           Ollama Model
-          <input
-            type="text"
-            placeholder="gemma4"
+          <ProviderModelSelect
+            apiKey={draft.ollama?.baseUrl ?? ""}
+            errorLabel="Unable to load Ollama models."
+            loadModels={loadOllamaModels}
+            loadingLabel="Loading Ollama models..."
+            useSavedKey={false}
             value={draft.ollama?.model ?? ""}
-            onChange={(event) =>
+            onChange={(model) =>
               setDraft({
                 ...draft,
                 ollama: {
                   ...(draft.ollama ?? {}),
-                  model: event.target.value
+                  model
                 }
               })
             }
@@ -463,6 +467,10 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
       </label>
     </SettingsScreen>
   );
+}
+
+function loadOllamaModels({ apiKey }) {
+  return getOllamaModels({ baseUrl: apiKey });
 }
 
 function ProviderModelSelect({
