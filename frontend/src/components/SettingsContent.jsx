@@ -452,6 +452,15 @@ function OpenAiModelSelect({ apiKey, onChange, provider, useSavedKey, value }) {
 
   useEffect(() => {
     let isActive = true;
+    if (!apiKey && !useSavedKey) {
+      setModels([]);
+      setStatus("idle");
+      setMessage("");
+      return () => {
+        isActive = false;
+      };
+    }
+
     const timeout = window.setTimeout(async () => {
       setStatus("loading");
       setMessage("");
@@ -463,7 +472,7 @@ function OpenAiModelSelect({ apiKey, onChange, provider, useSavedKey, value }) {
         }
         setModels(loadedModels);
         setStatus("loaded");
-        setMessage(loadedModels.length === 0 ? "No models returned by OpenAI." : "");
+        setMessage("");
       } catch (error) {
         if (!isActive) {
           return;

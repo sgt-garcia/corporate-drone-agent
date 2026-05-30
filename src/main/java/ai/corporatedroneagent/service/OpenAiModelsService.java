@@ -30,7 +30,7 @@ public class OpenAiModelsService {
     public List<String> listModels(OpenAiModelsRequest request) {
         String apiKey = apiKeyFor(request);
         if (apiKey.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OpenAI API key is required to load models.");
+            return List.of();
         }
 
         OpenAiModelsResponse response;
