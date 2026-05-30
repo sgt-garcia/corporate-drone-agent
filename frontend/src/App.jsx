@@ -29,42 +29,42 @@ const emptySettings = {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",
-    model: "gpt-5.5"
+    model: ""
   },
   openAiOfficialSdk: {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",
-    model: "gpt-5.5"
+    model: ""
   },
   azureOpenAi: {
     endpoint: "",
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",
-    deploymentName: "gpt-5.5"
+    deploymentName: ""
   },
   ollama: {
     baseUrl: "http://localhost:11434",
-    model: "gemma4"
+    model: ""
   },
   mistralAi: {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",
-    model: "mistral-medium"
+    model: ""
   },
   googleGemini: {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",
-    model: "gemini-3.5-flash"
+    model: ""
   },
   anthropic: {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",
-    model: "claude-sonnet-4-6"
+    model: ""
   }
 };
 

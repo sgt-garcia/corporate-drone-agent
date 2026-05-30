@@ -10,7 +10,7 @@ public class AnthropicSettings {
     private boolean clearApiKey;
     private boolean apiKeyConfigured;
     private String apiKeyLastFour = "";
-    private String model = "claude-sonnet-4-6";
+    private String model = "";
 
     public String getApiKey() {
         return apiKey;

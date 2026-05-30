@@ -10,7 +10,7 @@ public class OpenAiOfficialSdkSettings {
     private boolean clearApiKey;
     private boolean apiKeyConfigured;
     private String apiKeyLastFour = "";
-    private String model = "gpt-5.5";
+    private String model = "";
 
     public String getApiKey() {
         return apiKey;

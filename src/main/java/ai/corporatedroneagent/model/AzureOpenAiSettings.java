@@ -11,7 +11,7 @@ public class AzureOpenAiSettings {
     private boolean clearApiKey;
     private boolean apiKeyConfigured;
     private String apiKeyLastFour = "";
-    private String deploymentName = "gpt-5.5";
+    private String deploymentName = "";
 
     public String getEndpoint() {
         return endpoint;

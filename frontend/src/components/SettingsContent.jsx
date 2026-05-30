@@ -201,7 +201,6 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           Azure OpenAI Deployment Name
           <input
             type="text"
-            placeholder="gpt-5.5"
             value={draft.azureOpenAi?.deploymentName ?? ""}
             onChange={(event) =>
               setDraft({
@@ -553,15 +552,13 @@ function ProviderModelSelect({
   }, [errorLabel, loadModels, lookupValue, provider, useSavedKey]);
 
   const options = [...models];
-  if (value && !options.includes(value)) {
-    options.unshift(value);
-  }
+  const selectedValue = options.includes(value) ? value : "";
 
   return (
     <>
       <select
-        disabled={status === "loading" && options.length === 0}
-        value={value}
+        disabled={options.length === 0}
+        value={selectedValue}
         onChange={(event) => onChange(event.target.value)}
       >
         <option value="">{status === "loading" ? loadingLabel : ""}</option>

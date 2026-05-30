@@ -10,7 +10,7 @@ public class GoogleGeminiSettings {
     private boolean clearApiKey;
     private boolean apiKeyConfigured;
     private String apiKeyLastFour = "";
-    private String model = "gemini-3.5-flash";
+    private String model = "";
 
     public String getApiKey() {
         return apiKey;

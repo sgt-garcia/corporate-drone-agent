@@ -3,7 +3,7 @@ package ai.corporatedroneagent.model;
 public class OllamaSettings {
 
     private String baseUrl = "http://localhost:11434";
-    private String model = "gemma4";
+    private String model = "";
 
     public String getBaseUrl() {
         return baseUrl;
