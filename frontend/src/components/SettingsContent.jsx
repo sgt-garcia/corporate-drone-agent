@@ -5,7 +5,7 @@ import {
   getAnthropicModels,
   getAzureOpenAiDeployments,
   getDeepSeekModels,
-  getGoogleGeminiModels,
+  getGeminiModels,
   getGroqModels,
   getMistralModels,
   getOllamaModels,
@@ -84,12 +84,12 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <ApiKeyField
           label="OpenAI API Key"
           placeholder="sk-..."
-          settings={draft.openAiOfficialSdk}
+          settings={draft.openAiSdk}
           onChange={(apiKey) =>
             setDraft({
               ...draft,
-              openAiOfficialSdk: {
-                ...(draft.openAiOfficialSdk ?? {}),
+              openAiSdk: {
+                ...(draft.openAiSdk ?? {}),
                 apiKey,
                 clearApiKey: false
               }
@@ -98,7 +98,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           onClear={() =>
             setDraft({
               ...draft,
-              openAiOfficialSdk: clearedApiKeySettings(draft.openAiOfficialSdk)
+              openAiSdk: clearedApiKeySettings(draft.openAiSdk)
             })
           }
         />
@@ -106,19 +106,19 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           OpenAI Model
           <ProviderModelSelect
             errorLabel="Unable to load OpenAI models."
-            lookupValue={draft.openAiOfficialSdk?.apiKey ?? ""}
+            lookupValue={draft.openAiSdk?.apiKey ?? ""}
             loadModels={getOpenAiModels}
             loadingLabel="Loading OpenAI models..."
             provider="openai-sdk"
             useSavedKey={Boolean(
-              draft.openAiOfficialSdk?.apiKeyConfigured && !draft.openAiOfficialSdk?.clearApiKey
+              draft.openAiSdk?.apiKeyConfigured && !draft.openAiSdk?.clearApiKey
             )}
-            value={draft.openAiOfficialSdk?.model ?? ""}
+            value={draft.openAiSdk?.model ?? ""}
             onChange={(model) =>
               setDraft({
                 ...draft,
-                openAiOfficialSdk: {
-                  ...(draft.openAiOfficialSdk ?? {}),
+                openAiSdk: {
+                  ...(draft.openAiSdk ?? {}),
                   model
                 }
               })
@@ -286,12 +286,12 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <ApiKeyField
           label="Mistral API Key"
           placeholder="Mistral API key"
-          settings={draft.mistralAi}
+          settings={draft.mistral}
           onChange={(apiKey) =>
             setDraft({
               ...draft,
-              mistralAi: {
-                ...(draft.mistralAi ?? {}),
+              mistral: {
+                ...(draft.mistral ?? {}),
                 apiKey,
                 clearApiKey: false
               }
@@ -300,7 +300,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           onClear={() =>
             setDraft({
               ...draft,
-              mistralAi: clearedApiKeySettings(draft.mistralAi)
+              mistral: clearedApiKeySettings(draft.mistral)
             })
           }
         />
@@ -308,16 +308,16 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           Mistral Model
           <ProviderModelSelect
             errorLabel="Unable to load Mistral models."
-            lookupValue={draft.mistralAi?.apiKey ?? ""}
+            lookupValue={draft.mistral?.apiKey ?? ""}
             loadModels={getMistralModels}
             loadingLabel="Loading Mistral models..."
-            useSavedKey={Boolean(draft.mistralAi?.apiKeyConfigured && !draft.mistralAi?.clearApiKey)}
-            value={draft.mistralAi?.model ?? ""}
+            useSavedKey={Boolean(draft.mistral?.apiKeyConfigured && !draft.mistral?.clearApiKey)}
+            value={draft.mistral?.model ?? ""}
             onChange={(model) =>
               setDraft({
                 ...draft,
-                mistralAi: {
-                  ...(draft.mistralAi ?? {}),
+                mistral: {
+                  ...(draft.mistral ?? {}),
                   model
                 }
               })
@@ -342,12 +342,12 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <ApiKeyField
           label="Gemini API Key"
           placeholder="Gemini API key"
-          settings={draft.googleGemini}
+          settings={draft.gemini}
           onChange={(apiKey) =>
             setDraft({
               ...draft,
-              googleGemini: {
-                ...(draft.googleGemini ?? {}),
+              gemini: {
+                ...(draft.gemini ?? {}),
                 apiKey,
                 clearApiKey: false
               }
@@ -356,7 +356,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           onClear={() =>
             setDraft({
               ...draft,
-              googleGemini: clearedApiKeySettings(draft.googleGemini)
+              gemini: clearedApiKeySettings(draft.gemini)
             })
           }
         />
@@ -364,16 +364,16 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           Gemini Model
           <ProviderModelSelect
             errorLabel="Unable to load Gemini models."
-            lookupValue={draft.googleGemini?.apiKey ?? ""}
-            loadModels={getGoogleGeminiModels}
+            lookupValue={draft.gemini?.apiKey ?? ""}
+            loadModels={getGeminiModels}
             loadingLabel="Loading Gemini models..."
-            useSavedKey={Boolean(draft.googleGemini?.apiKeyConfigured && !draft.googleGemini?.clearApiKey)}
-            value={draft.googleGemini?.model ?? ""}
+            useSavedKey={Boolean(draft.gemini?.apiKeyConfigured && !draft.gemini?.clearApiKey)}
+            value={draft.gemini?.model ?? ""}
             onChange={(model) =>
               setDraft({
                 ...draft,
-                googleGemini: {
-                  ...(draft.googleGemini ?? {}),
+                gemini: {
+                  ...(draft.gemini ?? {}),
                   model
                 }
               })

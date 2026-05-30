@@ -1,6 +1,6 @@
 package ai.corporatedroneagent.dto;
 
-public class GoogleGeminiModelsRequest {
+public class GeminiModelsRequest {
 
     private String apiKey = "";
     private boolean useSavedKey = true;

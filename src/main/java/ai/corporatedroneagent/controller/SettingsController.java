@@ -3,7 +3,7 @@ package ai.corporatedroneagent.controller;
 import ai.corporatedroneagent.dto.AnthropicModelsRequest;
 import ai.corporatedroneagent.dto.AzureOpenAiDeploymentsRequest;
 import ai.corporatedroneagent.dto.DeepSeekModelsRequest;
-import ai.corporatedroneagent.dto.GoogleGeminiModelsRequest;
+import ai.corporatedroneagent.dto.GeminiModelsRequest;
 import ai.corporatedroneagent.dto.GroqModelsRequest;
 import ai.corporatedroneagent.dto.MistralModelsRequest;
 import ai.corporatedroneagent.dto.OllamaModelsRequest;
@@ -12,7 +12,7 @@ import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.service.AnthropicModelsService;
 import ai.corporatedroneagent.service.AzureOpenAiDeploymentsService;
 import ai.corporatedroneagent.service.DeepSeekModelsService;
-import ai.corporatedroneagent.service.GoogleGeminiModelsService;
+import ai.corporatedroneagent.service.GeminiModelsService;
 import ai.corporatedroneagent.service.GroqModelsService;
 import ai.corporatedroneagent.service.MistralModelsService;
 import ai.corporatedroneagent.service.OllamaModelsService;
@@ -34,7 +34,7 @@ public class SettingsController {
     private final OpenAiModelsService openAiModelsService;
     private final MistralModelsService mistralModelsService;
     private final AnthropicModelsService anthropicModelsService;
-    private final GoogleGeminiModelsService googleGeminiModelsService;
+    private final GeminiModelsService geminiModelsService;
     private final OllamaModelsService ollamaModelsService;
     private final AzureOpenAiDeploymentsService azureOpenAiDeploymentsService;
     private final GroqModelsService groqModelsService;
@@ -45,7 +45,7 @@ public class SettingsController {
             OpenAiModelsService openAiModelsService,
             MistralModelsService mistralModelsService,
             AnthropicModelsService anthropicModelsService,
-            GoogleGeminiModelsService googleGeminiModelsService,
+            GeminiModelsService geminiModelsService,
             OllamaModelsService ollamaModelsService,
             AzureOpenAiDeploymentsService azureOpenAiDeploymentsService,
             GroqModelsService groqModelsService,
@@ -55,7 +55,7 @@ public class SettingsController {
         this.openAiModelsService = openAiModelsService;
         this.mistralModelsService = mistralModelsService;
         this.anthropicModelsService = anthropicModelsService;
-        this.googleGeminiModelsService = googleGeminiModelsService;
+        this.geminiModelsService = geminiModelsService;
         this.ollamaModelsService = ollamaModelsService;
         this.azureOpenAiDeploymentsService = azureOpenAiDeploymentsService;
         this.groqModelsService = groqModelsService;
@@ -87,9 +87,9 @@ public class SettingsController {
         return anthropicModelsService.listModels(request);
     }
 
-    @PostMapping({"/gemini-models", "/google-gemini-models"})
-    public List<String> listGoogleGeminiModels(@RequestBody GoogleGeminiModelsRequest request) {
-        return googleGeminiModelsService.listModels(request);
+    @PostMapping("/gemini-models")
+    public List<String> listGeminiModels(@RequestBody GeminiModelsRequest request) {
+        return geminiModelsService.listModels(request);
     }
 
     @PostMapping("/ollama-models")

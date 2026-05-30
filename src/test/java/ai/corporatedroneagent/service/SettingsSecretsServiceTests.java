@@ -23,11 +23,11 @@ class SettingsSecretsServiceTests {
                             "apiKey": "sk-openai-secret",
                             "model": "gpt-5.5"
                           },
-                          "mistralAi": {
+                          "mistral": {
                             "apiKey": "mistral-secret",
                             "model": "mistral-medium"
                           },
-                          "googleGemini": {
+                          "gemini": {
                             "apiKey": "google-secret",
                             "model": "gemini-3.5-flash"
                           },
@@ -49,8 +49,8 @@ class SettingsSecretsServiceTests {
         );
 
         assertThat(settings.getOpenAi().getApiKey()).isEqualTo("sk-openai-secret");
-        assertThat(settings.getMistralAi().getApiKey()).isEqualTo("mistral-secret");
-        assertThat(settings.getGoogleGemini().getApiKey()).isEqualTo("google-secret");
+        assertThat(settings.getMistral().getApiKey()).isEqualTo("mistral-secret");
+        assertThat(settings.getGemini().getApiKey()).isEqualTo("google-secret");
         assertThat(settings.getAnthropic().getApiKey()).isEqualTo("anthropic-secret");
         assertThat(settings.getGroq().getApiKey()).isEqualTo("groq-secret");
         assertThat(settings.getDeepSeek().getApiKey()).isEqualTo("deepseek-secret");
@@ -72,8 +72,8 @@ class SettingsSecretsServiceTests {
         SettingsSecretsService service = new SettingsSecretsService(secretStore);
         ApplicationSettings settings = new ApplicationSettings();
         settings.getOpenAi().setApiKey("sk-openai-secret");
-        settings.getMistralAi().setApiKey("mistral-secret");
-        settings.getGoogleGemini().setApiKey("google-secret");
+        settings.getMistral().setApiKey("mistral-secret");
+        settings.getGemini().setApiKey("google-secret");
         settings.getAnthropic().setApiKey("anthropic-secret");
         settings.getGroq().setApiKey("groq-secret");
         settings.getDeepSeek().setApiKey("deepseek-secret");
@@ -85,12 +85,12 @@ class SettingsSecretsServiceTests {
         assertThat(settings.getOpenAi().getApiKey()).isEmpty();
         assertThat(settings.getOpenAi().isApiKeyConfigured()).isTrue();
         assertThat(settings.getOpenAi().getApiKeyLastFour()).isEqualTo("cret");
-        assertThat(settings.getMistralAi().getApiKey()).isEmpty();
-        assertThat(settings.getMistralAi().isApiKeyConfigured()).isTrue();
-        assertThat(settings.getMistralAi().getApiKeyLastFour()).isEqualTo("cret");
-        assertThat(settings.getGoogleGemini().getApiKey()).isEmpty();
-        assertThat(settings.getGoogleGemini().isApiKeyConfigured()).isTrue();
-        assertThat(settings.getGoogleGemini().getApiKeyLastFour()).isEqualTo("cret");
+        assertThat(settings.getMistral().getApiKey()).isEmpty();
+        assertThat(settings.getMistral().isApiKeyConfigured()).isTrue();
+        assertThat(settings.getMistral().getApiKeyLastFour()).isEqualTo("cret");
+        assertThat(settings.getGemini().getApiKey()).isEmpty();
+        assertThat(settings.getGemini().isApiKeyConfigured()).isTrue();
+        assertThat(settings.getGemini().getApiKeyLastFour()).isEqualTo("cret");
         assertThat(settings.getAnthropic().getApiKey()).isEmpty();
         assertThat(settings.getAnthropic().isApiKeyConfigured()).isTrue();
         assertThat(settings.getAnthropic().getApiKeyLastFour()).isEqualTo("cret");
@@ -101,8 +101,8 @@ class SettingsSecretsServiceTests {
         assertThat(settings.getDeepSeek().isApiKeyConfigured()).isTrue();
         assertThat(settings.getDeepSeek().getApiKeyLastFour()).isEqualTo("cret");
         assertThat(secretStore.get("settings.openAi.apiKey")).contains("sk-openai-secret");
-        assertThat(secretStore.get("settings.mistralAi.apiKey")).contains("mistral-secret");
-        assertThat(secretStore.get("settings.googleGemini.apiKey")).contains("google-secret");
+        assertThat(secretStore.get("settings.mistral.apiKey")).contains("mistral-secret");
+        assertThat(secretStore.get("settings.gemini.apiKey")).contains("google-secret");
         assertThat(secretStore.get("settings.anthropic.apiKey")).contains("anthropic-secret");
         assertThat(secretStore.get("settings.groq.apiKey")).contains("groq-secret");
         assertThat(secretStore.get("settings.deepSeek.apiKey")).contains("deepseek-secret");

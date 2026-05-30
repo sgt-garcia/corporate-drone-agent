@@ -1,20 +1,16 @@
 package ai.corporatedroneagent.model;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
-
 public class ApplicationSettings {
 
     private String agentName = "Corporate Drone Agent";
     private String aiModel = "none";
     private String customInstructions = "Answer with concise, practical guidance using available local project context first.";
     private OpenAiSettings openAi = new OpenAiSettings();
-    @JsonAlias("openAiOfficial")
-    private OpenAiOfficialSdkSettings openAiOfficialSdk = new OpenAiOfficialSdkSettings();
+    private OpenAiSdkSettings openAiSdk = new OpenAiSdkSettings();
     private AzureOpenAiSettings azureOpenAi = new AzureOpenAiSettings();
     private OllamaSettings ollama = new OllamaSettings();
-    private MistralAiSettings mistralAi = new MistralAiSettings();
-    @JsonAlias("googleGenAi")
-    private GoogleGeminiSettings googleGemini = new GoogleGeminiSettings();
+    private MistralSettings mistral = new MistralSettings();
+    private GeminiSettings gemini = new GeminiSettings();
     private AnthropicSettings anthropic = new AnthropicSettings();
     private GroqSettings groq = new GroqSettings();
     private DeepSeekSettings deepSeek = new DeepSeekSettings();
@@ -51,12 +47,12 @@ public class ApplicationSettings {
         this.openAi = openAi == null ? new OpenAiSettings() : openAi;
     }
 
-    public OpenAiOfficialSdkSettings getOpenAiOfficialSdk() {
-        return openAiOfficialSdk;
+    public OpenAiSdkSettings getOpenAiSdk() {
+        return openAiSdk;
     }
 
-    public void setOpenAiOfficialSdk(OpenAiOfficialSdkSettings openAiOfficialSdk) {
-        this.openAiOfficialSdk = openAiOfficialSdk == null ? new OpenAiOfficialSdkSettings() : openAiOfficialSdk;
+    public void setOpenAiSdk(OpenAiSdkSettings openAiSdk) {
+        this.openAiSdk = openAiSdk == null ? new OpenAiSdkSettings() : openAiSdk;
     }
 
     public AzureOpenAiSettings getAzureOpenAi() {
@@ -75,20 +71,20 @@ public class ApplicationSettings {
         this.ollama = ollama == null ? new OllamaSettings() : ollama;
     }
 
-    public MistralAiSettings getMistralAi() {
-        return mistralAi;
+    public MistralSettings getMistral() {
+        return mistral;
     }
 
-    public void setMistralAi(MistralAiSettings mistralAi) {
-        this.mistralAi = mistralAi == null ? new MistralAiSettings() : mistralAi;
+    public void setMistral(MistralSettings mistral) {
+        this.mistral = mistral == null ? new MistralSettings() : mistral;
     }
 
-    public GoogleGeminiSettings getGoogleGemini() {
-        return googleGemini;
+    public GeminiSettings getGemini() {
+        return gemini;
     }
 
-    public void setGoogleGemini(GoogleGeminiSettings googleGemini) {
-        this.googleGemini = googleGemini == null ? new GoogleGeminiSettings() : googleGemini;
+    public void setGemini(GeminiSettings gemini) {
+        this.gemini = gemini == null ? new GeminiSettings() : gemini;
     }
 
     public AnthropicSettings getAnthropic() {

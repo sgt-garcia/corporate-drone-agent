@@ -2,7 +2,7 @@ package ai.corporatedroneagent.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class MistralAiSettings {
+public class OpenAiSdkSettings {
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String apiKey = "";

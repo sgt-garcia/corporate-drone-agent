@@ -2,7 +2,7 @@ package ai.corporatedroneagent.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class GoogleGeminiSettings {
+public class MistralSettings {
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String apiKey = "";

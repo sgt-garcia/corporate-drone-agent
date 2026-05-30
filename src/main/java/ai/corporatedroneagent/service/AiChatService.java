@@ -5,12 +5,12 @@ import ai.corporatedroneagent.model.AnthropicSettings;
 import ai.corporatedroneagent.model.AzureOpenAiSettings;
 import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.DeepSeekSettings;
-import ai.corporatedroneagent.model.GoogleGeminiSettings;
+import ai.corporatedroneagent.model.GeminiSettings;
 import ai.corporatedroneagent.model.GroqSettings;
 import ai.corporatedroneagent.model.Message;
-import ai.corporatedroneagent.model.MistralAiSettings;
+import ai.corporatedroneagent.model.MistralSettings;
 import ai.corporatedroneagent.model.OllamaSettings;
-import ai.corporatedroneagent.model.OpenAiOfficialSdkSettings;
+import ai.corporatedroneagent.model.OpenAiSdkSettings;
 import ai.corporatedroneagent.model.OpenAiSettings;
 import ai.corporatedroneagent.model.Project;
 import ai.corporatedroneagent.repository.ConversationRepository;
@@ -72,10 +72,10 @@ public class AiChatService {
         return switch (settings.getAiModel()) {
             case "azure-openai" -> azureOpenAiReply(settings, conversation, project);
             case "openai" -> openAiReply(settings, conversation, project);
-            case "openai-sdk", "openai-official", "openai-official-sdk" -> openAiOfficialSdkReply(settings, conversation, project);
+            case "openai-sdk" -> openAiSdkReply(settings, conversation, project);
             case "ollama" -> ollamaReply(settings, conversation, project);
-            case "mistral", "mistral-ai" -> mistralAiReply(settings, conversation, project);
-            case "gemini", "google-genai", "google-gemini" -> googleGeminiReply(settings, conversation, project);
+            case "mistral" -> mistralReply(settings, conversation, project);
+            case "gemini" -> geminiReply(settings, conversation, project);
             case "anthropic" -> anthropicReply(settings, conversation, project);
             case "groq" -> groqReply(settings, conversation, project);
             case "deepseek" -> deepSeekReply(settings, conversation, project);
@@ -101,8 +101,8 @@ public class AiChatService {
         }
     }
 
-    private String openAiOfficialSdkReply(ApplicationSettings settings, Conversation conversation, Project project) {
-        OpenAiOfficialSdkSettings openAiSettings = settings.getOpenAiOfficialSdk();
+    private String openAiSdkReply(ApplicationSettings settings, Conversation conversation, Project project) {
+        OpenAiSdkSettings openAiSettings = settings.getOpenAiSdk();
         if (isBlank(openAiSettings.getApiKey()) || isBlank(openAiSettings.getModel())) {
             return "OpenAI (SDK) is selected, but API key and model are required before I can call it.";
         }
@@ -110,7 +110,7 @@ public class AiChatService {
         try {
             return chatModelReply(
                     settings,
-                    buildOpenAiOfficialSdkChatModel(openAiSettings),
+                    buildOpenAiSdkChatModel(openAiSettings),
                     conversation,
                     project
             );
@@ -157,16 +157,16 @@ public class AiChatService {
         }
     }
 
-    private String mistralAiReply(ApplicationSettings settings, Conversation conversation, Project project) {
-        MistralAiSettings mistralAiSettings = settings.getMistralAi();
-        if (isBlank(mistralAiSettings.getApiKey()) || isBlank(mistralAiSettings.getModel())) {
+    private String mistralReply(ApplicationSettings settings, Conversation conversation, Project project) {
+        MistralSettings mistralSettings = settings.getMistral();
+        if (isBlank(mistralSettings.getApiKey()) || isBlank(mistralSettings.getModel())) {
             return "Mistral is selected, but API key and model are required before I can call it.";
         }
 
         try {
             return chatModelReply(
                     settings,
-                    buildMistralAiChatModel(mistralAiSettings),
+                    buildMistralChatModel(mistralSettings),
                     conversation,
                     project
             );
@@ -175,13 +175,13 @@ public class AiChatService {
         }
     }
 
-    private String googleGeminiReply(ApplicationSettings settings, Conversation conversation, Project project) {
-        GoogleGeminiSettings googleGeminiSettings = settings.getGoogleGemini();
-        if (isBlank(googleGeminiSettings.getApiKey()) || isBlank(googleGeminiSettings.getModel())) {
+    private String geminiReply(ApplicationSettings settings, Conversation conversation, Project project) {
+        GeminiSettings geminiSettings = settings.getGemini();
+        if (isBlank(geminiSettings.getApiKey()) || isBlank(geminiSettings.getModel())) {
             return "Gemini is selected, but API key and model are required before I can call it.";
         }
 
-        GoogleGenAiChatModel chatModel = buildGoogleGeminiChatModel(googleGeminiSettings);
+        GoogleGenAiChatModel chatModel = buildGeminiChatModel(geminiSettings);
         try {
             return chatModelReply(
                     settings,
@@ -192,7 +192,7 @@ public class AiChatService {
         } catch (RuntimeException exception) {
             return "Gemini request failed: " + exception.getMessage();
         } finally {
-            destroyGoogleGeminiChatModel(chatModel);
+            destroyGeminiChatModel(chatModel);
         }
     }
 
@@ -321,7 +321,7 @@ public class AiChatService {
                 .build();
     }
 
-    private OpenAiSdkChatModel buildOpenAiOfficialSdkChatModel(OpenAiOfficialSdkSettings settings) {
+    private OpenAiSdkChatModel buildOpenAiSdkChatModel(OpenAiSdkSettings settings) {
         OpenAiSdkChatOptions.Builder optionsBuilder = OpenAiSdkChatOptions.builder()
                 .apiKey(settings.getApiKey())
                 .model(settings.getModel());
@@ -367,8 +367,8 @@ public class AiChatService {
                 .build();
     }
 
-    private MistralAiChatModel buildMistralAiChatModel(MistralAiSettings settings) {
-        MistralAiApi mistralAiApi = MistralAiApi.builder()
+    private MistralAiChatModel buildMistralChatModel(MistralSettings settings) {
+        MistralAiApi mistralApi = MistralAiApi.builder()
                 .apiKey(settings.getApiKey())
                 .build();
 
@@ -378,12 +378,12 @@ public class AiChatService {
                 .build();
 
         return MistralAiChatModel.builder()
-                .mistralAiApi(mistralAiApi)
+                .mistralAiApi(mistralApi)
                 .defaultOptions(chatOptions)
                 .build();
     }
 
-    private GoogleGenAiChatModel buildGoogleGeminiChatModel(GoogleGeminiSettings settings) {
+    private GoogleGenAiChatModel buildGeminiChatModel(GeminiSettings settings) {
         Client genAiClient = Client.builder()
                 .apiKey(settings.getApiKey())
                 .build();
@@ -399,7 +399,7 @@ public class AiChatService {
                 .build();
     }
 
-    private void destroyGoogleGeminiChatModel(GoogleGenAiChatModel chatModel) {
+    private void destroyGeminiChatModel(GoogleGenAiChatModel chatModel) {
         try {
             chatModel.destroy();
         } catch (Exception exception) {

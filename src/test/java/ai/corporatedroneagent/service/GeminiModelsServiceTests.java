@@ -5,13 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
-class GoogleGeminiModelsServiceTests {
+class GeminiModelsServiceTests {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void identifiesGeminiGenerateContentModelsAsChatModels() throws Exception {
-        assertThat(GoogleGeminiModelsService.isChatModel(objectMapper.readTree(
+        assertThat(GeminiModelsService.isChatModel(objectMapper.readTree(
                 """
                         {
                           "name": "models/gemini-2.5-flash",
@@ -26,7 +26,7 @@ class GoogleGeminiModelsServiceTests {
 
     @Test
     void rejectsNonChatOrImageGeminiModels() throws Exception {
-        assertThat(GoogleGeminiModelsService.isChatModel(objectMapper.readTree(
+        assertThat(GeminiModelsService.isChatModel(objectMapper.readTree(
                 """
                         {
                           "name": "models/text-embedding-004",
@@ -37,7 +37,7 @@ class GoogleGeminiModelsServiceTests {
                         """
         ))).isFalse();
 
-        assertThat(GoogleGeminiModelsService.isChatModel(objectMapper.readTree(
+        assertThat(GeminiModelsService.isChatModel(objectMapper.readTree(
                 """
                         {
                           "name": "models/gemini-2.0-flash-preview-image-generation",
@@ -48,7 +48,7 @@ class GoogleGeminiModelsServiceTests {
                         """
         ))).isFalse();
 
-        assertThat(GoogleGeminiModelsService.isChatModel(objectMapper.readTree(
+        assertThat(GeminiModelsService.isChatModel(objectMapper.readTree(
                 """
                         {
                           "name": "models/gemini-live-2.5-flash-preview",
@@ -62,11 +62,11 @@ class GoogleGeminiModelsServiceTests {
 
     @Test
     void normalizesModelNames() {
-        assertThat(GoogleGeminiModelsService.normalizeModelId("models/gemini-2.5-pro"))
+        assertThat(GeminiModelsService.normalizeModelId("models/gemini-2.5-pro"))
                 .isEqualTo("gemini-2.5-pro");
-        assertThat(GoogleGeminiModelsService.normalizeModelId("gemini-2.5-pro"))
+        assertThat(GeminiModelsService.normalizeModelId("gemini-2.5-pro"))
                 .isEqualTo("gemini-2.5-pro");
-        assertThat(GoogleGeminiModelsService.normalizeModelId(" "))
+        assertThat(GeminiModelsService.normalizeModelId(" "))
                 .isEmpty();
     }
 }

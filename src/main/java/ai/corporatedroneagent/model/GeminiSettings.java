@@ -2,7 +2,7 @@ package ai.corporatedroneagent.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class OpenAiOfficialSdkSettings {
+public class GeminiSettings {
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String apiKey = "";

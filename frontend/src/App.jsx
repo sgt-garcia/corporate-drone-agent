@@ -31,7 +31,7 @@ const emptySettings = {
     apiKeyLastFour: "",
     model: ""
   },
-  openAiOfficialSdk: {
+  openAiSdk: {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",
@@ -48,13 +48,13 @@ const emptySettings = {
     baseUrl: "http://localhost:11434",
     model: ""
   },
-  mistralAi: {
+  mistral: {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",
     model: ""
   },
-  googleGemini: {
+  gemini: {
     apiKey: "",
     apiKeyConfigured: false,
     apiKeyLastFour: "",

@@ -1,6 +1,6 @@
 package ai.corporatedroneagent.service;
 
-import ai.corporatedroneagent.dto.GoogleGeminiModelsRequest;
+import ai.corporatedroneagent.dto.GeminiModelsRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -15,19 +15,19 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
-public class GoogleGeminiModelsService {
+public class GeminiModelsService {
 
     private final SettingsService settingsService;
     private final RestClient restClient;
 
-    public GoogleGeminiModelsService(SettingsService settingsService, RestClient.Builder restClientBuilder) {
+    public GeminiModelsService(SettingsService settingsService, RestClient.Builder restClientBuilder) {
         this.settingsService = settingsService;
         this.restClient = restClientBuilder
                 .baseUrl("https://generativelanguage.googleapis.com")
                 .build();
     }
 
-    public List<String> listModels(GoogleGeminiModelsRequest request) {
+    public List<String> listModels(GeminiModelsRequest request) {
         String apiKey = apiKeyFor(request);
         if (apiKey.isBlank()) {
             return List.of();
@@ -57,7 +57,7 @@ public class GoogleGeminiModelsService {
         }
 
         return StreamSupport.stream(response.path("models").spliterator(), false)
-                .filter(GoogleGeminiModelsService::isChatModel)
+                .filter(GeminiModelsService::isChatModel)
                 .map(model -> normalizeModelId(model.path("name").asText("")))
                 .filter(id -> !id.isBlank())
                 .distinct()
@@ -89,7 +89,7 @@ public class GoogleGeminiModelsService {
         return trimmed.startsWith("models/") ? trimmed.substring("models/".length()) : trimmed;
     }
 
-    private String apiKeyFor(GoogleGeminiModelsRequest request) {
+    private String apiKeyFor(GeminiModelsRequest request) {
         if (request != null && request.getApiKey() != null && !request.getApiKey().isBlank()) {
             return request.getApiKey().trim();
         }
@@ -98,6 +98,6 @@ public class GoogleGeminiModelsService {
         }
 
         ApplicationSettings settings = settingsService.getWithSecrets();
-        return Strings.defaultIfBlank(settings.getGoogleGemini().getApiKey(), "");
+        return Strings.defaultIfBlank(settings.getGemini().getApiKey(), "");
     }
 }

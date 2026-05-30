@@ -86,6 +86,6 @@ public class MistralModelsService {
         }
 
         ApplicationSettings settings = settingsService.getWithSecrets();
-        return Strings.defaultIfBlank(settings.getMistralAi().getApiKey(), "");
+        return Strings.defaultIfBlank(settings.getMistral().getApiKey(), "");
     }
 }
