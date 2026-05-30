@@ -314,14 +314,6 @@ a {
   line-height: 1;
 }
 
-.eu-flag-icon {
-  display: inline-block;
-  flex: 0 0 auto;
-  width: 28px;
-  height: 18px;
-  box-shadow: 0 0 0 1px rgba(15, 61, 114, 0.12);
-}
-
 .side-button:hover,
 .side-button:focus-visible {
   background: #edf5ff;

@@ -1,5 +1,3 @@
-import { EuFlagIcon } from "./EuFlagIcon.jsx";
-
 const FLAGS = {
   china: "\u{1F1E8}\u{1F1F3}",
   eu: "\u{1F1EA}\u{1F1FA}",
@@ -13,7 +11,7 @@ const PROVIDER_FLAGS = {
   DeepSeek: [FLAGS.china],
   Gemini: [FLAGS.usa],
   Groq: [FLAGS.usa],
-  Mistral: [FLAGS.france],
+  Mistral: [FLAGS.eu, FLAGS.france],
   Ollama: [FLAGS.usa],
   OpenAI: [FLAGS.usa],
   "OpenAI (SDK)": [FLAGS.usa]
@@ -33,16 +31,12 @@ export function ProviderLabel({ name }) {
           {flag}
         </span>
       ))}
-      {name === "Mistral" && <EuFlagIcon />}
     </span>
   );
 }
 
 export function providerOptionLabel(name) {
   const flags = PROVIDER_FLAGS[name] ?? [];
-  if (name === "Mistral") {
-    return `${flags.join(" ")} ${FLAGS.eu} ${name}`;
-  }
   if (flags.length === 0) {
     return name;
   }
