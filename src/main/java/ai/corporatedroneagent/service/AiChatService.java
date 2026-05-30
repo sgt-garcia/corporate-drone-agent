@@ -311,10 +311,6 @@ public class AiChatService {
         OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
                 .model(settings.getModel());
 
-        if (supportsCustomTemperature(settings.getModel())) {
-            optionsBuilder.temperature(0.2);
-        }
-
         return OpenAiChatModel.builder()
                 .openAiApi(openAiApi)
                 .defaultOptions(optionsBuilder.build())
@@ -326,10 +322,6 @@ public class AiChatService {
                 .apiKey(settings.getApiKey())
                 .model(settings.getModel());
 
-        if (supportsCustomTemperature(settings.getModel())) {
-            optionsBuilder.temperature(0.2);
-        }
-
         return new OpenAiSdkChatModel(optionsBuilder.build());
     }
 
@@ -340,10 +332,6 @@ public class AiChatService {
 
         AzureOpenAiChatOptions.Builder optionsBuilder = AzureOpenAiChatOptions.builder()
                 .deploymentName(settings.getDeploymentName());
-
-        if (supportsCustomTemperature(settings.getDeploymentName())) {
-            optionsBuilder.temperature(0.2);
-        }
 
         return AzureOpenAiChatModel.builder()
                 .openAIClientBuilder(clientBuilder)
@@ -477,16 +465,4 @@ public class AiChatService {
         return value == null || value.isBlank();
     }
 
-    private boolean supportsCustomTemperature(String model) {
-        if (model == null) {
-            return true;
-        }
-
-        String normalizedModel = model.toLowerCase();
-        return !normalizedModel.startsWith("gpt-5")
-                && !normalizedModel.startsWith("o1")
-                && !normalizedModel.startsWith("o3")
-                && !normalizedModel.startsWith("o4")
-                && !normalizedModel.contains("codex");
-    }
 }
