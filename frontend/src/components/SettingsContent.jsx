@@ -179,6 +179,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
         <label>
           Azure OpenAI Deployment Name
           <ProviderModelSelect
+            allowCustom
             apiKey={draft.azureOpenAi?.apiKey ?? ""}
             errorLabel="Unable to load Azure OpenAI deployments."
             loadModels={loadAzureOpenAiDeployments}
@@ -483,6 +484,7 @@ function loadAzureOpenAiDeployments({ apiKey, provider, useSavedKey }) {
 }
 
 function ProviderModelSelect({
+  allowCustom = false,
   apiKey,
   errorLabel,
   loadModels,
@@ -542,22 +544,39 @@ function ProviderModelSelect({
 
   return (
     <>
-      <select
-        disabled={status === "loading" && options.length === 0}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {!value && (
-          <option value="" disabled>
-            {status === "loading" ? loadingLabel : "Select a model"}
-          </option>
-        )}
-        {options.map((model) => (
-          <option key={model} value={model}>
-            {model}
-          </option>
-        ))}
-      </select>
+      {allowCustom ? (
+        <>
+          <input
+            list={`${loadingLabel.replaceAll(" ", "-").toLowerCase()}-list`}
+            placeholder={status === "loading" ? loadingLabel : "Select or enter a deployment"}
+            type="text"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+          />
+          <datalist id={`${loadingLabel.replaceAll(" ", "-").toLowerCase()}-list`}>
+            {options.map((model) => (
+              <option key={model} value={model} />
+            ))}
+          </datalist>
+        </>
+      ) : (
+        <select
+          disabled={status === "loading" && options.length === 0}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {!value && (
+            <option value="" disabled>
+              {status === "loading" ? loadingLabel : "Select a model"}
+            </option>
+          )}
+          {options.map((model) => (
+            <option key={model} value={model}>
+              {model}
+            </option>
+          ))}
+        </select>
+      )}
       {message && <p className="model-select-status">{message}</p>}
     </>
   );

@@ -6,6 +6,7 @@ import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.StreamSupport;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,10 @@ import org.springframework.web.server.ResponseStatusException;
 public class AzureOpenAiDeploymentsService {
 
     private static final String DEPLOYMENTS_API_VERSION = "2023-05-15";
+    private static final List<String> FALLBACK_DEPLOYMENTS_API_VERSIONS = List.of(
+            DEPLOYMENTS_API_VERSION,
+            "2023-03-15-preview"
+    );
 
     private final SettingsService settingsService;
     private final RestClient.Builder restClientBuilder;
@@ -34,29 +39,19 @@ public class AzureOpenAiDeploymentsService {
             return List.of();
         }
 
-        JsonNode response;
+        Optional<JsonNode> response;
         try {
-            response = restClientBuilder
-                    .baseUrl(trimTrailingSlashes(endpoint))
-                    .build()
-                    .get()
-                    .uri("/openai/deployments?api-version=" + DEPLOYMENTS_API_VERSION)
-                    .header("api-key", apiKey)
-                    .retrieve()
-                    .body(JsonNode.class);
+            response = loadDeployments(endpoint, apiKey);
         } catch (RestClientResponseException exception) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    "Azure OpenAI deployments request failed: "
-                            + exception.getStatusCode().value()
-                            + " "
-                            + exception.getStatusText()
-            );
+            if (isUnsupportedDeploymentListResponse(exception)) {
+                return List.of();
+            }
+            throw azureDeploymentsException(exception);
         } catch (RestClientException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Azure OpenAI deployments request failed.");
         }
 
-        JsonNode deployments = deploymentsNode(response);
+        JsonNode deployments = deploymentsNode(response.orElse(null));
         if (!deployments.isArray()) {
             return List.of();
         }
@@ -68,6 +63,51 @@ public class AzureOpenAiDeploymentsService {
                 .distinct()
                 .sorted(Comparator.naturalOrder())
                 .toList();
+    }
+
+    private Optional<JsonNode> loadDeployments(String endpoint, String apiKey) {
+        RestClient restClient = restClientBuilder
+                .baseUrl(trimTrailingSlashes(endpoint))
+                .build();
+
+        for (String apiVersion : FALLBACK_DEPLOYMENTS_API_VERSIONS) {
+            try {
+                return Optional.ofNullable(restClient.get()
+                        .uri("/openai/deployments?api-version=" + apiVersion)
+                        .header("api-key", apiKey)
+                        .retrieve()
+                        .body(JsonNode.class));
+            } catch (RestClientResponseException exception) {
+                if (!isUnsupportedDeploymentListResponse(exception)) {
+                    throw exception;
+                }
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private static boolean isUnsupportedDeploymentListResponse(RestClientResponseException exception) {
+        int statusCode = exception.getStatusCode().value();
+        return statusCode == 400 || statusCode == 404 || statusCode == 410;
+    }
+
+    private ResponseStatusException azureDeploymentsException(RestClientResponseException exception) {
+        String responseBody = exception.getResponseBodyAsString();
+        String details = responseBody == null || responseBody.isBlank()
+                ? exception.getStatusText()
+                : responseBody;
+        if (details.length() > 500) {
+            details = details.substring(0, 500) + "...";
+        }
+
+        return new ResponseStatusException(
+                HttpStatus.BAD_GATEWAY,
+                "Azure OpenAI deployments request failed: "
+                        + exception.getStatusCode().value()
+                        + " "
+                        + details
+        );
     }
 
     static JsonNode deploymentsNode(JsonNode response) {
