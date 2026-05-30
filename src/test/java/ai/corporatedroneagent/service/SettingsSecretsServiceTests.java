@@ -38,6 +38,10 @@ class SettingsSecretsServiceTests {
                           "groq": {
                             "apiKey": "groq-secret",
                             "model": "llama-3.3-70b-versatile"
+                          },
+                          "deepSeek": {
+                            "apiKey": "deepseek-secret",
+                            "model": "deepseek-v4-pro"
                           }
                         }
                         """,
@@ -49,6 +53,7 @@ class SettingsSecretsServiceTests {
         assertThat(settings.getGoogleGemini().getApiKey()).isEqualTo("google-secret");
         assertThat(settings.getAnthropic().getApiKey()).isEqualTo("anthropic-secret");
         assertThat(settings.getGroq().getApiKey()).isEqualTo("groq-secret");
+        assertThat(settings.getDeepSeek().getApiKey()).isEqualTo("deepseek-secret");
 
         String json = objectMapper.writeValueAsString(settings);
 
@@ -57,6 +62,7 @@ class SettingsSecretsServiceTests {
         assertThat(json).doesNotContain("google-secret");
         assertThat(json).doesNotContain("anthropic-secret");
         assertThat(json).doesNotContain("groq-secret");
+        assertThat(json).doesNotContain("deepseek-secret");
         assertThat(json).doesNotContain("\"apiKey\"");
     }
 
@@ -70,6 +76,7 @@ class SettingsSecretsServiceTests {
         settings.getGoogleGemini().setApiKey("google-secret");
         settings.getAnthropic().setApiKey("anthropic-secret");
         settings.getGroq().setApiKey("groq-secret");
+        settings.getDeepSeek().setApiKey("deepseek-secret");
 
         boolean migrated = service.migratePlaintextSecrets(settings);
         service.applySecretStatus(settings);
@@ -90,11 +97,15 @@ class SettingsSecretsServiceTests {
         assertThat(settings.getGroq().getApiKey()).isEmpty();
         assertThat(settings.getGroq().isApiKeyConfigured()).isTrue();
         assertThat(settings.getGroq().getApiKeyLastFour()).isEqualTo("cret");
+        assertThat(settings.getDeepSeek().getApiKey()).isEmpty();
+        assertThat(settings.getDeepSeek().isApiKeyConfigured()).isTrue();
+        assertThat(settings.getDeepSeek().getApiKeyLastFour()).isEqualTo("cret");
         assertThat(secretStore.get("settings.openAi.apiKey")).contains("sk-openai-secret");
         assertThat(secretStore.get("settings.mistralAi.apiKey")).contains("mistral-secret");
         assertThat(secretStore.get("settings.googleGemini.apiKey")).contains("google-secret");
         assertThat(secretStore.get("settings.anthropic.apiKey")).contains("anthropic-secret");
         assertThat(secretStore.get("settings.groq.apiKey")).contains("groq-secret");
+        assertThat(secretStore.get("settings.deepSeek.apiKey")).contains("deepseek-secret");
     }
 
     private static class InMemorySecretStore implements SecretStore {

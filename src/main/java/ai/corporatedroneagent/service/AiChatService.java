@@ -4,6 +4,7 @@ import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.AnthropicSettings;
 import ai.corporatedroneagent.model.AzureOpenAiSettings;
 import ai.corporatedroneagent.model.Conversation;
+import ai.corporatedroneagent.model.DeepSeekSettings;
 import ai.corporatedroneagent.model.GoogleGeminiSettings;
 import ai.corporatedroneagent.model.GroqSettings;
 import ai.corporatedroneagent.model.Message;
@@ -77,6 +78,7 @@ public class AiChatService {
             case "google-genai", "google-gemini" -> googleGeminiReply(settings, conversation, project);
             case "anthropic" -> anthropicReply(settings, conversation, project);
             case "groq" -> groqReply(settings, conversation, project);
+            case "deepseek" -> deepSeekReply(settings, conversation, project);
             default -> echoReply(userContent);
         };
     }
@@ -227,6 +229,24 @@ public class AiChatService {
             );
         } catch (RuntimeException exception) {
             return "Groq request failed: " + exception.getMessage();
+        }
+    }
+
+    private String deepSeekReply(ApplicationSettings settings, Conversation conversation, Project project) {
+        DeepSeekSettings deepSeekSettings = settings.getDeepSeek();
+        if (isBlank(deepSeekSettings.getApiKey()) || isBlank(deepSeekSettings.getModel())) {
+            return "DeepSeek is selected, but API key and model are required before I can call it.";
+        }
+
+        try {
+            return chatModelReply(
+                    settings,
+                    buildDeepSeekChatModel(deepSeekSettings),
+                    conversation,
+                    project
+            );
+        } catch (RuntimeException exception) {
+            return "DeepSeek request failed: " + exception.getMessage();
         }
     }
 
@@ -407,6 +427,24 @@ public class AiChatService {
     private OpenAiChatModel buildGroqChatModel(GroqSettings settings) {
         OpenAiApi openAiApi = OpenAiApi.builder()
                 .baseUrl("https://api.groq.com/openai")
+                .apiKey(settings.getApiKey())
+                .build();
+
+        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
+                .model(settings.getModel())
+                .temperature(0.2)
+                .build();
+
+        return OpenAiChatModel.builder()
+                .openAiApi(openAiApi)
+                .defaultOptions(chatOptions)
+                .build();
+    }
+
+    private OpenAiChatModel buildDeepSeekChatModel(DeepSeekSettings settings) {
+        OpenAiApi openAiApi = OpenAiApi.builder()
+                .baseUrl("https://api.deepseek.com")
+                .completionsPath("/chat/completions")
                 .apiKey(settings.getApiKey())
                 .build();
 

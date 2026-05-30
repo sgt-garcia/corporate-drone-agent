@@ -98,6 +98,14 @@ export async function getGroqModels({ apiKey, useSavedKey }) {
   });
 }
 
+export async function getDeepSeekModels({ apiKey, useSavedKey }) {
+  return request("/api/settings/deepseek-models", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ apiKey, useSavedKey })
+  });
+}
+
 export async function getOllamaModels({ baseUrl }) {
   return request("/api/settings/ollama-models", {
     method: "POST",

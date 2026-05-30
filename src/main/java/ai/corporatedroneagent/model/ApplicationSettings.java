@@ -17,6 +17,7 @@ public class ApplicationSettings {
     private GoogleGeminiSettings googleGemini = new GoogleGeminiSettings();
     private AnthropicSettings anthropic = new AnthropicSettings();
     private GroqSettings groq = new GroqSettings();
+    private DeepSeekSettings deepSeek = new DeepSeekSettings();
 
     public String getAgentName() {
         return agentName;
@@ -104,5 +105,13 @@ public class ApplicationSettings {
 
     public void setGroq(GroqSettings groq) {
         this.groq = groq == null ? new GroqSettings() : groq;
+    }
+
+    public DeepSeekSettings getDeepSeek() {
+        return deepSeek;
+    }
+
+    public void setDeepSeek(DeepSeekSettings deepSeek) {
+        this.deepSeek = deepSeek == null ? new DeepSeekSettings() : deepSeek;
     }
 }

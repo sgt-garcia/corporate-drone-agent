@@ -71,6 +71,12 @@ const emptySettings = {
     apiKeyConfigured: false,
     apiKeyLastFour: "",
     model: ""
+  },
+  deepSeek: {
+    apiKey: "",
+    apiKeyConfigured: false,
+    apiKeyLastFour: "",
+    model: ""
   }
 };
 

@@ -17,6 +17,7 @@ public class SettingsSecretsService {
     private static final String LEGACY_GOOGLE_GENAI_API_KEY = "settings.googleGenAi.apiKey";
     private static final String ANTHROPIC_API_KEY = "settings.anthropic.apiKey";
     private static final String GROQ_API_KEY = "settings.groq.apiKey";
+    private static final String DEEPSEEK_API_KEY = "settings.deepSeek.apiKey";
 
     private final SecretStore secretStore;
 
@@ -71,6 +72,12 @@ public class SettingsSecretsService {
             migrated = true;
         }
 
+        if (hasText(settings.getDeepSeek().getApiKey())) {
+            secretStore.put(DEEPSEEK_API_KEY, settings.getDeepSeek().getApiKey());
+            settings.getDeepSeek().setApiKey("");
+            migrated = true;
+        }
+
         return migrated;
     }
 
@@ -118,6 +125,12 @@ public class SettingsSecretsService {
         } else if (hasText(settings.getGroq().getApiKey())) {
             secretStore.put(GROQ_API_KEY, settings.getGroq().getApiKey());
         }
+
+        if (settings.getDeepSeek().isClearApiKey()) {
+            secretStore.delete(DEEPSEEK_API_KEY);
+        } else if (hasText(settings.getDeepSeek().getApiKey())) {
+            secretStore.put(DEEPSEEK_API_KEY, settings.getDeepSeek().getApiKey());
+        }
     }
 
     public void applySecretValues(ApplicationSettings settings) {
@@ -128,6 +141,7 @@ public class SettingsSecretsService {
         settings.getGoogleGemini().setApiKey(secretValue(GOOGLE_GEMINI_API_KEY, LEGACY_GOOGLE_GENAI_API_KEY));
         settings.getAnthropic().setApiKey(secretStore.get(ANTHROPIC_API_KEY).orElse(""));
         settings.getGroq().setApiKey(secretStore.get(GROQ_API_KEY).orElse(""));
+        settings.getDeepSeek().setApiKey(secretStore.get(DEEPSEEK_API_KEY).orElse(""));
     }
 
     public void applySecretStatus(ApplicationSettings settings) {
@@ -138,6 +152,7 @@ public class SettingsSecretsService {
         applyGoogleGeminiStatus(settings, secretOptional(GOOGLE_GEMINI_API_KEY, LEGACY_GOOGLE_GENAI_API_KEY));
         applyAnthropicStatus(settings, secretStore.get(ANTHROPIC_API_KEY));
         applyGroqStatus(settings, secretStore.get(GROQ_API_KEY));
+        applyDeepSeekStatus(settings, secretStore.get(DEEPSEEK_API_KEY));
     }
 
     public void clearSecretValues(ApplicationSettings settings) {
@@ -155,6 +170,8 @@ public class SettingsSecretsService {
         settings.getAnthropic().setClearApiKey(false);
         settings.getGroq().setApiKey("");
         settings.getGroq().setClearApiKey(false);
+        settings.getDeepSeek().setApiKey("");
+        settings.getDeepSeek().setClearApiKey(false);
     }
 
     private void applyOpenAiStatus(ApplicationSettings settings, Optional<String> secret) {
@@ -190,6 +207,11 @@ public class SettingsSecretsService {
     private void applyGroqStatus(ApplicationSettings settings, Optional<String> secret) {
         settings.getGroq().setApiKeyConfigured(secret.isPresent());
         settings.getGroq().setApiKeyLastFour(secret.map(this::lastFour).orElse(""));
+    }
+
+    private void applyDeepSeekStatus(ApplicationSettings settings, Optional<String> secret) {
+        settings.getDeepSeek().setApiKeyConfigured(secret.isPresent());
+        settings.getDeepSeek().setApiKeyLastFour(secret.map(this::lastFour).orElse(""));
     }
 
     private String lastFour(String value) {

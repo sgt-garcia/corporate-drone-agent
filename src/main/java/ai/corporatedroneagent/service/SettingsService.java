@@ -54,6 +54,7 @@ public class SettingsService {
         current.setGoogleGemini(settings.getGoogleGemini());
         current.setAnthropic(settings.getAnthropic());
         current.setGroq(settings.getGroq());
+        current.setDeepSeek(settings.getDeepSeek());
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);

@@ -4,6 +4,7 @@ import { SettingsScreen } from "./SettingsScreen.jsx";
 import {
   getAnthropicModels,
   getAzureOpenAiDeployments,
+  getDeepSeekModels,
   getGoogleGeminiModels,
   getGroqModels,
   getMistralModels,
@@ -439,6 +440,62 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
+  if (activeSettingsItem === "DeepSeek") {
+    return (
+      <SettingsScreen
+        title="DeepSeek"
+        subtitle="Settings"
+        onReload={() => {
+          setDraft(settings);
+          onReload();
+        }}
+        onSave={() => onSave(draft)}
+      >
+        <ApiKeyField
+          label="DeepSeek API Key"
+          placeholder="DeepSeek API key"
+          settings={draft.deepSeek}
+          onChange={(apiKey) =>
+            setDraft({
+              ...draft,
+              deepSeek: {
+                ...(draft.deepSeek ?? {}),
+                apiKey,
+                clearApiKey: false
+              }
+            })
+          }
+          onClear={() =>
+            setDraft({
+              ...draft,
+              deepSeek: clearedApiKeySettings(draft.deepSeek)
+            })
+          }
+        />
+        <label>
+          DeepSeek Model
+          <ProviderModelSelect
+            errorLabel="Unable to load DeepSeek models."
+            lookupValue={draft.deepSeek?.apiKey ?? ""}
+            loadModels={getDeepSeekModels}
+            loadingLabel="Loading DeepSeek models..."
+            useSavedKey={Boolean(draft.deepSeek?.apiKeyConfigured && !draft.deepSeek?.clearApiKey)}
+            value={draft.deepSeek?.model ?? ""}
+            onChange={(model) =>
+              setDraft({
+                ...draft,
+                deepSeek: {
+                  ...(draft.deepSeek ?? {}),
+                  model
+                }
+              })
+            }
+          />
+        </label>
+      </SettingsScreen>
+    );
+  }
+
   if (activeSettingsItem === "Anthropic") {
     return (
       <SettingsScreen
@@ -526,6 +583,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
             <option value="mistral-ai">Mistral AI</option>
             <option value="anthropic">Anthropic</option>
             <option value="groq">Groq</option>
+            <option value="deepseek">DeepSeek</option>
             <option value="azure-openai">Azure OpenAI</option>
             <option value="google-gemini">Google Gemini</option>
             <option value="ollama">Ollama</option>

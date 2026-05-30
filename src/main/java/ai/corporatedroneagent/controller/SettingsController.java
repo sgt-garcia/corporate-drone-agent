@@ -2,6 +2,7 @@ package ai.corporatedroneagent.controller;
 
 import ai.corporatedroneagent.dto.AnthropicModelsRequest;
 import ai.corporatedroneagent.dto.AzureOpenAiDeploymentsRequest;
+import ai.corporatedroneagent.dto.DeepSeekModelsRequest;
 import ai.corporatedroneagent.dto.GoogleGeminiModelsRequest;
 import ai.corporatedroneagent.dto.GroqModelsRequest;
 import ai.corporatedroneagent.dto.MistralModelsRequest;
@@ -10,6 +11,7 @@ import ai.corporatedroneagent.dto.OpenAiModelsRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.service.AnthropicModelsService;
 import ai.corporatedroneagent.service.AzureOpenAiDeploymentsService;
+import ai.corporatedroneagent.service.DeepSeekModelsService;
 import ai.corporatedroneagent.service.GoogleGeminiModelsService;
 import ai.corporatedroneagent.service.GroqModelsService;
 import ai.corporatedroneagent.service.MistralModelsService;
@@ -36,6 +38,7 @@ public class SettingsController {
     private final OllamaModelsService ollamaModelsService;
     private final AzureOpenAiDeploymentsService azureOpenAiDeploymentsService;
     private final GroqModelsService groqModelsService;
+    private final DeepSeekModelsService deepSeekModelsService;
 
     public SettingsController(
             SettingsService settingsService,
@@ -45,7 +48,8 @@ public class SettingsController {
             GoogleGeminiModelsService googleGeminiModelsService,
             OllamaModelsService ollamaModelsService,
             AzureOpenAiDeploymentsService azureOpenAiDeploymentsService,
-            GroqModelsService groqModelsService
+            GroqModelsService groqModelsService,
+            DeepSeekModelsService deepSeekModelsService
     ) {
         this.settingsService = settingsService;
         this.openAiModelsService = openAiModelsService;
@@ -55,6 +59,7 @@ public class SettingsController {
         this.ollamaModelsService = ollamaModelsService;
         this.azureOpenAiDeploymentsService = azureOpenAiDeploymentsService;
         this.groqModelsService = groqModelsService;
+        this.deepSeekModelsService = deepSeekModelsService;
     }
 
     @GetMapping
@@ -100,5 +105,10 @@ public class SettingsController {
     @PostMapping("/groq-models")
     public List<String> listGroqModels(@RequestBody GroqModelsRequest request) {
         return groqModelsService.listModels(request);
+    }
+
+    @PostMapping("/deepseek-models")
+    public List<String> listDeepSeekModels(@RequestBody DeepSeekModelsRequest request) {
+        return deepSeekModelsService.listModels(request);
     }
 }
