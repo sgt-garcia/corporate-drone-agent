@@ -34,11 +34,3 @@ export function ProviderLabel({ name }) {
     </span>
   );
 }
-
-export function providerOptionLabel(name) {
-  const flags = PROVIDER_FLAGS[name] ?? [];
-  if (flags.length === 0) {
-    return name;
-  }
-  return `${name} ${flags.join(" ")}`;
-}

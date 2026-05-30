@@ -1,4 +1,4 @@
-import { ProviderLabel, providerOptionLabel } from "./ProviderLabel.jsx";
+import { ProviderLabel } from "./ProviderLabel.jsx";
 import { SettingsScreen } from "./SettingsScreen.jsx";
 import {
   getAnthropicModels,
@@ -584,15 +584,15 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
           onChange={(event) => setDraft({ ...draft, aiModel: event.target.value })}
         >
           <option value="none">None</option>
-          <option value="anthropic">{providerOptionLabel("Anthropic")}</option>
-          <option value="azure-openai">{providerOptionLabel("Azure OpenAI")}</option>
-          <option value="deepseek">{providerOptionLabel("DeepSeek")}</option>
-          <option value="gemini">{providerOptionLabel("Gemini")}</option>
-          <option value="groq">{providerOptionLabel("Groq")}</option>
-          <option value="mistral">{providerOptionLabel("Mistral")}</option>
-          <option value="ollama">{providerOptionLabel("Ollama")}</option>
-          <option value="openai">{providerOptionLabel("OpenAI")}</option>
-          <option value="openai-sdk">{providerOptionLabel("OpenAI (SDK)")}</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="azure-openai">Azure OpenAI</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="gemini">Gemini</option>
+          <option value="groq">Groq</option>
+          <option value="mistral">Mistral</option>
+          <option value="ollama">Ollama</option>
+          <option value="openai">OpenAI</option>
+          <option value="openai-sdk">OpenAI (SDK)</option>
         </select>
       </label>
       <label>
