@@ -59,9 +59,50 @@ public class OpenAiModelsService {
         return response.data().stream()
                 .map(OpenAiModel::id)
                 .filter(id -> id != null && !id.isBlank())
+                .filter(OpenAiModelsService::isChatModelId)
                 .distinct()
                 .sorted(Comparator.naturalOrder())
                 .toList();
+    }
+
+    static boolean isChatModelId(String id) {
+        if (id == null || id.isBlank()) {
+            return false;
+        }
+
+        String normalizedId = id.toLowerCase();
+        if (normalizedId.startsWith("ft:")) {
+            String[] parts = normalizedId.split(":");
+            return parts.length > 1 && isChatModelId(parts[1]);
+        }
+
+        if (normalizedId.startsWith("dall-e")
+                || normalizedId.startsWith("sora")
+                || normalizedId.startsWith("text-embedding")
+                || normalizedId.startsWith("text-moderation")
+                || normalizedId.startsWith("omni-moderation")
+                || normalizedId.startsWith("tts-")
+                || normalizedId.startsWith("whisper")
+                || normalizedId.startsWith("babbage")
+                || normalizedId.startsWith("davinci")
+                || normalizedId.startsWith("computer-use")) {
+            return false;
+        }
+
+        if (normalizedId.contains("audio")
+                || normalizedId.contains("embedding")
+                || normalizedId.contains("image")
+                || normalizedId.contains("moderation")
+                || normalizedId.contains("realtime")
+                || normalizedId.contains("transcribe")
+                || normalizedId.contains("tts")
+                || normalizedId.contains("deep-research")) {
+            return false;
+        }
+
+        return normalizedId.startsWith("gpt-")
+                || normalizedId.startsWith("chatgpt-")
+                || normalizedId.matches("o\\d.*");
     }
 
     private String apiKeyFor(OpenAiModelsRequest request) {
