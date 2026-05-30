@@ -346,7 +346,6 @@ public class AiChatService {
 
         OllamaChatOptions chatOptions = OllamaChatOptions.builder()
                 .model(settings.getModel())
-                .temperature(0.2)
                 .build();
 
         return OllamaChatModel.builder()
@@ -362,7 +361,6 @@ public class AiChatService {
 
         MistralAiChatOptions chatOptions = MistralAiChatOptions.builder()
                 .model(settings.getModel())
-                .temperature(0.2)
                 .build();
 
         return MistralAiChatModel.builder()
@@ -378,7 +376,6 @@ public class AiChatService {
 
         GoogleGenAiChatOptions chatOptions = GoogleGenAiChatOptions.builder()
                 .model(settings.getModel())
-                .temperature(0.2)
                 .build();
 
         return GoogleGenAiChatModel.builder()
@@ -402,7 +399,6 @@ public class AiChatService {
 
         AnthropicChatOptions chatOptions = AnthropicChatOptions.builder()
                 .model(settings.getModel())
-                .temperature(0.2)
                 .maxTokens(4096)
                 .build();
 
@@ -420,7 +416,6 @@ public class AiChatService {
 
         OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
                 .model(settings.getModel())
-                .temperature(0.2)
                 .build();
 
         return OpenAiChatModel.builder()
@@ -438,7 +433,6 @@ public class AiChatService {
 
         OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
                 .model(settings.getModel())
-                .temperature(0.2)
                 .build();
 
         return OpenAiChatModel.builder()
