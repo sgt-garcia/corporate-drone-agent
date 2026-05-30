@@ -5,6 +5,7 @@ import {
   getAnthropicModels,
   getAzureOpenAiDeployments,
   getGoogleGeminiModels,
+  getGroqModels,
   getMistralModels,
   getOllamaModels,
   getOpenAiModels
@@ -382,6 +383,62 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
     );
   }
 
+  if (activeSettingsItem === "Groq") {
+    return (
+      <SettingsScreen
+        title="Groq"
+        subtitle="Settings"
+        onReload={() => {
+          setDraft(settings);
+          onReload();
+        }}
+        onSave={() => onSave(draft)}
+      >
+        <ApiKeyField
+          label="Groq API Key"
+          placeholder="Groq API key"
+          settings={draft.groq}
+          onChange={(apiKey) =>
+            setDraft({
+              ...draft,
+              groq: {
+                ...(draft.groq ?? {}),
+                apiKey,
+                clearApiKey: false
+              }
+            })
+          }
+          onClear={() =>
+            setDraft({
+              ...draft,
+              groq: clearedApiKeySettings(draft.groq)
+            })
+          }
+        />
+        <label>
+          Groq Model
+          <ProviderModelSelect
+            errorLabel="Unable to load Groq models."
+            lookupValue={draft.groq?.apiKey ?? ""}
+            loadModels={getGroqModels}
+            loadingLabel="Loading Groq models..."
+            useSavedKey={Boolean(draft.groq?.apiKeyConfigured && !draft.groq?.clearApiKey)}
+            value={draft.groq?.model ?? ""}
+            onChange={(model) =>
+              setDraft({
+                ...draft,
+                groq: {
+                  ...(draft.groq ?? {}),
+                  model
+                }
+              })
+            }
+          />
+        </label>
+      </SettingsScreen>
+    );
+  }
+
   if (activeSettingsItem === "Anthropic") {
     return (
       <SettingsScreen
@@ -468,6 +525,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
             <option value="none">None</option>
             <option value="mistral-ai">Mistral AI</option>
             <option value="anthropic">Anthropic</option>
+            <option value="groq">Groq</option>
             <option value="azure-openai">Azure OpenAI</option>
             <option value="google-gemini">Google Gemini</option>
             <option value="ollama">Ollama</option>

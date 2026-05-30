@@ -65,6 +65,12 @@ const emptySettings = {
     apiKeyConfigured: false,
     apiKeyLastFour: "",
     model: ""
+  },
+  groq: {
+    apiKey: "",
+    apiKeyConfigured: false,
+    apiKeyLastFour: "",
+    model: ""
   }
 };
 

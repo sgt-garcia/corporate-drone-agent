@@ -90,6 +90,14 @@ export async function getGoogleGeminiModels({ apiKey, useSavedKey }) {
   });
 }
 
+export async function getGroqModels({ apiKey, useSavedKey }) {
+  return request("/api/settings/groq-models", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ apiKey, useSavedKey })
+  });
+}
+
 export async function getOllamaModels({ baseUrl }) {
   return request("/api/settings/ollama-models", {
     method: "POST",

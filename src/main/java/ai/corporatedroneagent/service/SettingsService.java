@@ -53,6 +53,7 @@ public class SettingsService {
         current.setMistralAi(settings.getMistralAi());
         current.setGoogleGemini(settings.getGoogleGemini());
         current.setAnthropic(settings.getAnthropic());
+        current.setGroq(settings.getGroq());
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);

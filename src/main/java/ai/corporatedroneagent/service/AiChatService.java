@@ -5,6 +5,7 @@ import ai.corporatedroneagent.model.AnthropicSettings;
 import ai.corporatedroneagent.model.AzureOpenAiSettings;
 import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.GoogleGeminiSettings;
+import ai.corporatedroneagent.model.GroqSettings;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.model.MistralAiSettings;
 import ai.corporatedroneagent.model.OllamaSettings;
@@ -75,6 +76,7 @@ public class AiChatService {
             case "mistral-ai" -> mistralAiReply(settings, conversation, project);
             case "google-genai", "google-gemini" -> googleGeminiReply(settings, conversation, project);
             case "anthropic" -> anthropicReply(settings, conversation, project);
+            case "groq" -> groqReply(settings, conversation, project);
             default -> echoReply(userContent);
         };
     }
@@ -207,6 +209,24 @@ public class AiChatService {
             );
         } catch (RuntimeException exception) {
             return "Anthropic request failed: " + exception.getMessage();
+        }
+    }
+
+    private String groqReply(ApplicationSettings settings, Conversation conversation, Project project) {
+        GroqSettings groqSettings = settings.getGroq();
+        if (isBlank(groqSettings.getApiKey()) || isBlank(groqSettings.getModel())) {
+            return "Groq is selected, but API key and model are required before I can call it.";
+        }
+
+        try {
+            return chatModelReply(
+                    settings,
+                    buildGroqChatModel(groqSettings),
+                    conversation,
+                    project
+            );
+        } catch (RuntimeException exception) {
+            return "Groq request failed: " + exception.getMessage();
         }
     }
 
@@ -380,6 +400,23 @@ public class AiChatService {
 
         return AnthropicChatModel.builder()
                 .anthropicApi(anthropicApi)
+                .defaultOptions(chatOptions)
+                .build();
+    }
+
+    private OpenAiChatModel buildGroqChatModel(GroqSettings settings) {
+        OpenAiApi openAiApi = OpenAiApi.builder()
+                .baseUrl("https://api.groq.com/openai")
+                .apiKey(settings.getApiKey())
+                .build();
+
+        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
+                .model(settings.getModel())
+                .temperature(0.2)
+                .build();
+
+        return OpenAiChatModel.builder()
+                .openAiApi(openAiApi)
                 .defaultOptions(chatOptions)
                 .build();
     }

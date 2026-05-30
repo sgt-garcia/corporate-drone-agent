@@ -3,6 +3,7 @@ package ai.corporatedroneagent.controller;
 import ai.corporatedroneagent.dto.AnthropicModelsRequest;
 import ai.corporatedroneagent.dto.AzureOpenAiDeploymentsRequest;
 import ai.corporatedroneagent.dto.GoogleGeminiModelsRequest;
+import ai.corporatedroneagent.dto.GroqModelsRequest;
 import ai.corporatedroneagent.dto.MistralModelsRequest;
 import ai.corporatedroneagent.dto.OllamaModelsRequest;
 import ai.corporatedroneagent.dto.OpenAiModelsRequest;
@@ -10,6 +11,7 @@ import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.service.AnthropicModelsService;
 import ai.corporatedroneagent.service.AzureOpenAiDeploymentsService;
 import ai.corporatedroneagent.service.GoogleGeminiModelsService;
+import ai.corporatedroneagent.service.GroqModelsService;
 import ai.corporatedroneagent.service.MistralModelsService;
 import ai.corporatedroneagent.service.OllamaModelsService;
 import ai.corporatedroneagent.service.OpenAiModelsService;
@@ -33,6 +35,7 @@ public class SettingsController {
     private final GoogleGeminiModelsService googleGeminiModelsService;
     private final OllamaModelsService ollamaModelsService;
     private final AzureOpenAiDeploymentsService azureOpenAiDeploymentsService;
+    private final GroqModelsService groqModelsService;
 
     public SettingsController(
             SettingsService settingsService,
@@ -41,7 +44,8 @@ public class SettingsController {
             AnthropicModelsService anthropicModelsService,
             GoogleGeminiModelsService googleGeminiModelsService,
             OllamaModelsService ollamaModelsService,
-            AzureOpenAiDeploymentsService azureOpenAiDeploymentsService
+            AzureOpenAiDeploymentsService azureOpenAiDeploymentsService,
+            GroqModelsService groqModelsService
     ) {
         this.settingsService = settingsService;
         this.openAiModelsService = openAiModelsService;
@@ -50,6 +54,7 @@ public class SettingsController {
         this.googleGeminiModelsService = googleGeminiModelsService;
         this.ollamaModelsService = ollamaModelsService;
         this.azureOpenAiDeploymentsService = azureOpenAiDeploymentsService;
+        this.groqModelsService = groqModelsService;
     }
 
     @GetMapping
@@ -90,5 +95,10 @@ public class SettingsController {
     @PostMapping("/azure-openai-deployments")
     public List<String> listAzureOpenAiDeployments(@RequestBody AzureOpenAiDeploymentsRequest request) {
         return azureOpenAiDeploymentsService.listDeployments(request);
+    }
+
+    @PostMapping("/groq-models")
+    public List<String> listGroqModels(@RequestBody GroqModelsRequest request) {
+        return groqModelsService.listModels(request);
     }
 }

@@ -18,6 +18,7 @@ export const pages = {
       "General",
       "Mistral AI",
       "Anthropic",
+      "Groq",
       "Azure OpenAI",
       "Google Gemini",
       "Ollama",

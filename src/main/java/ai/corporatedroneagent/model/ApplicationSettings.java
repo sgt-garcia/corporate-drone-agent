@@ -16,6 +16,7 @@ public class ApplicationSettings {
     @JsonAlias("googleGenAi")
     private GoogleGeminiSettings googleGemini = new GoogleGeminiSettings();
     private AnthropicSettings anthropic = new AnthropicSettings();
+    private GroqSettings groq = new GroqSettings();
 
     public String getAgentName() {
         return agentName;
@@ -95,5 +96,13 @@ public class ApplicationSettings {
 
     public void setAnthropic(AnthropicSettings anthropic) {
         this.anthropic = anthropic == null ? new AnthropicSettings() : anthropic;
+    }
+
+    public GroqSettings getGroq() {
+        return groq;
+    }
+
+    public void setGroq(GroqSettings groq) {
+        this.groq = groq == null ? new GroqSettings() : groq;
     }
 }
