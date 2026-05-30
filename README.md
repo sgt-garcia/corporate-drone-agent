@@ -2,7 +2,7 @@
 
 Corporate Drone Agent is a local-first personal AI assistant for corporate work.
 It runs on your machine, stores its data locally, and lets you configure the LLM
-provider you want to use.
+provider you want to use for chat.
 
 The application is currently an early desktop-style local web app: a Spring Boot
 backend serves a React/Vite frontend, opens the UI in a Playwright-managed
@@ -24,7 +24,9 @@ Working today:
 - Configurable global assistant name, active AI provider, and custom
   instructions.
 - LLM chat support for OpenAI, OpenAI Official SDK, Azure OpenAI, Ollama,
-  Mistral AI, Google Gemini, and Anthropic through Spring AI.
+  Mistral AI, Google Gemini, Anthropic, Groq, and DeepSeek.
+- Provider model/deployment lookup from the Settings screen, using saved API
+  keys when available.
 - Local API-key storage that avoids returning secrets from the settings API.
 - Automatic browser launch on startup, with app shutdown when the browser closes
   by default.
@@ -41,9 +43,10 @@ Still planned:
 ## Technology
 
 - Java 21
-- Spring Boot 3.5
-- Spring AI 1.1
+- Spring Boot 3.5.14
+- Spring AI 1.1.2
 - Maven
+- Node.js 22.16.0 and npm 10.9.2 for the frontend build
 - React 19
 - Vite 8
 - Playwright for the local browser shell
@@ -51,6 +54,26 @@ Still planned:
 The Maven build installs the configured Node.js and npm versions, builds the
 frontend, copies `frontend/dist` into the Spring Boot static resources, and then
 packages the backend.
+
+## AI providers
+
+Chat providers are configured in Settings. Select a provider in General, then
+fill in the matching provider panel.
+
+| Provider | Required settings | Model lookup |
+| --- | --- | --- |
+| OpenAI | API key, model | Lists OpenAI chat models |
+| OpenAI (SDK) | API key, model | Lists OpenAI chat models |
+| Azure OpenAI | endpoint, API key, deployment name | Lists compatible deployments |
+| Ollama | base URL, model | Lists local Ollama chat models |
+| Mistral | API key, model | Lists active Mistral chat models |
+| Gemini | API key, model | Lists Gemini generation models |
+| Anthropic | API key, model | Lists Anthropic models |
+| Groq | API key, model | Lists Groq chat models |
+| DeepSeek | API key, model | Lists DeepSeek chat models |
+
+When no provider is configured, the app falls back to a local echo response so
+the conversation flow can still be exercised without an external API key.
 
 ## Local data
 
@@ -156,10 +179,19 @@ The current backend exposes:
 - `POST /api/conversations/{conversationId}/messages`
 - `GET /api/settings`
 - `PUT /api/settings`
+- `POST /api/settings/openai-models`
+- `POST /api/settings/azure-openai-deployments`
+- `POST /api/settings/ollama-models`
+- `POST /api/settings/mistral-models`
+- `POST /api/settings/gemini-models`
+- `POST /api/settings/anthropic-models`
+- `POST /api/settings/groq-models`
+- `POST /api/settings/deepseek-models`
 - `GET /api/events`
 
 `/api/events` is an SSE stream used by the frontend for project, conversation,
-message, and settings updates.
+message, and settings updates. The settings model/deployment endpoints are used
+by the frontend to populate provider model selectors.
 
 ## Tests
 
@@ -170,4 +202,5 @@ mvn test
 ```
 
 The current tests cover Spring context startup, browser/headless mode selection,
-and API-key serialization/migration behavior.
+prompt construction, API-key serialization/migration behavior, and provider
+model/deployment lookup parsing.
