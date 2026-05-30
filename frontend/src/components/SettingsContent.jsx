@@ -580,12 +580,12 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
             onChange={(event) => setDraft({ ...draft, aiModel: event.target.value })}
           >
             <option value="none">None</option>
-            <option value="mistral">Mistral</option>
             <option value="anthropic">Anthropic</option>
-            <option value="groq">Groq</option>
-            <option value="deepseek">DeepSeek</option>
             <option value="azure-openai">Azure OpenAI</option>
+            <option value="deepseek">DeepSeek</option>
             <option value="gemini">Gemini</option>
+            <option value="groq">Groq</option>
+            <option value="mistral">Mistral</option>
             <option value="ollama">Ollama</option>
             <option value="openai">OpenAI</option>
             <option value="openai-sdk">OpenAI (SDK)</option>

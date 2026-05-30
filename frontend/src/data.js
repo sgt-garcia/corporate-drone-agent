@@ -16,12 +16,12 @@ export const pages = {
     title: "Settings",
     menu: [
       "General",
-      "Mistral",
       "Anthropic",
-      "Groq",
-      "DeepSeek",
       "Azure OpenAI",
+      "DeepSeek",
       "Gemini",
+      "Groq",
+      "Mistral",
       "Ollama",
       "OpenAI",
       "OpenAI (SDK)"
