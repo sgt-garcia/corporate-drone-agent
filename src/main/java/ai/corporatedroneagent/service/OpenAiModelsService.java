@@ -116,7 +116,7 @@ public class OpenAiModelsService {
         ApplicationSettings settings = settingsService.getWithSecrets();
         String provider = request == null ? "openai" : Strings.defaultIfBlank(request.getProvider(), "openai");
         return switch (provider) {
-            case "openai-official-sdk" -> Strings.defaultIfBlank(settings.getOpenAiOfficialSdk().getApiKey(), "");
+            case "openai-sdk", "openai-official-sdk" -> Strings.defaultIfBlank(settings.getOpenAiOfficialSdk().getApiKey(), "");
             default -> Strings.defaultIfBlank(settings.getOpenAi().getApiKey(), "");
         };
     }

@@ -76,10 +76,11 @@ public class SettingsService {
         }
     }
 
-    private String normalizeAiModel(String aiModel) {
+    static String normalizeAiModel(String aiModel) {
         return switch (Strings.defaultIfBlank(aiModel, "none")) {
-            case "openai-official" -> "openai-official-sdk";
-            case "google-genai" -> "google-gemini";
+            case "openai-official", "openai-official-sdk" -> "openai-sdk";
+            case "mistral-ai" -> "mistral";
+            case "google-genai", "google-gemini" -> "gemini";
             default -> Strings.defaultIfBlank(aiModel, "none");
         };
     }

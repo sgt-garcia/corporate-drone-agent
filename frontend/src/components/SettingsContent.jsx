@@ -109,7 +109,7 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
             lookupValue={draft.openAiOfficialSdk?.apiKey ?? ""}
             loadModels={getOpenAiModels}
             loadingLabel="Loading OpenAI models..."
-            provider="openai-official-sdk"
+            provider="openai-sdk"
             useSavedKey={Boolean(
               draft.openAiOfficialSdk?.apiKeyConfigured && !draft.openAiOfficialSdk?.clearApiKey
             )}
@@ -573,22 +573,22 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
       <label>
         Model provider
         <span className="select-with-provider-icon">
-          {draft.aiModel === "mistral-ai" && <EuFlagIcon className="select-provider-icon" />}
+          {draft.aiModel === "mistral" && <EuFlagIcon className="select-provider-icon" />}
           <select
-            className={draft.aiModel === "mistral-ai" ? "has-provider-icon" : undefined}
+            className={draft.aiModel === "mistral" ? "has-provider-icon" : undefined}
             value={draft.aiModel ?? "none"}
             onChange={(event) => setDraft({ ...draft, aiModel: event.target.value })}
           >
             <option value="none">None</option>
-            <option value="mistral-ai">Mistral</option>
+            <option value="mistral">Mistral</option>
             <option value="anthropic">Anthropic</option>
             <option value="groq">Groq</option>
             <option value="deepseek">DeepSeek</option>
             <option value="azure-openai">Azure OpenAI</option>
-            <option value="google-gemini">Gemini</option>
+            <option value="gemini">Gemini</option>
             <option value="ollama">Ollama</option>
             <option value="openai">OpenAI</option>
-            <option value="openai-official-sdk">OpenAI (SDK)</option>
+            <option value="openai-sdk">OpenAI (SDK)</option>
           </select>
         </span>
       </label>

@@ -87,7 +87,7 @@ public class SettingsController {
         return anthropicModelsService.listModels(request);
     }
 
-    @PostMapping("/google-gemini-models")
+    @PostMapping({"/gemini-models", "/google-gemini-models"})
     public List<String> listGoogleGeminiModels(@RequestBody GoogleGeminiModelsRequest request) {
         return googleGeminiModelsService.listModels(request);
     }

@@ -72,10 +72,10 @@ public class AiChatService {
         return switch (settings.getAiModel()) {
             case "azure-openai" -> azureOpenAiReply(settings, conversation, project);
             case "openai" -> openAiReply(settings, conversation, project);
-            case "openai-official", "openai-official-sdk" -> openAiOfficialSdkReply(settings, conversation, project);
+            case "openai-sdk", "openai-official", "openai-official-sdk" -> openAiOfficialSdkReply(settings, conversation, project);
             case "ollama" -> ollamaReply(settings, conversation, project);
-            case "mistral-ai" -> mistralAiReply(settings, conversation, project);
-            case "google-genai", "google-gemini" -> googleGeminiReply(settings, conversation, project);
+            case "mistral", "mistral-ai" -> mistralAiReply(settings, conversation, project);
+            case "gemini", "google-genai", "google-gemini" -> googleGeminiReply(settings, conversation, project);
             case "anthropic" -> anthropicReply(settings, conversation, project);
             case "groq" -> groqReply(settings, conversation, project);
             case "deepseek" -> deepSeekReply(settings, conversation, project);

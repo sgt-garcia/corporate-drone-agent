@@ -83,7 +83,7 @@ export async function getAnthropicModels({ apiKey, useSavedKey }) {
 }
 
 export async function getGoogleGeminiModels({ apiKey, useSavedKey }) {
-  return request("/api/settings/google-gemini-models", {
+  return request("/api/settings/gemini-models", {
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify({ apiKey, useSavedKey })
