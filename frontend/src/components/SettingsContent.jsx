@@ -1,5 +1,4 @@
-import { EuFlagIcon } from "./EuFlagIcon.jsx";
-import { ProviderLabel } from "./ProviderLabel.jsx";
+import { ProviderLabel, providerOptionLabel } from "./ProviderLabel.jsx";
 import { SettingsScreen } from "./SettingsScreen.jsx";
 import {
   getAnthropicModels,
@@ -23,7 +22,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "OpenAI") {
     return (
       <SettingsScreen
-        title="OpenAI"
+        title={<ProviderLabel name="OpenAI" />}
+        titleLabel="OpenAI"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -73,7 +73,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "OpenAI (SDK)") {
     return (
       <SettingsScreen
-        title="OpenAI (SDK)"
+        title={<ProviderLabel name="OpenAI (SDK)" />}
+        titleLabel="OpenAI (SDK)"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -132,7 +133,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Azure OpenAI") {
     return (
       <SettingsScreen
-        title="Azure OpenAI"
+        title={<ProviderLabel name="Azure OpenAI" />}
+        titleLabel="Azure OpenAI"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -222,7 +224,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Ollama") {
     return (
       <SettingsScreen
-        title="Ollama"
+        title={<ProviderLabel name="Ollama" />}
+        titleLabel="Ollama"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -331,7 +334,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Gemini") {
     return (
       <SettingsScreen
-        title="Gemini"
+        title={<ProviderLabel name="Gemini" />}
+        titleLabel="Gemini"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -387,7 +391,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Groq") {
     return (
       <SettingsScreen
-        title="Groq"
+        title={<ProviderLabel name="Groq" />}
+        titleLabel="Groq"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -443,7 +448,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "DeepSeek") {
     return (
       <SettingsScreen
-        title="DeepSeek"
+        title={<ProviderLabel name="DeepSeek" />}
+        titleLabel="DeepSeek"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -499,7 +505,8 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
   if (activeSettingsItem === "Anthropic") {
     return (
       <SettingsScreen
-        title="Anthropic"
+        title={<ProviderLabel name="Anthropic" />}
+        titleLabel="Anthropic"
         subtitle="Settings"
         onReload={() => {
           setDraft(settings);
@@ -572,25 +579,21 @@ export function SettingsContent({ activeSettingsItem, onReload, onSave, settings
       </label>
       <label>
         Model provider
-        <span className="select-with-provider-icon">
-          {draft.aiModel === "mistral" && <EuFlagIcon className="select-provider-icon" />}
-          <select
-            className={draft.aiModel === "mistral" ? "has-provider-icon" : undefined}
-            value={draft.aiModel ?? "none"}
-            onChange={(event) => setDraft({ ...draft, aiModel: event.target.value })}
-          >
-            <option value="none">None</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="azure-openai">Azure OpenAI</option>
-            <option value="deepseek">DeepSeek</option>
-            <option value="gemini">Gemini</option>
-            <option value="groq">Groq</option>
-            <option value="mistral">Mistral</option>
-            <option value="ollama">Ollama</option>
-            <option value="openai">OpenAI</option>
-            <option value="openai-sdk">OpenAI (SDK)</option>
-          </select>
-        </span>
+        <select
+          value={draft.aiModel ?? "none"}
+          onChange={(event) => setDraft({ ...draft, aiModel: event.target.value })}
+        >
+          <option value="none">None</option>
+          <option value="anthropic">{providerOptionLabel("Anthropic")}</option>
+          <option value="azure-openai">{providerOptionLabel("Azure OpenAI")}</option>
+          <option value="deepseek">{providerOptionLabel("DeepSeek")}</option>
+          <option value="gemini">{providerOptionLabel("Gemini")}</option>
+          <option value="groq">{providerOptionLabel("Groq")}</option>
+          <option value="mistral">{providerOptionLabel("Mistral")}</option>
+          <option value="ollama">{providerOptionLabel("Ollama")}</option>
+          <option value="openai">{providerOptionLabel("OpenAI")}</option>
+          <option value="openai-sdk">{providerOptionLabel("OpenAI (SDK)")}</option>
+        </select>
       </label>
       <label>
         Custom instructions
