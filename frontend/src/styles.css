@@ -133,6 +133,21 @@ a {
   outline: none;
 }
 
+/* Keyboard focus: subtle ring on interactive controls (no resting change) */
+.project-btn:focus-visible,
+.conversation-btn:focus-visible,
+.tree-toggle:focus-visible,
+.tree-add:focus-visible,
+.settings-entry:focus-visible,
+.settings-nav-item:focus-visible,
+.support-link:focus-visible,
+.provider-card:focus-visible,
+.config-back:focus-visible,
+.iconbtn:focus-visible,
+.composer-send:focus-visible {
+  box-shadow: var(--ring-focus);
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -719,18 +734,14 @@ select.input {
   margin: 0 auto 26px;
   width: 100%;
 }
-.avatar-user,
-.avatar-agent {
+.avatar-user {
   width: 30px;
   height: 30px;
-  border-radius: 8px;
+  border-radius: 50%;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-.avatar-user {
-  border-radius: 50%;
   background: var(--coffee-500);
   color: #fff;
 }
@@ -751,10 +762,10 @@ select.input {
   color: var(--gray-800);
   white-space: pre-wrap;
 }
-.turn-text :first-child {
+.turn-text > :first-child {
   margin-top: 0;
 }
-.turn-text :last-child {
+.turn-text > :last-child {
   margin-bottom: 0;
 }
 .turn-text p,
@@ -816,7 +827,7 @@ select.input {
   text-align: center;
 }
 .empty-greeting .logomark {
-  margin-bottom: 18px;
+  margin: 0 auto 18px;
 }
 .empty-greeting h1 {
   margin: 0 0 8px;
@@ -957,7 +968,7 @@ select.input {
   max-width: 620px;
 }
 .settings-section.wide {
-  max-width: 880px;
+  max-width: 1040px;
 }
 .settings-intro h2 {
   margin: 0 0 4px;
