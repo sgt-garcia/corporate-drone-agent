@@ -179,13 +179,17 @@ export default function App() {
     };
   }, [menuOpen]);
 
-  // Focus and select the field when the rename dialog opens.
+  // Focus and select the field when the rename dialog opens. Keyed on the
+  // conversation id (not the whole `renaming` object) so it runs once on open
+  // and not on every keystroke — re-running select() each keystroke would
+  // re-highlight the field and let the next character overwrite it.
+  const renamingId = renaming?.id;
   useEffect(() => {
-    if (renaming && renameRef.current) {
+    if (renamingId && renameRef.current) {
       renameRef.current.focus();
       renameRef.current.select();
     }
-  }, [renaming]);
+  }, [renamingId]);
 
   async function loadInitialState() {
     try {
