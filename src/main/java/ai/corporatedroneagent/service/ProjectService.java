@@ -8,6 +8,7 @@ import ai.corporatedroneagent.model.Project;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.repository.ProjectRepository;
 import ai.corporatedroneagent.util.Strings;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -37,8 +38,12 @@ public class ProjectService {
 
     public synchronized List<ProjectDto> listProjects() {
         ensureDefaultData();
+        // Newest first. Projects created before timestamps existed have a null
+        // createdAt and sort last, then alphabetically as a stable tie-break.
         return projectRepository.findAll().stream()
-                .sorted(Comparator.comparing(Project::getName, String.CASE_INSENSITIVE_ORDER))
+                .sorted(Comparator
+                        .comparing(Project::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(Project::getName, String.CASE_INSENSITIVE_ORDER))
                 .map(this::toDto)
                 .toList();
     }
@@ -49,6 +54,7 @@ public class ProjectService {
         project.setName(Strings.defaultIfBlank(request.name(), "New Project"));
         project.setWorkingFolder(Strings.emptyIfNull(request.workingFolder()));
         project.setCustomInstructions(Strings.defaultIfBlank(request.customInstructions(), DEFAULT_PROJECT_INSTRUCTIONS));
+        project.setCreatedAt(Instant.now());
         projectRepository.save(project);
         ProjectDto dto = toDto(project);
         eventService.publish("projects-updated", listProjects());
@@ -102,6 +108,7 @@ public class ProjectService {
                 project.getName(),
                 project.getWorkingFolder(),
                 project.getCustomInstructions(),
+                project.getCreatedAt(),
                 conversations
         );
     }
@@ -124,6 +131,7 @@ public class ProjectService {
         project.setName(name);
         project.setWorkingFolder("");
         project.setCustomInstructions(DEFAULT_PROJECT_INSTRUCTIONS);
+        project.setCreatedAt(Instant.now());
 
         for (String conversationName : conversationNames) {
             Conversation conversation = new Conversation();

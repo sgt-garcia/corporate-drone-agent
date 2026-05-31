@@ -222,7 +222,7 @@ export default function App() {
       workingFolder: "",
       customInstructions: defaultProjectInstructions
     });
-    setProjects((currentProjects) => upsertById(currentProjects, project));
+    setProjects((currentProjects) => prependById(currentProjects, project));
     setActivePage("work");
     setActiveWorkItemId(project.id);
   }
