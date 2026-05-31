@@ -56,6 +56,8 @@ export function ConversationPanel({
 }
 
 function Turn({ message }) {
+  const timestamp = formatTimestamp(message.createdAt);
+
   if (message.role === "user") {
     return (
       <article className="turn turn--user">
@@ -65,6 +67,7 @@ function Turn({ message }) {
         <div className="turn-body">
           <div className="turn-author">You</div>
           <div className="turn-text">{message.content}</div>
+          {timestamp && <div className="turn-time">{timestamp}</div>}
         </div>
       </article>
     );
@@ -88,13 +91,35 @@ function Turn({ message }) {
             ))}
           </div>
         ) : (
-          <div className="turn-text">
-            <ReactMarkdown>{message.content}</ReactMarkdown>
-          </div>
+          <>
+            <div className="turn-text">
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            </div>
+            {timestamp && <div className="turn-time">{timestamp}</div>}
+          </>
         )}
       </div>
     </article>
   );
+}
+
+// ISO date + 24-hour time (e.g. "2026-05-31 09:00"), per the design's
+// metric/ISO convention. A single space separates the date and time.
+function formatTimestamp(createdAt) {
+  if (!createdAt) {
+    return "";
+  }
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const day = date.toLocaleDateString("en-CA");
+  const time = date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+  return `${day} ${time}`;
 }
 
 function EmptyGreeting({ projectName }) {

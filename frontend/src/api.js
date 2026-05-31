@@ -22,6 +22,10 @@ export async function saveProject(project) {
   });
 }
 
+export async function deleteProject(projectId) {
+  return requestNoContent(`/api/projects/${projectId}`, { method: "DELETE" });
+}
+
 export async function getProjectConversations(projectId) {
   return request(`/api/projects/${projectId}/conversations`);
 }
@@ -36,6 +40,20 @@ export async function createConversation(projectId, conversation) {
 
 export async function getConversation(conversationId) {
   return request(`/api/conversations/${conversationId}`);
+}
+
+export async function renameConversation(conversationId, name) {
+  return request(`/api/conversations/${conversationId}`, {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify({ name })
+  });
+}
+
+export async function deleteConversation(conversationId) {
+  return requestNoContent(`/api/conversations/${conversationId}`, {
+    method: "DELETE"
+  });
 }
 
 export async function sendConversationMessage(conversationId, content) {
@@ -131,4 +149,13 @@ async function request(path, options) {
   }
 
   return response.json();
+}
+
+async function requestNoContent(path, options) {
+  const response = await fetch(path, options);
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed: ${response.status}`);
+  }
 }

@@ -274,6 +274,13 @@ a {
 .btn-ghost:hover {
   background: var(--gray-100);
 }
+.btn-danger {
+  background: var(--danger-600);
+  color: #fff;
+}
+.btn-danger:hover {
+  background: var(--danger-700);
+}
 .btn:disabled,
 .btn[disabled] {
   opacity: 0.45;
@@ -598,12 +605,32 @@ select.input {
 .sidebar-footer {
   padding: 6px 8px 10px;
   border-top: 1px solid var(--border-divider);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sidebar-help {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background: transparent;
+  transition: background var(--dur-fast);
+}
+.sidebar-help:hover,
+.sidebar-help:focus-visible {
+  background: var(--gray-100);
+  outline: none;
 }
 .settings-entry {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
+  flex: 1;
   padding: 8px 10px;
   border: none;
   border-radius: var(--radius-md);
@@ -780,6 +807,12 @@ select.input {
 .turn-text a {
   color: var(--fg-link);
   font-weight: 500;
+}
+.turn-time {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-400);
 }
 .streaming-dots {
   display: flex;
@@ -1129,4 +1162,127 @@ select.input {
 .project-settings-head .provider-icon.lg {
   width: 40px;
   height: 40px;
+}
+
+/* ---- Danger zone ---- */
+.danger-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-color: var(--danger-500);
+}
+.danger-zone-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+.danger-zone-text {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--gray-500);
+}
+.danger-zone-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.danger-zone-prompt {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-700);
+}
+.danger-zone-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* =====================================================================
+   CONVERSATION HEADER MENU
+   ===================================================================== */
+.header-menu {
+  position: relative;
+}
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 168px;
+  background: var(--white);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 20;
+}
+.menuitem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-700);
+  transition: background var(--dur-fast);
+}
+.menuitem:hover {
+  background: var(--gray-100);
+}
+.menuitem-danger {
+  color: var(--danger-600);
+}
+.menuitem-danger:hover {
+  background: var(--danger-50);
+}
+
+/* =====================================================================
+   MODAL (rename dialog)
+   ===================================================================== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(20, 25, 34, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.modal {
+  width: min(420px, 100%);
+  background: var(--white);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: 24px;
+}
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--gray-900);
+  margin-bottom: 4px;
+}
+.modal-subtitle {
+  font-size: 13px;
+  color: var(--gray-500);
+  margin-bottom: 16px;
+}
+.modal form .input {
+  margin-bottom: 20px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }

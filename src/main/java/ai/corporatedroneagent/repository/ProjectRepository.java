@@ -50,6 +50,14 @@ public class ProjectRepository {
         return project;
     }
 
+    public synchronized boolean delete(UUID id) {
+        try {
+            return Files.deleteIfExists(filePath(id));
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Could not delete project " + id, exception);
+        }
+    }
+
     private Path filePath(UUID id) {
         return directory.resolve(id + ".json");
     }

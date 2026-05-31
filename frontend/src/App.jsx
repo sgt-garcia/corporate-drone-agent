@@ -1,11 +1,14 @@
 import "./styles.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createConversation,
   createProject,
+  deleteConversation as deleteConversationRequest,
+  deleteProject as deleteProjectRequest,
   getConversation,
   getProjects,
   getSettings,
+  renameConversation as renameConversationRequest,
   saveProject,
   saveSettings,
   sendConversationMessage
@@ -50,6 +53,17 @@ export default function App() {
   const [activeWorkItemId, setActiveWorkItemId] = useState(null);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState([]);
   const [statusText, setStatusText] = useState("Loading...");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(null);
+
+  // Latest committed projects, so delete handlers can compute a fallback
+  // selection without depending on a stale render-time closure.
+  const projectsRef = useRef(projects);
+  const renameRef = useRef(null);
+
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
 
   const activeWorkItem = useMemo(
     () => findWorkItem(projects, activeWorkItemId),
@@ -101,11 +115,19 @@ export default function App() {
           project.id === conversation.projectId
             ? {
                 ...project,
-                conversations: upsertById(project.conversations, conversation)
+                conversations: prependById(project.conversations, conversation)
               }
             : project
         )
       );
+    });
+    events.addEventListener("conversation-deleted", (event) => {
+      const conversation = JSON.parse(event.data);
+      removeConversationFromState(conversation.id);
+    });
+    events.addEventListener("project-deleted", (event) => {
+      const projectId = JSON.parse(event.data);
+      removeProjectFromState(projectId);
     });
     events.addEventListener("conversation-updated", (event) => {
       const conversation = JSON.parse(event.data);
@@ -135,6 +157,33 @@ export default function App() {
 
     return () => events.close();
   }, []);
+
+  // Close the conversation header menu on outside click or Escape.
+  useEffect(() => {
+    if (!menuOpen) {
+      return undefined;
+    }
+    const close = () => setMenuOpen(false);
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("click", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  // Focus and select the field when the rename dialog opens.
+  useEffect(() => {
+    if (renaming && renameRef.current) {
+      renameRef.current.focus();
+      renameRef.current.select();
+    }
+  }, [renaming]);
 
   async function loadInitialState() {
     try {
@@ -192,7 +241,7 @@ export default function App() {
         project.id === projectId
           ? {
               ...project,
-              conversations: upsertById(project.conversations, {
+              conversations: prependById(project.conversations, {
                 id: conversation.id,
                 projectId: conversation.projectId,
                 name: conversation.name
@@ -209,6 +258,106 @@ export default function App() {
   function selectWorkItem(id) {
     setActivePage("work");
     setActiveWorkItemId(id);
+  }
+
+  async function renameConversation(conversationId, name) {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return;
+    }
+    try {
+      // The conversation-updated event updates the sidebar and header title.
+      await renameConversationRequest(conversationId, trimmed);
+    } catch (error) {
+      setStatusText(error.message);
+    }
+  }
+
+  async function deleteConversation(conversationId) {
+    try {
+      await deleteConversationRequest(conversationId);
+      removeConversationFromState(conversationId);
+    } catch (error) {
+      setStatusText(error.message);
+    }
+  }
+
+  async function deleteProject(projectId) {
+    try {
+      await deleteProjectRequest(projectId);
+      removeProjectFromState(projectId);
+    } catch (error) {
+      setStatusText(error.message);
+    }
+  }
+
+  function removeConversationFromState(conversationId) {
+    setConversationsById((current) => {
+      if (!(conversationId in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[conversationId];
+      return next;
+    });
+    setProjects((currentProjects) =>
+      currentProjects.map((project) => ({
+        ...project,
+        conversations: project.conversations.filter((c) => c.id !== conversationId)
+      }))
+    );
+    setActiveWorkItemId((currentId) =>
+      currentId === conversationId
+        ? fallbackAfterConversationDelete(conversationId)
+        : currentId
+    );
+  }
+
+  function removeProjectFromState(projectId) {
+    const projectsNow = projectsRef.current;
+    const removed = projectsNow.find((project) => project.id === projectId);
+    const removedConversationIds = removed
+      ? removed.conversations.map((conversation) => conversation.id)
+      : [];
+
+    setConversationsById((current) => {
+      if (removedConversationIds.length === 0) {
+        return current;
+      }
+      const next = { ...current };
+      removedConversationIds.forEach((id) => delete next[id]);
+      return next;
+    });
+    setProjects((currentProjects) =>
+      currentProjects.filter((project) => project.id !== projectId)
+    );
+    setActiveWorkItemId((currentId) => {
+      const activeWasRemoved =
+        currentId === projectId || removedConversationIds.includes(currentId);
+      if (!activeWasRemoved) {
+        return currentId;
+      }
+      const remainingProjects = projectsNow.filter((project) => project.id !== projectId);
+      const firstConversation = remainingProjects.flatMap((project) => project.conversations)[0];
+      return firstConversation?.id ?? remainingProjects[0]?.id ?? null;
+    });
+  }
+
+  function fallbackAfterConversationDelete(conversationId) {
+    const projectsNow = projectsRef.current;
+    const parent = projectsNow.find((project) =>
+      project.conversations.some((conversation) => conversation.id === conversationId)
+    );
+    if (parent) {
+      const sibling = parent.conversations.find(
+        (conversation) => conversation.id !== conversationId
+      );
+      return sibling?.id ?? parent.id;
+    }
+    const anyConversation = projectsNow
+      .flatMap((project) => project.conversations)
+      .find((conversation) => conversation.id !== conversationId);
+    return anyConversation?.id ?? projectsNow[0]?.id ?? null;
   }
 
   function toggleProject(projectId) {
@@ -311,9 +460,54 @@ export default function App() {
               )}
               <span className="breadcrumb-title">{headerTitle}</span>
             </div>
-            <button className="iconbtn" type="button" aria-label="More actions">
-              <Icon name="more-horizontal" size={18} color="var(--gray-500)" />
-            </button>
+            {activeWorkItem.type === "conversation" && (
+              <div
+                className="header-menu"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  className="iconbtn"
+                  type="button"
+                  aria-label="Conversation actions"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  onClick={() => setMenuOpen((open) => !open)}
+                >
+                  <Icon name="more-horizontal" size={18} color="var(--gray-500)" />
+                </button>
+                {menuOpen && (
+                  <div className="menu" role="menu">
+                    <button
+                      className="menuitem"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setRenaming({
+                          id: activeWorkItem.item.id,
+                          name: activeWorkItem.name
+                        });
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <Icon name="pencil" size={16} color="var(--gray-500)" />
+                      Rename
+                    </button>
+                    <button
+                      className="menuitem menuitem-danger"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        deleteConversation(activeWorkItem.item.id);
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <Icon name="trash" size={16} color="var(--danger-600)" />
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </header>
 
           {statusText && <div className="app-status">{statusText}</div>}
@@ -324,9 +518,62 @@ export default function App() {
             draftsByConversationId={draftsByConversationId}
             onDraftChange={updateDraft}
             onProjectSave={updateProject}
+            onProjectDelete={deleteProject}
             onSend={sendMessage}
           />
         </main>
+      )}
+
+      {renaming && (
+        <div
+          className="modal-overlay"
+          onClick={() => setRenaming(null)}
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rename conversation"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-title">Rename conversation</div>
+            <div className="modal-subtitle">
+              Give this conversation a clear, descriptive name.
+            </div>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                renameConversation(renaming.id, renaming.name);
+                setRenaming(null);
+              }}
+            >
+              <input
+                ref={renameRef}
+                className="input"
+                value={renaming.name}
+                onChange={(event) =>
+                  setRenaming((current) => ({ ...current, name: event.target.value }))
+                }
+              />
+              <div className="modal-actions">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  type="button"
+                  onClick={() => setRenaming(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  type="submit"
+                  disabled={!renaming.name.trim()}
+                >
+                  Save name
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -341,4 +588,10 @@ function upsertById(items, nextItem) {
   return items.some((item) => item.id === nextItem.id)
     ? items.map((item) => (item.id === nextItem.id ? nextItem : item))
     : [...items, nextItem];
+}
+
+function prependById(items, nextItem) {
+  return items.some((item) => item.id === nextItem.id)
+    ? items.map((item) => (item.id === nextItem.id ? nextItem : item))
+    : [nextItem, ...items];
 }

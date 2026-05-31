@@ -7,6 +7,7 @@ export function WorkContent({
   draftsByConversationId,
   onDraftChange,
   onProjectSave,
+  onProjectDelete,
   onSend
 }) {
   if (activeItem.type === "empty") {
@@ -25,6 +26,7 @@ export function WorkContent({
       <ProjectSettingsPanel
         key={activeItem.item.id}
         onSave={onProjectSave}
+        onDelete={onProjectDelete}
         project={activeItem.item}
       />
     );

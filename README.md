@@ -176,8 +176,10 @@ The current backend exposes:
 - `PUT /api/projects/{projectId}`
 - `GET /api/projects/{projectId}/conversations`
 - `POST /api/projects/{projectId}/conversations`
+- `DELETE /api/projects/{projectId}`
 - `GET /api/conversations/{conversationId}`
 - `PUT /api/conversations/{conversationId}`
+- `DELETE /api/conversations/{conversationId}`
 - `POST /api/conversations/{conversationId}/messages`
 - `GET /api/settings`
 - `PUT /api/settings`
@@ -191,9 +193,10 @@ The current backend exposes:
 - `POST /api/settings/deepseek-models`
 - `GET /api/events`
 
-`/api/events` is an SSE stream used by the frontend for project, conversation,
-message, and settings updates. The settings model/deployment endpoints are used
-by the frontend to populate provider model selectors.
+`/api/events` is an SSE stream used by the frontend for project, conversation
+(including creation and deletion), message, and settings updates. The settings
+model/deployment endpoints are used by the frontend to populate provider model
+selectors.
 
 ## Tests
 

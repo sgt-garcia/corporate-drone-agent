@@ -60,6 +60,16 @@ export function Sidebar({
           />
           Settings
         </button>
+        <a
+          className="sidebar-help"
+          href="https://www.corporatedroneagent.ai"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Help"
+          aria-label="Help"
+        >
+          <Icon name="help-circle" size={17} color="var(--gray-500)" />
+        </a>
       </div>
     </aside>
   );

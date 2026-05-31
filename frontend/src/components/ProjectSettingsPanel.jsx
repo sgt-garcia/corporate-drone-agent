@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon.jsx";
 
-export function ProjectSettingsPanel({ onSave, project }) {
+export function ProjectSettingsPanel({ onSave, onDelete, project }) {
   const [draft, setDraft] = useState(project);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     setDraft(project);
+    setConfirmingDelete(false);
   }, [project]);
 
   return (
@@ -69,6 +71,49 @@ export function ProjectSettingsPanel({ onSave, project }) {
           <button className="btn btn-primary" type="button" onClick={() => onSave(draft)}>
             <Icon name="check" size={16} color="#fff" /> Save changes
           </button>
+        </div>
+
+        <div className="ds-card danger-zone">
+          <div>
+            <h3 className="danger-zone-title">Delete project</h3>
+            <p className="danger-zone-text">
+              Permanently removes this project and all of its conversations. This
+              can&rsquo;t be undone.
+            </p>
+          </div>
+          {confirmingDelete ? (
+            <div className="danger-zone-confirm">
+              <span className="danger-zone-prompt">
+                Delete &ldquo;{draft.name}&rdquo; and everything in it?
+              </span>
+              <div className="danger-zone-actions">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-danger btn-sm"
+                  type="button"
+                  onClick={() => onDelete(draft.id)}
+                >
+                  <Icon name="trash" size={16} color="#fff" /> Yes, delete
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <button
+                className="btn btn-danger btn-sm"
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                <Icon name="trash" size={16} color="#fff" /> Delete project
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

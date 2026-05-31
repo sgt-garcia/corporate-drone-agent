@@ -146,7 +146,7 @@ function providerState(provider, settings) {
 
 export function Settings({ onClose, settings, onSave }) {
   const [draft, setDraft] = useState(settings);
-  const [section, setSection] = useState("providers");
+  const [section, setSection] = useState("general");
   const [openProviderId, setOpenProviderId] = useState(null);
 
   useEffect(() => {
@@ -175,7 +175,7 @@ export function Settings({ onClose, settings, onSave }) {
           Settings
         </span>
         <button className="btn btn-secondary btn-sm" type="button" onClick={onClose}>
-          <Icon name="arrow-left" size={14} color="var(--gray-700)" /> Back to workspace
+          <Icon name="arrow-left" size={14} color="var(--gray-700)" /> Back to work
         </button>
       </header>
 

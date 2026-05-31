@@ -6,12 +6,15 @@ import ai.corporatedroneagent.dto.MessageDto;
 import ai.corporatedroneagent.dto.SendMessageRequest;
 import ai.corporatedroneagent.service.ConversationService;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -35,6 +38,12 @@ public class ConversationController {
             @RequestBody ConversationRequest request
     ) {
         return conversationService.update(conversationId, request);
+    }
+
+    @DeleteMapping("/{conversationId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteConversation(@PathVariable UUID conversationId) {
+        conversationService.delete(conversationId);
     }
 
     @PostMapping("/{conversationId}/messages")

@@ -50,7 +50,8 @@ public class ConversationService {
         conversation.setName(Strings.defaultIfBlank(request.name(), "New Conversation"));
         conversationRepository.save(conversation);
 
-        project.getConversationIds().add(conversation.getId());
+        // New conversations surface at the top of the project, matching the design.
+        project.getConversationIds().add(0, conversation.getId());
         projectRepository.save(project);
 
         ConversationDto dto = toDto(conversation);
@@ -69,6 +70,23 @@ public class ConversationService {
         ConversationDto dto = toDto(conversation);
         eventService.publish("conversation-updated", dto);
         return dto;
+    }
+
+    public synchronized void delete(UUID conversationId) {
+        Conversation conversation = getConversation(conversationId);
+        UUID projectId = conversation.getProjectId();
+
+        projectRepository.findById(projectId).ifPresent(project -> {
+            project.getConversationIds().remove(conversationId);
+            projectRepository.save(project);
+        });
+        conversationRepository.delete(conversationId);
+
+        eventService.publish("conversation-deleted", new ConversationSummaryDto(
+                conversationId,
+                projectId,
+                conversation.getName()
+        ));
     }
 
     public synchronized MessageDto sendUserMessage(UUID conversationId, String content) {

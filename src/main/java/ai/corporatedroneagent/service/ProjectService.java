@@ -67,6 +67,16 @@ public class ProjectService {
         return dto;
     }
 
+    public synchronized void delete(UUID projectId) {
+        Project project = getProject(projectId);
+        for (UUID conversationId : project.getConversationIds()) {
+            conversationRepository.delete(conversationId);
+        }
+        projectRepository.delete(projectId);
+        eventService.publish("project-deleted", projectId.toString());
+        eventService.publish("projects-updated", listProjects());
+    }
+
     public synchronized List<ConversationSummaryDto> listConversations(UUID projectId) {
         Project project = getProject(projectId);
         return project.getConversationIds().stream()
