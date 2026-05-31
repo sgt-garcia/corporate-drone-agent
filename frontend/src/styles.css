@@ -94,7 +94,10 @@
   background: var(--bg-canvas);
   font-family: var(--font-sans);
   font-synthesis: none;
-  line-height: 1.5;
+  /* The design leaves line-height unset (normal) and relies on the type
+     scale's explicit line-heights for prose; matching it keeps row heights
+     and the sidebar's vertical rhythm tight. */
+  line-height: normal;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
