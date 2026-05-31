@@ -134,7 +134,7 @@ function providerState(provider, settings) {
   }
   if (provider.kind === "endpoint") {
     return {
-      connected: Boolean(config.apiKeyConfigured),
+      connected: Boolean(config.apiKeyConfigured) && Boolean(config.endpoint),
       model: config.deploymentName ?? ""
     };
   }
@@ -445,11 +445,12 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
           }
           onClear={() => updateProviderConfig(settingsKey, clearedApiKey())}
         />
-        <Field
-          label="Deployment"
-          hint="Pick a deployment, or type its name below if the list can’t load."
-        >
+        {/* Two controls (select + text), so this is a group, not a single
+            label. Each control carries its own aria-label. */}
+        <div className="field" role="group" aria-label="Deployment">
+          <span className="field-label">Deployment</span>
           <ProviderModelSelect
+            ariaLabel="Deployment"
             errorLabel="Unable to load Azure OpenAI deployments."
             loadingLabel="Loading Azure OpenAI deployments…"
             loadModels={loadAzureDeployments}
@@ -464,6 +465,7 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
           <input
             className="input"
             type="text"
+            aria-label="Deployment name"
             placeholder="Deployment name"
             value={config.deploymentName ?? ""}
             onChange={(event) =>
@@ -472,7 +474,10 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
               })
             }
           />
-        </Field>
+          <span className="field-hint">
+            Pick a deployment, or type its name below if the list can’t load.
+          </span>
+        </div>
       </>
     );
   }
@@ -490,11 +495,9 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
         }
         onClear={() => updateProviderConfig(settingsKey, clearedApiKey())}
       />
-      <Field
-        label="Model"
-        hint="Connect the provider to load available models."
-      >
+      <Field label="Model">
         <ProviderModelSelect
+          idleHint="Connect the provider to load available models."
           errorLabel={`Unable to load ${provider.name} models.`}
           loadingLabel={`Loading ${provider.name} models…`}
           loadModels={provider.loadModels}
@@ -586,22 +589,24 @@ function ApiKeyField({ label, placeholder, config, onChange, onClear }) {
   const hasSavedKey = config?.apiKeyConfigured && !config?.clearApiKey;
   const lastFour = config?.apiKeyLastFour ? ` ending ${config.apiKeyLastFour}` : "";
 
+  // The saved-key row contains a Clear <button>, which must not live inside the
+  // <label>. The label wraps only the input; the row and hints are siblings.
   return (
-    <Field
-      label={label}
-      hint={hasSavedKey ? null : "Stored encrypted on this device — never synced."}
-    >
-      <span className="input-icon">
-        <Icon name="key" size={16} />
-        <input
-          className="input"
-          type="password"
-          placeholder={hasSavedKey ? `Saved key${lastFour}` : placeholder}
-          value={config?.apiKey ?? ""}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </span>
-      {hasSavedKey && (
+    <div className="field">
+      <label className="field">
+        <span className="field-label">{label}</span>
+        <span className="input-icon">
+          <Icon name="key" size={16} />
+          <input
+            className="input"
+            type="password"
+            placeholder={hasSavedKey ? `Saved key${lastFour}` : placeholder}
+            value={config?.apiKey ?? ""}
+            onChange={(event) => onChange(event.target.value)}
+          />
+        </span>
+      </label>
+      {hasSavedKey ? (
         <span className="saved-key-row">
           <span className="saved-key-text">
             <Icon name="circle-check" size={13} color="var(--success-600)" />
@@ -611,15 +616,21 @@ function ApiKeyField({ label, placeholder, config, onChange, onClear }) {
             Clear
           </button>
         </span>
+      ) : (
+        <span className="field-hint">
+          Stored encrypted on this device — never synced.
+        </span>
       )}
       {config?.clearApiKey && (
         <span className="field-hint">Key will be cleared when you save.</span>
       )}
-    </Field>
+    </div>
   );
 }
 
 function ProviderModelSelect({
+  ariaLabel,
+  idleHint,
   errorLabel,
   loadingLabel,
   loadModels,
@@ -687,6 +698,7 @@ function ProviderModelSelect({
     <>
       <select
         className="input"
+        aria-label={ariaLabel}
         disabled={options.length === 0}
         value={selectedValue}
         onChange={(event) => onChange(event.target.value)}
@@ -698,6 +710,9 @@ function ProviderModelSelect({
           </option>
         ))}
       </select>
+      {status === "idle" && idleHint && (
+        <p className="model-select-status">{idleHint}</p>
+      )}
       {message && <p className="model-select-status">{message}</p>}
     </>
   );
