@@ -82,14 +82,14 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
             applyWindowBounds(page);
             page.navigate(homeUrl);
             launched = true;
-            log.info("Opened Corporate Drone Agent in browser at {}", homeUrl);
+            log.info("Opened Corporate Drone's Agent in browser at {}", homeUrl);
             waitForBrowserClose(browserClosed);
         } catch (Exception ex) {
-            log.error("Could not launch browser for Corporate Drone Agent. The app is still available at {}.", homeUrl, ex);
+            log.error("Could not launch browser for Corporate Drone's Agent. The app is still available at {}.", homeUrl, ex);
         } finally {
             closePlaywright();
             if (launched && properties.isTerminateOnClose() && !stopping.get()) {
-                log.info("Browser closed; terminating Corporate Drone Agent.");
+                log.info("Browser closed; terminating Corporate Drone's Agent.");
                 applicationTerminator.terminate(applicationContext);
             }
         }

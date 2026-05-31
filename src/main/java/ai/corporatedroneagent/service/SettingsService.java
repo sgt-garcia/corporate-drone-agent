@@ -42,7 +42,7 @@ public class SettingsService {
         migratePlaintextSecrets(current);
         settingsSecretsService.saveSubmittedSecrets(settings);
 
-        current.setAgentName(Strings.defaultIfBlank(settings.getAgentName(), "Corporate Drone Agent"));
+        current.setAgentName(Strings.defaultIfBlank(settings.getAgentName(), "Corporate Drone's Agent"));
         current.setAiModel(Strings.defaultIfBlank(settings.getAiModel(), "none"));
         current.setCustomInstructions(Strings.emptyIfNull(settings.getCustomInstructions()));
         current.setOpenAi(settings.getOpenAi());

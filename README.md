@@ -1,6 +1,6 @@
-# Corporate Drone Agent
+# Corporate Drone's Agent
 
-Corporate Drone Agent is a local-first personal AI assistant for corporate work.
+Corporate Drone's Agent is a local-first personal AI assistant for corporate work.
 It runs on your machine, stores its data locally, and lets you configure the LLM
 provider you want to use for chat.
 

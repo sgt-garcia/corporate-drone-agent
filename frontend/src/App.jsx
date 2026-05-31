@@ -20,7 +20,7 @@ const defaultProjectInstructions =
   "Use this project context when answering questions about planning, decisions, and follow-up work.";
 
 const emptySettings = {
-  agentName: "Corporate Drone Agent",
+  agentName: "Corporate Drone's Agent",
   aiModel: "none",
   customInstructions:
     "Answer with concise, practical guidance using available local project context first.",

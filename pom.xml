@@ -14,7 +14,7 @@
     <groupId>ai.corporatedroneagent</groupId>
     <artifactId>corporate-drone-agent</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>Corporate Drone Agent</name>
+    <name>Corporate Drone's Agent</name>
     <description>Local-first AI agent for office workers</description>
 
     <properties>

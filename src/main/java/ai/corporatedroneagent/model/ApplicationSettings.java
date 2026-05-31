@@ -2,7 +2,7 @@ package ai.corporatedroneagent.model;
 
 public class ApplicationSettings {
 
-    private String agentName = "Corporate Drone Agent";
+    private String agentName = "Corporate Drone's Agent";
     private String aiModel = "none";
     private String customInstructions = "Answer with concise, practical guidance using available local project context first.";
     private OpenAiSettings openAi = new OpenAiSettings();
