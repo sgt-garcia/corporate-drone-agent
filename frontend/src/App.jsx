@@ -126,8 +126,8 @@ export default function App() {
       removeConversationFromState(conversation.id);
     });
     events.addEventListener("project-deleted", (event) => {
-      const projectId = JSON.parse(event.data);
-      removeProjectFromState(projectId);
+      const { id } = JSON.parse(event.data);
+      removeProjectFromState(id);
     });
     events.addEventListener("conversation-updated", (event) => {
       const conversation = JSON.parse(event.data);

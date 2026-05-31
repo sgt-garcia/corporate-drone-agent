@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import ai.corporatedroneagent.config.StorageProperties;
 import ai.corporatedroneagent.dto.ConversationDto;
 import ai.corporatedroneagent.dto.ConversationRequest;
+import ai.corporatedroneagent.dto.ProjectDeletedDto;
 import ai.corporatedroneagent.job.MessagePushJob;
 import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Project;
@@ -83,7 +84,7 @@ class WorkspaceDeletionServiceTests {
         assertThat(projectRepository.findById(project.getId())).isEmpty();
         assertThat(conversationRepository.findById(one.getId())).isEmpty();
         assertThat(conversationRepository.findById(two.getId())).isEmpty();
-        verify(eventService).publish(eq("project-deleted"), eq(project.getId().toString()));
+        verify(eventService).publish(eq("project-deleted"), eq(new ProjectDeletedDto(project.getId())));
         verify(eventService).publish(eq("projects-updated"), any());
     }
 

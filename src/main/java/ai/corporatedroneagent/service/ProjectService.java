@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.dto.ConversationSummaryDto;
+import ai.corporatedroneagent.dto.ProjectDeletedDto;
 import ai.corporatedroneagent.dto.ProjectDto;
 import ai.corporatedroneagent.dto.ProjectRequest;
 import ai.corporatedroneagent.model.Conversation;
@@ -79,7 +80,7 @@ public class ProjectService {
             conversationRepository.delete(conversationId);
         }
         projectRepository.delete(projectId);
-        eventService.publish("project-deleted", projectId.toString());
+        eventService.publish("project-deleted", new ProjectDeletedDto(projectId));
         eventService.publish("projects-updated", listProjects());
     }
 
