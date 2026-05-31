@@ -485,18 +485,8 @@ select.input {
   gap: 2px;
   padding: 0 6px 0 4px;
 }
-.project-head .tree-add {
-  opacity: 0;
-}
-.project-group:hover .tree-add,
-.project-head:focus-within .tree-add {
-  opacity: 0.6;
-}
-.project-group:hover .tree-add:hover,
-.project-head .tree-add:focus-visible {
-  opacity: 1;
-  background: var(--gray-150);
-}
+/* Per-project "+" sits in a faint, always-visible column aligned with the
+   Projects-header "+", brightening on hover (base .tree-add styles). */
 .tree-toggle {
   width: 20px;
   height: 26px;
