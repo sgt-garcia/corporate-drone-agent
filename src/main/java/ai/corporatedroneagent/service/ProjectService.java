@@ -4,12 +4,10 @@ import ai.corporatedroneagent.dto.ConversationSummaryDto;
 import ai.corporatedroneagent.dto.ProjectDto;
 import ai.corporatedroneagent.dto.ProjectRequest;
 import ai.corporatedroneagent.model.Conversation;
-import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.model.Project;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.repository.ProjectRepository;
 import ai.corporatedroneagent.util.Strings;
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -122,12 +120,6 @@ public class ProjectService {
             conversation.setId(UUID.randomUUID());
             conversation.setProjectId(project.getId());
             conversation.setName(conversationName);
-            conversation.getMessages().add(new Message(
-                    UUID.randomUUID(),
-                    "assistant",
-                    "Ready for **" + conversationName + "** in " + name + ".",
-                    Instant.now()
-            ));
             conversationRepository.save(conversation);
             project.getConversationIds().add(conversation.getId());
         }
