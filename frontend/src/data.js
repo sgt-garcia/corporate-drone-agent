@@ -1,34 +1,3 @@
-export const initialProjects = [
-  {
-    id: "new-project",
-    name: "New Project",
-    conversations: [
-      { id: "new-conversation", name: "New Conversation" }
-    ]
-  }
-];
-
-export const pages = {
-  work: {
-    title: "Work"
-  },
-  settings: {
-    title: "Settings",
-    menu: [
-      "General",
-      "Anthropic",
-      "Azure OpenAI",
-      "DeepSeek",
-      "Gemini",
-      "Groq",
-      "Mistral",
-      "Ollama",
-      "OpenAI",
-      "OpenAI (SDK)"
-    ]
-  }
-};
-
 export function findWorkItem(projects, activeId) {
   if (projects.length === 0) {
     return {
@@ -63,25 +32,4 @@ export function findWorkItem(projects, activeId) {
     name: projects[0]?.name ?? "Work",
     type: "project"
   };
-}
-
-export function createInitialMessages(projects) {
-  return projects.reduce((messages, project) => {
-    project.conversations.forEach((conversation) => {
-      messages[conversation.id] = createConversationMessages(conversation, project.name);
-    });
-
-    return messages;
-  }, {});
-}
-
-export function createConversationMessages(conversation, projectName) {
-  return [
-    {
-      id: `assistant-seed-${conversation.id}`,
-      content: `Ready for **${conversation.name}** in ${projectName}.`,
-      createdAt: new Date().toISOString(),
-      role: "assistant"
-    }
-  ];
 }

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
+import { Icon } from "./Icon.jsx";
+import { Logomark } from "./Logomark.jsx";
 
 export function ConversationPanel({
   conversation,
@@ -17,77 +19,153 @@ export function ConversationPanel({
     }
   }, [conversation.id, messages]);
 
+  const isEmpty = messages.length === 0;
+
   function submitMessage() {
     onSend(value);
   }
 
-  function handleKeyDown(event) {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      submitMessage();
-    }
-  }
-
   return (
-    <section className="conversation-page" aria-label={`${conversation.name} conversation`}>
-      <div className="message-history" aria-label="Message history" ref={historyRef}>
-        {messages.map((message) => (
-          <article className={`chat-message ${message.role}`} key={message.id}>
-            <div className="message-author">
-              <span>{formatMessageRole(message.role)}</span>
-              <time dateTime={message.createdAt}>
-                {formatMessageTimestamp(message.createdAt)}
-              </time>
-            </div>
-            <div className="message-bubble">
-              {message.role === "status" ? (
-                <span>{message.content}</span>
-              ) : (
-                <ReactMarkdown>{message.content}</ReactMarkdown>
-              )}
-            </div>
-          </article>
-        ))}
+    <section className="conversation" aria-label={`${conversation.name} conversation`}>
+      <div
+        className={isEmpty ? "thread is-empty" : "thread"}
+        aria-label="Message history"
+        ref={historyRef}
+      >
+        {isEmpty ? (
+          <EmptyGreeting projectName={project?.name} />
+        ) : (
+          messages.map((message) => <Turn key={message.id} message={message} />)
+        )}
       </div>
 
-      <form
-        className="message-composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submitMessage();
-        }}
-      >
-        <textarea
-          aria-label={`Message ${conversation.name}`}
-          onChange={(event) => onDraftChange(event.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={`Message ${project.name}`}
-          rows="3"
+      <div className="composer-wrap">
+        <Composer
+          placeholder={`Message ${project?.name ?? "your agent"}…`}
           value={value}
+          onChange={onDraftChange}
+          onSend={submitMessage}
         />
-        <button type="submit" disabled={!value.trim()}>
-          Send
-        </button>
-      </form>
+      </div>
     </section>
   );
 }
 
-function formatMessageRole(role) {
-  if (role === "user") {
-    return "You";
+function Turn({ message }) {
+  if (message.role === "user") {
+    return (
+      <article className="turn">
+        <span className="avatar-user" aria-hidden="true">
+          <Icon name="user" size={16} color="#fff" />
+        </span>
+        <div className="turn-body">
+          <div className="turn-author">You</div>
+          <div className="turn-text">{message.content}</div>
+        </div>
+      </article>
+    );
   }
 
-  if (role === "status") {
-    return "Status";
-  }
+  const isStatus = message.role === "status";
 
-  return "Assistant";
+  return (
+    <article className="turn">
+      <Logomark size={30} />
+      <div className="turn-body">
+        <div className="turn-author">Agent</div>
+        {isStatus ? (
+          <div className="turn-status">
+            <span className="streaming-dots" style={{ marginBottom: 6 }}>
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="cda-pulse"
+                  style={{ animationDelay: `${i * 0.18}s` }}
+                />
+              ))}
+            </span>
+            {message.content}
+          </div>
+        ) : (
+          <div className="turn-text">
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          </div>
+        )}
+      </div>
+    </article>
+  );
 }
 
-function formatMessageTimestamp(value) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(value));
+function EmptyGreeting({ projectName }) {
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  return (
+    <div className="empty-greeting">
+      <Logomark size={46} radius={11} className="logomark" />
+      <h1 className="ds-h1">{greeting}.</h1>
+      <p className="ds-body-lg">
+        {projectName ? (
+          <>
+            Working in <span className="project-emphasis">{projectName}</span>.{" "}
+          </>
+        ) : null}
+        Ask me any question.
+      </p>
+    </div>
+  );
+}
+
+function Composer({ placeholder, value, onChange, onSend }) {
+  const ref = useRef(null);
+  const canSend = Boolean(value.trim());
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.style.height = "auto";
+      ref.current.style.height = `${Math.min(ref.current.scrollHeight, 160)}px`;
+    }
+  }, [value]);
+
+  function handleKeyDown(event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      onSend();
+    }
+  }
+
+  return (
+    <div className="composer">
+      <button
+        className="composer-attach"
+        type="button"
+        disabled
+        aria-disabled="true"
+        aria-label="Attach (unavailable)"
+        tabIndex={-1}
+      >
+        <Icon name="paperclip" size={18} color="var(--gray-500)" />
+      </button>
+      <textarea
+        ref={ref}
+        className="composer-input"
+        rows={1}
+        aria-label={placeholder}
+        placeholder={placeholder}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+      <button
+        className={canSend ? "composer-send active" : "composer-send"}
+        type="button"
+        disabled={!canSend}
+        aria-label="Send message"
+        onClick={onSend}
+      >
+        <Icon name="arrow-up" size={19} color="#fff" strokeWidth={2.25} />
+      </button>
+    </div>
+  );
 }

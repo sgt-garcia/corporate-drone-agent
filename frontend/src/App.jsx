@@ -10,12 +10,11 @@ import {
   saveSettings,
   sendConversationMessage
 } from "./api.js";
-import { AddButton } from "./components/IconButtons.jsx";
-import { ProviderLabel } from "./components/ProviderLabel.jsx";
-import { SettingsContent } from "./components/SettingsContent.jsx";
+import { Icon } from "./components/Icon.jsx";
+import { Settings } from "./components/Settings.jsx";
+import { Sidebar } from "./components/Sidebar.jsx";
 import { WorkContent } from "./components/WorkContent.jsx";
-import { WorkMenu } from "./components/WorkMenu.jsx";
-import { findWorkItem, pages } from "./data.js";
+import { findWorkItem } from "./data.js";
 
 const defaultProjectInstructions =
   "Use this project context when answering questions about planning, decisions, and follow-up work.";
@@ -25,18 +24,8 @@ const emptySettings = {
   aiModel: "none",
   customInstructions:
     "Answer with concise, practical guidance using available local project context first.",
-  openAi: {
-    apiKey: "",
-    apiKeyConfigured: false,
-    apiKeyLastFour: "",
-    model: ""
-  },
-  openAiSdk: {
-    apiKey: "",
-    apiKeyConfigured: false,
-    apiKeyLastFour: "",
-    model: ""
-  },
+  openAi: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
+  openAiSdk: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
   azureOpenAi: {
     endpoint: "",
     apiKey: "",
@@ -44,40 +33,12 @@ const emptySettings = {
     apiKeyLastFour: "",
     deploymentName: ""
   },
-  ollama: {
-    baseUrl: "http://localhost:11434",
-    model: ""
-  },
-  mistral: {
-    apiKey: "",
-    apiKeyConfigured: false,
-    apiKeyLastFour: "",
-    model: ""
-  },
-  gemini: {
-    apiKey: "",
-    apiKeyConfigured: false,
-    apiKeyLastFour: "",
-    model: ""
-  },
-  anthropic: {
-    apiKey: "",
-    apiKeyConfigured: false,
-    apiKeyLastFour: "",
-    model: ""
-  },
-  groq: {
-    apiKey: "",
-    apiKeyConfigured: false,
-    apiKeyLastFour: "",
-    model: ""
-  },
-  deepSeek: {
-    apiKey: "",
-    apiKeyConfigured: false,
-    apiKeyLastFour: "",
-    model: ""
-  }
+  ollama: { baseUrl: "http://localhost:11434", model: "" },
+  mistral: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
+  gemini: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
+  anthropic: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
+  groq: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
+  deepSeek: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" }
 };
 
 export default function App() {
@@ -88,24 +49,21 @@ export default function App() {
   const [activePage, setActivePage] = useState("work");
   const [activeWorkItemId, setActiveWorkItemId] = useState(null);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState([]);
-  const [activeSettingsItem, setActiveSettingsItem] = useState(pages.settings.menu[0]);
   const [statusText, setStatusText] = useState("Loading...");
 
-  const page = pages[activePage];
   const activeWorkItem = useMemo(
     () => findWorkItem(projects, activeWorkItemId),
     [activeWorkItemId, projects]
   );
-  const activeMenuItem =
-    activePage === "work" ? activeWorkItem.name : activeSettingsItem;
-  const pageContext =
-    activePage === "work"
-      ? activeWorkItem.type === "project"
+
+  const breadcrumbProject =
+    activeWorkItem.type === "conversation" ? activeWorkItem.project?.name : null;
+  const headerTitle =
+    activeWorkItem.type === "conversation"
+      ? activeWorkItem.name
+      : activeWorkItem.type === "project"
         ? "Project settings"
-        : "Conversation"
-      : page.title;
-  const showMainHeading =
-    activePage === "work" && activeWorkItem.type === "conversation";
+        : "Workspace";
 
   useEffect(() => {
     loadInitialState();
@@ -216,6 +174,7 @@ export default function App() {
       customInstructions: defaultProjectInstructions
     });
     setProjects((currentProjects) => upsertById(currentProjects, project));
+    setActivePage("work");
     setActiveWorkItemId(project.id);
   }
 
@@ -242,7 +201,14 @@ export default function App() {
           : project
       )
     );
+    setCollapsedProjectIds((currentIds) => currentIds.filter((id) => id !== projectId));
+    setActivePage("work");
     setActiveWorkItemId(conversation.id);
+  }
+
+  function selectWorkItem(id) {
+    setActivePage("work");
+    setActiveWorkItemId(id);
   }
 
   function toggleProject(projectId) {
@@ -315,100 +281,53 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="top-menu">
-        <div className="brand">CDA 0.0.1</div>
-        <nav className="primary-nav" aria-label="Primary">
-          <button
-            className={activePage === "work" ? "nav-button active" : "nav-button"}
-            type="button"
-            onClick={() => setActivePage("work")}
-          >
-            Work
-          </button>
-          <button
-            className={activePage === "settings" ? "nav-button active" : "nav-button"}
-            type="button"
-            onClick={() => setActivePage("settings")}
-          >
-            Settings
-          </button>
-          <a
-            className="nav-button"
-            href="https://www.corporatedroneagent.ai"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Support
-          </a>
-        </nav>
-      </header>
+      <Sidebar
+        projects={projects}
+        activeWorkItemId={activePage === "work" ? activeWorkItemId : null}
+        collapsedProjectIds={collapsedProjectIds}
+        onAddProject={addProject}
+        onAddConversation={addConversation}
+        onSelectWorkItem={selectWorkItem}
+        onToggleProject={toggleProject}
+        onOpenSettings={() => setActivePage("settings")}
+        settingsActive={activePage === "settings"}
+      />
 
-      <div className="workspace">
-        <aside className="side-menu" aria-label={`${page.title} menu`}>
-          {activePage === "work" ? (
-            <div className="side-menu-title action-row">
-              <span>{page.title}</span>
-              <div className="row-actions">
-                <AddButton label="Add project" onClick={addProject} />
-              </div>
+      {activePage === "settings" ? (
+        <Settings
+          onClose={() => setActivePage("work")}
+          settings={settings}
+          onSave={updateSettings}
+        />
+      ) : (
+        <main className="main">
+          <header className="main-header">
+            <div className="breadcrumb">
+              {breadcrumbProject && (
+                <>
+                  <span className="breadcrumb-project">{breadcrumbProject}</span>
+                  <Icon name="chevron-right" size={14} color="var(--gray-300)" />
+                </>
+              )}
+              <span className="breadcrumb-title">{headerTitle}</span>
             </div>
-          ) : (
-            <div className="side-menu-title">{page.title}</div>
-          )}
-          {activePage === "work" ? (
-            <WorkMenu
-              activeItemId={activeWorkItemId}
-              collapsedProjectIds={collapsedProjectIds}
-              onAddConversation={addConversation}
-              onSelect={setActiveWorkItemId}
-              onToggleProject={toggleProject}
-              projects={projects}
-            />
-          ) : (
-            <nav className="side-menu-items">
-              {page.menu.map((item) => (
-                <button
-                  className={item === activeMenuItem ? "side-button active" : "side-button"}
-                  key={item}
-                  type="button"
-                  onClick={() => setActiveSettingsItem(item)}
-                >
-                  <ProviderLabel name={item} />
-                </button>
-              ))}
-            </nav>
-          )}
-        </aside>
+            <button className="iconbtn" type="button" aria-label="More actions">
+              <Icon name="more-horizontal" size={18} color="var(--gray-500)" />
+            </button>
+          </header>
 
-        <main className="main-body">
           {statusText && <div className="app-status">{statusText}</div>}
 
-          {showMainHeading && (
-            <section className="page-heading" aria-labelledby="page-title">
-              <p>{pageContext}</p>
-              <h1 id="page-title">{activeMenuItem}</h1>
-            </section>
-          )}
-
-          {activePage === "work" ? (
-            <WorkContent
-              activeItem={activeWorkItem}
-              conversationsById={conversationsById}
-              draftsByConversationId={draftsByConversationId}
-              onDraftChange={updateDraft}
-              onProjectSave={updateProject}
-              onSend={sendMessage}
-            />
-          ) : (
-            <SettingsContent
-              activeSettingsItem={activeSettingsItem}
-              onReload={loadInitialState}
-              onSave={updateSettings}
-              settings={settings}
-            />
-          )}
+          <WorkContent
+            activeItem={activeWorkItem}
+            conversationsById={conversationsById}
+            draftsByConversationId={draftsByConversationId}
+            onDraftChange={updateDraft}
+            onProjectSave={updateProject}
+            onSend={sendMessage}
+          />
         </main>
-      </div>
+      )}
     </div>
   );
 }
