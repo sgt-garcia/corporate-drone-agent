@@ -60,15 +60,6 @@ export function Sidebar({
           />
           Settings
         </button>
-        <a
-          className="support-link"
-          href="https://www.corporatedroneagent.ai"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <Icon name="life-buoy" size={14} color="var(--gray-400)" />
-          Support
-        </a>
       </div>
     </aside>
   );
