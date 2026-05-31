@@ -57,8 +57,10 @@ packages the backend.
 
 ## AI providers
 
-Chat providers are configured in Settings. Select a provider in General, then
-fill in the matching provider panel.
+Chat providers are configured in Settings under **Models & providers**, which
+lists each provider as a connection-status card you open to enter its key (or
+endpoint/base URL) and pick a model. The default provider for new conversations
+is chosen in **General**.
 
 | Provider | Required settings | Model lookup |
 | --- | --- | --- |

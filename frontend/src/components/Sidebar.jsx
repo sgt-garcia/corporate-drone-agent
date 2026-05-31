@@ -50,6 +50,7 @@ export function Sidebar({
         <button
           className={settingsActive ? "settings-entry active" : "settings-entry"}
           type="button"
+          aria-current={settingsActive ? "page" : undefined}
           onClick={onOpenSettings}
         >
           <Icon

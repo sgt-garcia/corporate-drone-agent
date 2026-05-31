@@ -29,6 +29,7 @@ export function WorkMenu({
               <button
                 className={isActiveProject ? "project-btn active" : "project-btn"}
                 type="button"
+                aria-current={isActiveProject ? "page" : undefined}
                 onClick={() => onSelect(project.id)}
               >
                 <Icon
@@ -58,6 +59,7 @@ export function WorkMenu({
                       className={isActive ? "conversation-btn active" : "conversation-btn"}
                       type="button"
                       key={conversation.id}
+                      aria-current={isActive ? "page" : undefined}
                       onClick={() => onSelect(conversation.id)}
                     >
                       <span className="status-dot" aria-hidden="true" />

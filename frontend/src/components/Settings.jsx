@@ -188,6 +188,7 @@ export function Settings({ onClose, settings, onSave }) {
                 key={item.id}
                 className={active ? "settings-nav-item active" : "settings-nav-item"}
                 type="button"
+                aria-current={active ? "page" : undefined}
                 onClick={() => selectSection(item.id)}
               >
                 <Icon
