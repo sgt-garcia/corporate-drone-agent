@@ -20,9 +20,10 @@ export function ConversationPanel({
     }
   }, [conversation.id, messages]);
 
-  // Only greet once the conversation has actually loaded; while it is still
-  // being fetched, show a blank thread rather than flashing the empty state.
-  const isEmpty = isLoaded && messages.length === 0;
+  // Show the design's greeting until the conversation has actually started —
+  // i.e. until the user has sent a message. Gated on isLoaded so the greeting
+  // never flashes while messages are still being fetched.
+  const isEmpty = isLoaded && !messages.some((message) => message.role === "user");
 
   function submitMessage() {
     onSend(value);

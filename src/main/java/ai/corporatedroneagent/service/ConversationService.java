@@ -48,12 +48,6 @@ public class ConversationService {
         conversation.setId(UUID.randomUUID());
         conversation.setProjectId(projectId);
         conversation.setName(Strings.defaultIfBlank(request.name(), "New Conversation"));
-        conversation.getMessages().add(new Message(
-                UUID.randomUUID(),
-                "assistant",
-                "Ready for **" + conversation.getName() + "** in " + project.getName() + ".",
-                Instant.now()
-        ));
         conversationRepository.save(conversation);
 
         project.getConversationIds().add(conversation.getId());
