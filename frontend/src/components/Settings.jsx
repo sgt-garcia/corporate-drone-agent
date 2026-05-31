@@ -666,7 +666,9 @@ function ProviderModelSelect({
           }
           setModels([]);
           setStatus("error");
-          setMessage(error.message || errorLabel);
+          // Surface a friendly label, not the raw backend error body.
+          console.error("Model lookup failed:", error);
+          setMessage(errorLabel);
         }
       },
       lookupValue ? 500 : 0
