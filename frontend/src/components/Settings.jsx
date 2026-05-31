@@ -111,6 +111,22 @@ const NAV = [
   { id: "providers", label: "Models & providers", icon: "cpu" }
 ];
 
+// Stable module-level loaders. ProviderModelSelect keeps `loadModels` in its
+// effect deps, so these must NOT be inline closures or the effect re-runs every
+// render and polls the model endpoint in a loop. Varying values (Ollama base
+// URL, Azure endpoint) are threaded through the `lookupValue`/`provider` props.
+function loadOllamaModels({ lookupValue }) {
+  return getOllamaModels({ baseUrl: lookupValue });
+}
+
+function loadAzureDeployments({ lookupValue, provider, useSavedKey }) {
+  return getAzureOpenAiDeployments({
+    apiKey: lookupValue,
+    endpoint: provider,
+    useSavedKey
+  });
+}
+
 function providerState(provider, settings) {
   const config = settings?.[provider.settingsKey] ?? {};
   if (provider.kind === "local") {
@@ -196,6 +212,7 @@ export function Settings({ onClose, settings, onSave }) {
           {section === "providers" &&
             (openProvider ? (
               <ProviderConfig
+                key={openProvider.id}
                 provider={openProvider}
                 draft={draft}
                 updateProviderConfig={updateProviderConfig}
@@ -389,7 +406,7 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
           <ProviderModelSelect
             errorLabel="Unable to load Ollama models."
             loadingLabel="Loading Ollama models…"
-            loadModels={({ lookupValue }) => getOllamaModels({ baseUrl: lookupValue })}
+            loadModels={loadOllamaModels}
             lookupValue={config.baseUrl ?? ""}
             useSavedKey={false}
             value={config.model ?? ""}
@@ -434,14 +451,9 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
           <ProviderModelSelect
             errorLabel="Unable to load Azure OpenAI deployments."
             loadingLabel="Loading Azure OpenAI deployments…"
-            loadModels={({ lookupValue }) =>
-              getAzureOpenAiDeployments({
-                apiKey: lookupValue,
-                endpoint: config.endpoint ?? "",
-                useSavedKey
-              })
-            }
+            loadModels={loadAzureDeployments}
             lookupValue={config.apiKey ?? ""}
+            provider={config.endpoint ?? ""}
             useSavedKey={useSavedKey}
             value={config.deploymentName ?? ""}
             onChange={(deploymentName) =>
