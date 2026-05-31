@@ -474,6 +474,9 @@ select.input {
   opacity: 1;
   outline: none;
 }
+.project-head .tree-add:hover {
+  background: var(--gray-150);
+}
 
 .project-group {
   margin-bottom: 2px;
@@ -724,7 +727,10 @@ select.input {
   font-size: 13px;
   font-weight: 600;
   color: var(--gray-900);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+}
+.turn--user .turn-author {
+  margin-bottom: 4px;
 }
 .turn-text {
   font-size: 14px;
@@ -1114,6 +1120,11 @@ select.input {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+/* Project header icon tile is 40px in the design (provider tiles are 44px). */
+.project-settings-head .provider-icon.lg {
+  width: 40px;
+  height: 40px;
 }
 
 /* ---- Responsive ---- */

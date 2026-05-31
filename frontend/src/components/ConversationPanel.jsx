@@ -58,7 +58,7 @@ export function ConversationPanel({
 function Turn({ message }) {
   if (message.role === "user") {
     return (
-      <article className="turn">
+      <article className="turn turn--user">
         <span className="avatar-user" aria-hidden="true">
           <Icon name="user" size={16} color="#fff" />
         </span>
