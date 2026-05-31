@@ -115,7 +115,9 @@ export default function App() {
           project.id === conversation.projectId
             ? {
                 ...project,
-                conversations: prependById(project.conversations, conversation)
+                conversations: upsertById(project.conversations, conversation, {
+                  prepend: true
+                })
               }
             : project
         )
@@ -222,7 +224,7 @@ export default function App() {
       workingFolder: "",
       customInstructions: defaultProjectInstructions
     });
-    setProjects((currentProjects) => prependById(currentProjects, project));
+    setProjects((currentProjects) => upsertById(currentProjects, project, { prepend: true }));
     setActivePage("work");
     setActiveWorkItemId(project.id);
   }
@@ -241,11 +243,15 @@ export default function App() {
         project.id === projectId
           ? {
               ...project,
-              conversations: prependById(project.conversations, {
-                id: conversation.id,
-                projectId: conversation.projectId,
-                name: conversation.name
-              })
+              conversations: upsertById(
+                project.conversations,
+                {
+                  id: conversation.id,
+                  projectId: conversation.projectId,
+                  name: conversation.name
+                },
+                { prepend: true }
+              )
             }
           : project
       )
@@ -584,14 +590,9 @@ function findFirstWorkItemId(projects) {
   return firstProject?.conversations[0]?.id ?? firstProject?.id ?? null;
 }
 
-function upsertById(items, nextItem) {
-  return items.some((item) => item.id === nextItem.id)
-    ? items.map((item) => (item.id === nextItem.id ? nextItem : item))
-    : [...items, nextItem];
-}
-
-function prependById(items, nextItem) {
-  return items.some((item) => item.id === nextItem.id)
-    ? items.map((item) => (item.id === nextItem.id ? nextItem : item))
-    : [nextItem, ...items];
+function upsertById(items, nextItem, { prepend = false } = {}) {
+  if (items.some((item) => item.id === nextItem.id)) {
+    return items.map((item) => (item.id === nextItem.id ? nextItem : item));
+  }
+  return prepend ? [nextItem, ...items] : [...items, nextItem];
 }
