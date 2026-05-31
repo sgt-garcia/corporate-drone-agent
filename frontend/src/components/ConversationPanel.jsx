@@ -5,6 +5,7 @@ import { Logomark } from "./Logomark.jsx";
 
 export function ConversationPanel({
   conversation,
+  isLoaded = true,
   messages,
   onDraftChange,
   onSend,
@@ -19,7 +20,9 @@ export function ConversationPanel({
     }
   }, [conversation.id, messages]);
 
-  const isEmpty = messages.length === 0;
+  // Only greet once the conversation has actually loaded; while it is still
+  // being fetched, show a blank thread rather than flashing the empty state.
+  const isEmpty = isLoaded && messages.length === 0;
 
   function submitMessage() {
     onSend(value);

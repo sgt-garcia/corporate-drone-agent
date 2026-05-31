@@ -30,7 +30,8 @@ export function WorkContent({
     );
   }
 
-  const conversation = conversationsById[activeItem.item.id] ?? {
+  const loadedConversation = conversationsById[activeItem.item.id];
+  const conversation = loadedConversation ?? {
     ...activeItem.item,
     projectId: activeItem.project.id,
     messages: []
@@ -40,6 +41,7 @@ export function WorkContent({
     <ConversationPanel
       conversation={conversation}
       key={activeItem.item.id}
+      isLoaded={Boolean(loadedConversation)}
       messages={conversation.messages ?? []}
       onDraftChange={(value) => onDraftChange(activeItem.item.id, value)}
       onSend={(content) => onSend(activeItem.item.id, content)}
