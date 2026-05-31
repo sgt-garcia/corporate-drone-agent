@@ -4,7 +4,8 @@
    one trustworthy European blue, IBM Plex for UI + a mono companion.
    ===================================================================== */
 
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+/* IBM Plex is self-hosted via @fontsource (imported in main.jsx) so the app
+   matches the design offline without a runtime call to Google Fonts. */
 
 :root {
   /* Neutrals (subtly cool gray) */
