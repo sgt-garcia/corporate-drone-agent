@@ -74,17 +74,14 @@ function Turn({ message }) {
       <div className="turn-body">
         <div className="turn-author">Agent</div>
         {isStatus ? (
-          <div className="turn-status">
-            <span className="streaming-dots" style={{ marginBottom: 6 }}>
-              {[0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  className="cda-pulse"
-                  style={{ animationDelay: `${i * 0.18}s` }}
-                />
-              ))}
-            </span>
-            {message.content}
+          <div className="streaming-dots" aria-label="Working">
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="cda-pulse"
+                style={{ animationDelay: `${i * 0.18}s` }}
+              />
+            ))}
           </div>
         ) : (
           <div className="turn-text">
