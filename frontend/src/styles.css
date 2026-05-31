@@ -932,7 +932,7 @@ select.input {
   max-width: 620px;
 }
 .settings-section.wide {
-  max-width: 1040px;
+  max-width: none;
 }
 .settings-intro h2 {
   margin: 0 0 4px;
