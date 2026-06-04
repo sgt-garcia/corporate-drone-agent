@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -14,22 +15,27 @@ import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.security.SecretStore;
 import ai.corporatedroneagent.util.JsonFiles;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class KnowledgeFolderSettingsServiceTests {
 
+    @TempDir
+    private Path root;
     private SettingsRepository settingsRepository;
     private EventService eventService;
     private SettingsService settingsService;
 
     @BeforeEach
-    void setUp(@TempDir Path root) {
+    void setUp() {
         StorageProperties storageProperties = new StorageProperties();
         storageProperties.setRoot(root);
         JsonFiles jsonFiles = new JsonFiles(new ObjectMapper().findAndRegisterModules());
@@ -44,21 +50,33 @@ class KnowledgeFolderSettingsServiceTests {
     }
 
     @Test
-    void addingLocalFolderPersistsItInApplicationSettings() {
-        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest("C:\\Work"));
+    void addingLocalFolderPersistsItInApplicationSettings() throws IOException {
+        Path workFolder = Files.createDirectory(root.resolve("Work"));
+
+        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(workFolder.toString()));
 
         assertThat(folder.getId()).isNotNull();
-        assertThat(folder.getPath()).isEqualTo("C:\\Work");
+        assertThat(folder.getPath()).isEqualTo(workFolder.toString());
         assertThat(folder.getStatus()).isEqualTo("scanned");
         assertThat(settingsRepository.get().getKnowledgeFolders())
                 .extracting(KnowledgeFolder::getPath)
-                .containsExactly("C:\\Work");
+                .containsExactly(workFolder.toString());
         verify(eventService).publish(eq("settings-updated"), any(ApplicationSettings.class));
     }
 
     @Test
-    void removingLocalFolderPersistsTheRemoval() {
-        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest("C:\\Work"));
+    void rejectsMissingLocalFolder() {
+        Path missingFolder = root.resolve("Missing");
+
+        assertThatThrownBy(() -> settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(missingFolder.toString())))
+                .hasMessageContaining("Folder path must be an existing folder");
+
+        assertThat(settingsRepository.get().getKnowledgeFolders()).isEmpty();
+    }
+
+    @Test
+    void removingLocalFolderPersistsTheRemoval() throws IOException {
+        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
 
         settingsService.removeKnowledgeFolder(folder.getId());
 
@@ -66,8 +84,8 @@ class KnowledgeFolderSettingsServiceTests {
     }
 
     @Test
-    void pauseAndResumeScanningPersistStatus() {
-        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest("C:\\Work"));
+    void pauseAndResumeScanningPersistStatus() throws IOException {
+        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
 
         KnowledgeFolder paused = settingsService.pauseKnowledgeFolder(folder.getId());
         assertThat(paused.getStatus()).isEqualTo("paused");
@@ -79,8 +97,8 @@ class KnowledgeFolderSettingsServiceTests {
     }
 
     @Test
-    void scanNowIsANoopThatReturnsTheSavedFolder() {
-        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest("C:\\Work"));
+    void scanNowIsANoopThatReturnsTheSavedFolder() throws IOException {
+        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
         settingsService.pauseKnowledgeFolder(folder.getId());
 
         KnowledgeFolder scanned = settingsService.scanKnowledgeFolder(folder.getId());
@@ -88,6 +106,10 @@ class KnowledgeFolderSettingsServiceTests {
         assertThat(scanned.getId()).isEqualTo(folder.getId());
         assertThat(scanned.getStatus()).isEqualTo("paused");
         assertThat(settingsRepository.get().getKnowledgeFolders().getFirst().getStatus()).isEqualTo("paused");
+    }
+
+    private String existingFolderPath() throws IOException {
+        return Files.createDirectory(root.resolve("folder-" + UUID.randomUUID())).toString();
     }
 
     private static class InMemorySecretStore implements SecretStore {

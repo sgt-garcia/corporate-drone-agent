@@ -5,6 +5,9 @@ import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.util.Strings;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -86,6 +89,7 @@ public class SettingsService {
         if (path.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path is required");
         }
+        validateExistingFolder(path);
         if (settings.getKnowledgeFolders().size() >= MAX_KNOWLEDGE_FOLDERS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Local folder limit reached");
         }
@@ -161,6 +165,18 @@ public class SettingsService {
                 .filter(folder -> folderId.equals(folder.getId()))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge folder not found"));
+    }
+
+    private void validateExistingFolder(String path) {
+        Path folderPath;
+        try {
+            folderPath = Path.of(path);
+        } catch (InvalidPathException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path is invalid");
+        }
+        if (!Files.isDirectory(folderPath)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path must be an existing folder");
+        }
     }
 
     private void normalizeKnowledgeFolders(ApplicationSettings settings) {
