@@ -438,18 +438,13 @@ function LocalFoldersConfig({
   const [confirmId, setConfirmId] = useState(null);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
-  const atMax = folders.length >= KNOWLEDGE_MAX;
 
   async function addFolder() {
     const path = draft.trim();
-    if (!path || atMax || checking) {
+    if (checking) {
       return;
     }
     setError("");
-    if (folders.some((f) => f.path.toLowerCase() === path.toLowerCase())) {
-      setError("That folder is already in your list.");
-      return;
-    }
     setChecking(true);
     try {
       await onAddFolder(path);
@@ -523,9 +518,8 @@ function LocalFoldersConfig({
                 <input
                   className={error ? "input has-error" : "input"}
                   type="text"
-                  placeholder={atMax ? "Folder limit reached" : "Add a folder path…"}
+                  placeholder="Add a folder path…"
                   value={draft}
-                  disabled={atMax}
                   onChange={(event) => {
                     setDraft(event.target.value);
                     if (error) {
@@ -543,7 +537,7 @@ function LocalFoldersConfig({
                 className="btn btn-primary btn-sm"
                 type="button"
                 onClick={addFolder}
-                disabled={atMax || !draft.trim() || checking}
+                disabled={checking}
               >
                 {checking ? (
                   <>

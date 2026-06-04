@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -72,6 +73,49 @@ class KnowledgeFolderSettingsServiceTests {
                 .hasMessageContaining("Folder path must be an existing folder");
 
         assertThat(settingsRepository.get().getKnowledgeFolders()).isEmpty();
+    }
+
+    @Test
+    void rejectsChildFolderWhenParentIsConfigured() throws IOException {
+        Path parent = Files.createDirectory(root.resolve("Parent"));
+        Path child = Files.createDirectory(parent.resolve("Child"));
+        settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(parent.toString()));
+
+        assertThatThrownBy(() -> settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(child.toString())))
+                .hasMessageContaining("Folders must not be nested inside each other");
+
+        assertThat(settingsRepository.get().getKnowledgeFolders())
+                .extracting(KnowledgeFolder::getPath)
+                .containsExactly(parent.toString());
+    }
+
+    @Test
+    void rejectsParentFolderWhenChildIsConfigured() throws IOException {
+        Path parent = Files.createDirectory(root.resolve("Parent"));
+        Path child = Files.createDirectory(parent.resolve("Child"));
+        settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(child.toString()));
+
+        assertThatThrownBy(() -> settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(parent.toString())))
+                .hasMessageContaining("Folders must not be nested inside each other");
+
+        assertThat(settingsRepository.get().getKnowledgeFolders())
+                .extracting(KnowledgeFolder::getPath)
+                .containsExactly(child.toString());
+    }
+
+    @Test
+    void genericSettingsSaveDoesNotReplaceKnowledgeFolders() throws IOException {
+        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
+        ApplicationSettings submittedSettings = settingsService.get();
+        submittedSettings.setKnowledgeFolders(List.of());
+        submittedSettings.setAgentName("Renamed Agent");
+
+        ApplicationSettings savedSettings = settingsService.save(submittedSettings);
+
+        assertThat(savedSettings.getAgentName()).isEqualTo("Renamed Agent");
+        assertThat(savedSettings.getKnowledgeFolders())
+                .extracting(KnowledgeFolder::getId)
+                .containsExactly(folder.getId());
     }
 
     @Test

@@ -5,11 +5,13 @@ import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.util.Strings;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -54,6 +56,7 @@ public class SettingsService {
     public ApplicationSettings save(ApplicationSettings settings) {
         ApplicationSettings current = settingsRepository.get();
         migratePlaintextSecrets(current);
+        normalizeKnowledgeFolders(current);
         settingsSecretsService.saveSubmittedSecrets(settings);
 
         current.setAgentName(Strings.defaultIfBlank(settings.getAgentName(), "Corporate Drone's Agent"));
@@ -68,7 +71,6 @@ public class SettingsService {
         current.setAnthropic(settings.getAnthropic());
         current.setGroq(settings.getGroq());
         current.setDeepSeek(settings.getDeepSeek());
-        current.setKnowledgeFolders(sanitizeKnowledgeFolders(settings.getKnowledgeFolders()));
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);
@@ -89,13 +91,14 @@ public class SettingsService {
         if (path.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path is required");
         }
-        validateExistingFolder(path);
+        Path folderPath = existingFolderPath(path);
         if (settings.getKnowledgeFolders().size() >= MAX_KNOWLEDGE_FOLDERS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Local folder limit reached");
         }
         if (settings.getKnowledgeFolders().stream().anyMatch(folder -> samePath(folder.getPath(), path))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Folder is already configured");
         }
+        validateNotNestedFolder(folderPath, settings.getKnowledgeFolders());
 
         KnowledgeFolder folder = new KnowledgeFolder();
         folder.setId(UUID.randomUUID());
@@ -162,7 +165,7 @@ public class SettingsService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge folder not found"));
     }
 
-    private void validateExistingFolder(String path) {
+    private Path existingFolderPath(String path) {
         Path folderPath;
         try {
             folderPath = Path.of(path);
@@ -171,6 +174,44 @@ public class SettingsService {
         }
         if (!Files.isDirectory(folderPath)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path must be an existing folder");
+        }
+        try {
+            return folderPath.toRealPath();
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path must be readable");
+        }
+    }
+
+    private void validateNotNestedFolder(Path folderPath, List<KnowledgeFolder> existingFolders) {
+        for (KnowledgeFolder existingFolder : existingFolders) {
+            Optional<Path> existingPath = comparableExistingFolderPath(existingFolder.getPath());
+            if (existingPath.isEmpty()) {
+                continue;
+            }
+            if (folderPath.equals(existingPath.get())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Folder is already configured");
+            }
+            if (folderPath.startsWith(existingPath.get()) || existingPath.get().startsWith(folderPath)) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Folders must not be nested inside each other"
+                );
+            }
+        }
+    }
+
+    private Optional<Path> comparableExistingFolderPath(String path) {
+        if (path == null || path.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            Path folderPath = Path.of(path);
+            if (!Files.isDirectory(folderPath)) {
+                return Optional.empty();
+            }
+            return Optional.of(folderPath.toRealPath());
+        } catch (IOException | InvalidPathException exception) {
+            return Optional.empty();
         }
     }
 
