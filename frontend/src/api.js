@@ -180,8 +180,7 @@ async function request(path, options) {
   const response = await fetch(path, options);
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed: ${response.status}`);
+    throw new Error(await errorMessage(response));
   }
 
   return response.json();
@@ -191,7 +190,21 @@ async function requestNoContent(path, options) {
   const response = await fetch(path, options);
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed: ${response.status}`);
+    throw new Error(await errorMessage(response));
+  }
+}
+
+async function errorMessage(response) {
+  const fallback = `Request failed: ${response.status}`;
+  const text = await response.text();
+  if (!text) {
+    return fallback;
+  }
+
+  try {
+    const body = JSON.parse(text);
+    return body.message || body.detail || body.error || fallback;
+  } catch {
+    return text;
   }
 }
