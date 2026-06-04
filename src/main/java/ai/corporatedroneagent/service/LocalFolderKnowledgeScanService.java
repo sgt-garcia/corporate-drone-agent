@@ -2,6 +2,7 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
+import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRootScan;
@@ -30,19 +31,22 @@ public class LocalFolderKnowledgeScanService {
     private final KnowledgeResourceRepository resourceRepository;
     private final LocalFolderKnowledgeReadService readService;
     private final LocalFolderKnowledgeConversionService conversionService;
+    private final KnowledgeChunkingService chunkingService;
 
     public LocalFolderKnowledgeScanService(
             KnowledgeRootRepository rootRepository,
             KnowledgeRootScanRepository scanRepository,
             KnowledgeResourceRepository resourceRepository,
             LocalFolderKnowledgeReadService readService,
-            LocalFolderKnowledgeConversionService conversionService
+            LocalFolderKnowledgeConversionService conversionService,
+            KnowledgeChunkingService chunkingService
     ) {
         this.rootRepository = rootRepository;
         this.scanRepository = scanRepository;
         this.resourceRepository = resourceRepository;
         this.readService = readService;
         this.conversionService = conversionService;
+        this.chunkingService = chunkingService;
     }
 
     public ScanResult scan(KnowledgeFolder folder, Path folderPath) {
@@ -184,7 +188,8 @@ public class LocalFolderKnowledgeScanService {
             resource.setScannedAt(scannedAt);
             KnowledgeResource savedResource = resourceRepository.save(resource);
             KnowledgeResourceRead read = readService.read(savedResource, file);
-            conversionService.convert(savedResource, read);
+            KnowledgeResourceConversion conversion = conversionService.convert(savedResource, read);
+            chunkingService.chunk(savedResource, conversion);
         }
 
         private ScanResult stats() {

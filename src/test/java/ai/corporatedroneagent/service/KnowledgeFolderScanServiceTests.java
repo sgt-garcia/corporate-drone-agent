@@ -8,6 +8,7 @@ import ai.corporatedroneagent.config.StorageProperties;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
+import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
@@ -72,12 +73,14 @@ class KnowledgeFolderScanServiceTests {
         LocalFolderKnowledgeConversionService conversionService = new LocalFolderKnowledgeConversionService(
                 pipelineRepository
         );
+        KnowledgeChunkingService chunkingService = new KnowledgeChunkingService(pipelineRepository);
         LocalFolderKnowledgeScanService localScanService = new LocalFolderKnowledgeScanService(
                 knowledgeRootRepository,
                 knowledgeRootScanRepository,
                 knowledgeResourceRepository,
                 readService,
-                conversionService
+                conversionService,
+                chunkingService
         );
         scanService = new KnowledgeFolderScanService(
                 settingsRepository,
@@ -130,6 +133,15 @@ class KnowledgeFolderScanServiceTests {
                     assertThat(conversion.getSuccess()).isTrue();
                     assertThat(conversion.getValue()).isEqualTo("hello");
                 });
+        assertThat(pipelineRepository.findChunksByResourceId(textResource.getId()))
+                .hasSize(1)
+                .first()
+                .satisfies(chunk -> {
+                    assertThat(chunk.getChunkIndex()).isZero();
+                    assertThat(chunk.getStartOffset()).isZero();
+                    assertThat(chunk.getEndOffset()).isEqualTo(5);
+                    assertThat(chunk.getContentHash()).hasSize(64);
+                });
 
         KnowledgeResource unsupportedResource = knowledgeResourceRepository
                 .findByRootIdAndReference(knowledgeRoot.getId(), "nested/two.bin")
@@ -147,6 +159,7 @@ class KnowledgeFolderScanServiceTests {
                     assertThat(conversion.getMessage()).isEqualTo("Read did not succeed");
                     assertThat(conversion.getValue()).isEmpty();
                 });
+        assertThat(pipelineRepository.findChunksByResourceId(unsupportedResource.getId())).isEmpty();
     }
 
     @Test
@@ -206,6 +219,7 @@ class KnowledgeFolderScanServiceTests {
                 .orElseThrow();
         Optional<KnowledgeResourceRead> read = pipelineRepository.findReadByResourceId(resource.getId());
         Optional<KnowledgeResourceConversion> conversion = pipelineRepository.findConversionByResourceId(resource.getId());
+        java.util.List<KnowledgeResourceChunk> chunks = pipelineRepository.findChunksByResourceId(resource.getId());
 
         assertThat(read).hasValueSatisfying(value ->
                 assertThat(new String(value.getValue(), StandardCharsets.UTF_8)).isEqualTo("new")
@@ -213,6 +227,44 @@ class KnowledgeFolderScanServiceTests {
         assertThat(conversion).hasValueSatisfying(value ->
                 assertThat(value.getValue()).isEqualTo("new")
         );
+        assertThat(chunks)
+                .hasSize(1)
+                .first()
+                .satisfies(chunk -> assertThat(chunk.getEndOffset()).isEqualTo(3));
+    }
+
+    @Test
+    void scanFolderSplitsConvertedTextIntoOverlappingChunks() throws IOException {
+        Path folder = Files.createDirectory(root.resolve("chunk-me"));
+        String text = "a".repeat(3500);
+        Files.writeString(folder.resolve("large.txt"), text, StandardCharsets.UTF_8);
+        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+
+        scanService.scanFolder(configured.getId());
+
+        KnowledgeRoot knowledgeRoot = knowledgeRootRepository
+                .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
+                .orElseThrow();
+        KnowledgeResource resource = knowledgeResourceRepository
+                .findByRootIdAndReference(knowledgeRoot.getId(), "large.txt")
+                .orElseThrow();
+
+        assertThat(pipelineRepository.findChunksByResourceId(resource.getId()))
+                .hasSize(2)
+                .satisfiesExactly(
+                        chunk -> {
+                            assertThat(chunk.getChunkIndex()).isZero();
+                            assertThat(chunk.getStartOffset()).isZero();
+                            assertThat(chunk.getEndOffset()).isEqualTo(3000);
+                            assertThat(chunk.getContentHash()).hasSize(64);
+                        },
+                        chunk -> {
+                            assertThat(chunk.getChunkIndex()).isEqualTo(1);
+                            assertThat(chunk.getStartOffset()).isEqualTo(2000);
+                            assertThat(chunk.getEndOffset()).isEqualTo(3500);
+                            assertThat(chunk.getContentHash()).hasSize(64);
+                        }
+                );
     }
 
     private KnowledgeFolder folder(java.util.UUID id) {
