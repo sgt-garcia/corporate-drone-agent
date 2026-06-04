@@ -2,6 +2,7 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
+import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
@@ -19,8 +20,10 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -32,6 +35,7 @@ public class LocalFolderKnowledgeScanService {
     private final LocalFolderKnowledgeReadService readService;
     private final LocalFolderKnowledgeConversionService conversionService;
     private final KnowledgeChunkingService chunkingService;
+    private final KnowledgeIndexingService indexingService;
 
     public LocalFolderKnowledgeScanService(
             KnowledgeRootRepository rootRepository,
@@ -39,7 +43,8 @@ public class LocalFolderKnowledgeScanService {
             KnowledgeResourceRepository resourceRepository,
             LocalFolderKnowledgeReadService readService,
             LocalFolderKnowledgeConversionService conversionService,
-            KnowledgeChunkingService chunkingService
+            KnowledgeChunkingService chunkingService,
+            KnowledgeIndexingService indexingService
     ) {
         this.rootRepository = rootRepository;
         this.scanRepository = scanRepository;
@@ -47,6 +52,7 @@ public class LocalFolderKnowledgeScanService {
         this.readService = readService;
         this.conversionService = conversionService;
         this.chunkingService = chunkingService;
+        this.indexingService = indexingService;
     }
 
     public ScanResult scan(KnowledgeFolder folder, Path folderPath) {
@@ -57,7 +63,7 @@ public class LocalFolderKnowledgeScanService {
         try {
             ResourceScanningVisitor visitor = new ResourceScanningVisitor(root.getId(), folderPath, startedAt);
             Files.walkFileTree(folderPath, visitor);
-            resourceRepository.markDeletedResourcesNotInReferences(root.getId(), visitor.references());
+            removeDeletedResourceIndexes(root.getId(), visitor.references());
             completeScan(root, scan, visitor.stats(), null);
             return visitor.stats();
         } catch (IOException exception) {
@@ -134,6 +140,17 @@ public class LocalFolderKnowledgeScanService {
         return fileName.substring(extensionStart + 1).toLowerCase(Locale.ROOT);
     }
 
+    private void removeDeletedResourceIndexes(java.util.UUID rootId, List<String> currentReferences) {
+        Set<String> activeReferences = new HashSet<>(currentReferences);
+        resourceRepository.findByRootId(rootId).stream()
+                .filter(resource -> !activeReferences.contains(resource.getReference()))
+                .forEach(resource -> {
+                    indexingService.deleteResource(resource);
+                    chunkingService.deleteChunks(resource);
+                });
+        resourceRepository.markDeletedResourcesNotInReferences(rootId, currentReferences);
+    }
+
     public record ScanResult(long files, long bytes) {
     }
 
@@ -187,9 +204,11 @@ public class LocalFolderKnowledgeScanService {
             resource.setDeleted(false);
             resource.setScannedAt(scannedAt);
             KnowledgeResource savedResource = resourceRepository.save(resource);
+            indexingService.deleteResource(savedResource);
             KnowledgeResourceRead read = readService.read(savedResource, file);
             KnowledgeResourceConversion conversion = conversionService.convert(savedResource, read);
-            chunkingService.chunk(savedResource, conversion);
+            List<KnowledgeResourceChunk> chunks = chunkingService.chunk(savedResource, conversion);
+            indexingService.index(savedResource, conversion, chunks);
         }
 
         private ScanResult stats() {

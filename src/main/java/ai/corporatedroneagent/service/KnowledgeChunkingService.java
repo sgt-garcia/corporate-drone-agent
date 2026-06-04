@@ -25,7 +25,7 @@ public class KnowledgeChunkingService {
     }
 
     public List<KnowledgeResourceChunk> chunk(KnowledgeResource resource, KnowledgeResourceConversion conversion) {
-        pipelineRepository.deleteChunksByResourceId(resource.getId());
+        deleteChunks(resource);
         if (!Boolean.TRUE.equals(conversion.getSuccess()) || conversion.getValue().isEmpty()) {
             return List.of();
         }
@@ -49,6 +49,10 @@ public class KnowledgeChunkingService {
             }
         }
         return chunks;
+    }
+
+    public void deleteChunks(KnowledgeResource resource) {
+        pipelineRepository.deleteChunksByResourceId(resource.getId());
     }
 
     private String contentHash(String value) {

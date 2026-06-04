@@ -10,6 +10,7 @@ import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
+import ai.corporatedroneagent.model.knowledge.KnowledgeResourceIndex;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
@@ -47,6 +48,7 @@ class KnowledgeFolderScanServiceTests {
     private KnowledgeRootScanRepository knowledgeRootScanRepository;
     private KnowledgeResourceRepository knowledgeResourceRepository;
     private KnowledgeResourcePipelineRepository pipelineRepository;
+    private KnowledgeIndexingService indexingService;
 
     @BeforeEach
     void setUp() {
@@ -74,13 +76,15 @@ class KnowledgeFolderScanServiceTests {
                 pipelineRepository
         );
         KnowledgeChunkingService chunkingService = new KnowledgeChunkingService(pipelineRepository);
+        indexingService = new KnowledgeIndexingService(pipelineRepository, storageProperties);
         LocalFolderKnowledgeScanService localScanService = new LocalFolderKnowledgeScanService(
                 knowledgeRootRepository,
                 knowledgeRootScanRepository,
                 knowledgeResourceRepository,
                 readService,
                 conversionService,
-                chunkingService
+                chunkingService,
+                indexingService
         );
         scanService = new KnowledgeFolderScanService(
                 settingsRepository,
@@ -133,7 +137,8 @@ class KnowledgeFolderScanServiceTests {
                     assertThat(conversion.getSuccess()).isTrue();
                     assertThat(conversion.getValue()).isEqualTo("hello");
                 });
-        assertThat(pipelineRepository.findChunksByResourceId(textResource.getId()))
+        java.util.List<KnowledgeResourceChunk> textChunks = pipelineRepository.findChunksByResourceId(textResource.getId());
+        assertThat(textChunks)
                 .hasSize(1)
                 .first()
                 .satisfies(chunk -> {
@@ -142,6 +147,15 @@ class KnowledgeFolderScanServiceTests {
                     assertThat(chunk.getEndOffset()).isEqualTo(5);
                     assertThat(chunk.getContentHash()).hasSize(64);
                 });
+        KnowledgeResourceChunk textChunk = textChunks.getFirst();
+        assertThat(pipelineRepository.findIndexByChunkId(textChunk.getId()))
+                .hasValueSatisfying(index -> {
+                    assertThat(index.getStatus()).isEqualTo(WorkStatus.DONE);
+                    assertThat(index.getSuccess()).isTrue();
+                    assertThat(index.getIndexReference()).isEqualTo(textResource.getId() + ":0");
+                });
+        assertThat(indexingService.searchTerm("hello", 10))
+                .containsExactly(textResource.getId() + ":0");
 
         KnowledgeResource unsupportedResource = knowledgeResourceRepository
                 .findByRootIdAndReference(knowledgeRoot.getId(), "nested/two.bin")
@@ -183,8 +197,8 @@ class KnowledgeFolderScanServiceTests {
     @Test
     void scanFolderMarksResourcesDeletedWhenTheyDisappear() throws IOException {
         Path folder = Files.createDirectory(root.resolve("refresh-me"));
-        Path staleFile = Files.write(folder.resolve("stale.txt"), new byte[3]);
-        Files.write(folder.resolve("kept.txt"), new byte[4]);
+        Path staleFile = Files.writeString(folder.resolve("stale.txt"), "stale", StandardCharsets.UTF_8);
+        Files.writeString(folder.resolve("kept.txt"), "kept", StandardCharsets.UTF_8);
         KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
         scanService.scanFolder(configured.getId());
 
@@ -198,6 +212,11 @@ class KnowledgeFolderScanServiceTests {
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isTrue());
         assertThat(knowledgeResourceRepository.findByRootIdAndReference(knowledgeRoot.getId(), "kept.txt"))
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
+        KnowledgeResource staleResource = knowledgeResourceRepository
+                .findByRootIdAndReference(knowledgeRoot.getId(), "stale.txt")
+                .orElseThrow();
+        assertThat(pipelineRepository.findChunksByResourceId(staleResource.getId())).isEmpty();
+        assertThat(indexingService.searchTerm("stale", 10)).isEmpty();
     }
 
     @Test
@@ -230,7 +249,14 @@ class KnowledgeFolderScanServiceTests {
         assertThat(chunks)
                 .hasSize(1)
                 .first()
-                .satisfies(chunk -> assertThat(chunk.getEndOffset()).isEqualTo(3));
+                .satisfies(chunk -> {
+                    assertThat(chunk.getEndOffset()).isEqualTo(3);
+                    assertThat(pipelineRepository.findIndexByChunkId(chunk.getId()))
+                            .map(KnowledgeResourceIndex::getSuccess)
+                            .contains(true);
+                });
+        assertThat(indexingService.searchTerm("old", 10)).isEmpty();
+        assertThat(indexingService.searchTerm("new", 10)).containsExactly(resource.getId() + ":0");
     }
 
     @Test
