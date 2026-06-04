@@ -48,11 +48,11 @@ export function ProjectSettingsPanel({ onSave, onDelete, project }) {
               />
             </span>
             <span className="field-hint">
-              Local folder the agent may read from for this project.
+              Local folder the agent may read from and write to for this project.
             </span>
           </label>
           <label className="field">
-            <span className="field-label">Custom instructions</span>
+            <span className="field-label">Project instructions</span>
             <textarea
               className="input"
               rows={5}

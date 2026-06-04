@@ -533,7 +533,7 @@ function GeneralSettings({ draft, setDraft, onSave }) {
         </Field>
         <Field
           label="Default model provider"
-          hint="Used for new tasks unless a project overrides it."
+          hint="Used for new conversations unless a project overrides it."
         >
           <select
             className="input"
