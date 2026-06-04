@@ -1,6 +1,7 @@
 import "./styles.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  addKnowledgeFolder as addKnowledgeFolderRequest,
   createConversation,
   createProject,
   deleteConversation as deleteConversationRequest,
@@ -8,9 +9,13 @@ import {
   getConversation,
   getProjects,
   getSettings,
+  pauseKnowledgeFolder as pauseKnowledgeFolderRequest,
   renameConversation as renameConversationRequest,
+  removeKnowledgeFolder as removeKnowledgeFolderRequest,
+  resumeKnowledgeFolder as resumeKnowledgeFolderRequest,
   saveProject,
   saveSettings,
+  scanKnowledgeFolder as scanKnowledgeFolderRequest,
   sendConversationMessage
 } from "./api.js";
 import { Icon } from "./components/Icon.jsx";
@@ -22,20 +27,14 @@ import { findWorkItem } from "./data.js";
 const defaultProjectInstructions =
   "Use this project context when answering questions about planning, decisions, and follow-up work.";
 
-// Knowledge folders are continuously-scanned local sources. The backend has no
-// endpoint for these yet, so they live in client state only (seeded with the
-// user's locally-synced OneDrive and SharePoint libraries) — persistence is a
-// follow-up once the scanning service exists.
-const defaultKnowledgeFolders = [
-  { id: "k1", path: "OneDrive", status: "scanned", files: 1240, size: "2.1 GB", nextScan: "~4 min" },
-  { id: "k2", path: "SharePoint", status: "scanned", files: 883, size: "1.3 GB", nextScan: "~8 min" }
-];
+const defaultKnowledgeFolders = [];
 
 const emptySettings = {
   agentName: "Corporate Drone's Agent",
   aiModel: "none",
   customInstructions:
     "Answer with concise, practical guidance using available local project context first.",
+  knowledgeFolders: [],
   openAi: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
   openAiSdk: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
   azureOpenAi: {
@@ -167,7 +166,9 @@ export default function App() {
       );
     });
     events.addEventListener("settings-updated", (event) => {
-      setSettings(JSON.parse(event.data));
+      const updatedSettings = JSON.parse(event.data);
+      setSettings(updatedSettings);
+      setKnowledgeFolders(updatedSettings.knowledgeFolders ?? []);
     });
     events.onerror = () => setStatusText("Backend event stream disconnected.");
 
@@ -213,6 +214,7 @@ export default function App() {
       ]);
       setProjects(loadedProjects);
       setSettings(loadedSettings);
+      setKnowledgeFolders(loadedSettings.knowledgeFolders ?? []);
       setActiveWorkItemId((currentId) => currentId ?? findFirstWorkItemId(loadedProjects));
       setStatusText("");
     } catch (error) {
@@ -441,6 +443,53 @@ export default function App() {
   async function updateSettings(nextSettings) {
     const savedSettings = await saveSettings(nextSettings);
     setSettings(savedSettings);
+    setKnowledgeFolders(savedSettings.knowledgeFolders ?? []);
+  }
+
+  async function addKnowledgeFolder(path) {
+    try {
+      const folder = await addKnowledgeFolderRequest(path);
+      setKnowledgeFolders((currentFolders) => upsertById(currentFolders, folder));
+      return folder;
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function removeKnowledgeFolder(folderId) {
+    try {
+      await removeKnowledgeFolderRequest(folderId);
+      setKnowledgeFolders((currentFolders) =>
+        currentFolders.filter((folder) => folder.id !== folderId)
+      );
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function scanKnowledgeFolder(folderId) {
+    try {
+      const folder = await scanKnowledgeFolderRequest(folderId);
+      setKnowledgeFolders((currentFolders) => upsertById(currentFolders, folder));
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function toggleKnowledgeFolderPause(folder) {
+    try {
+      const savedFolder =
+        folder.status === "paused"
+          ? await resumeKnowledgeFolderRequest(folder.id)
+          : await pauseKnowledgeFolderRequest(folder.id);
+      setKnowledgeFolders((currentFolders) => upsertById(currentFolders, savedFolder));
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
   }
 
   function addMessageToConversation(conversationId, message) {
@@ -486,7 +535,10 @@ export default function App() {
           settings={settings}
           onSave={updateSettings}
           knowledgeFolders={knowledgeFolders}
-          setKnowledgeFolders={setKnowledgeFolders}
+          onAddKnowledgeFolder={addKnowledgeFolder}
+          onRemoveKnowledgeFolder={removeKnowledgeFolder}
+          onScanKnowledgeFolder={scanKnowledgeFolder}
+          onToggleKnowledgeFolderPause={toggleKnowledgeFolderPause}
         />
       ) : (
         <main className="main">

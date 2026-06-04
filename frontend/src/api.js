@@ -76,6 +76,42 @@ export async function saveSettings(settings) {
   });
 }
 
+export async function getKnowledgeFolders() {
+  return request("/api/settings/knowledge/local-folders");
+}
+
+export async function addKnowledgeFolder(path) {
+  return request("/api/settings/knowledge/local-folders", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ path })
+  });
+}
+
+export async function removeKnowledgeFolder(folderId) {
+  return requestNoContent(`/api/settings/knowledge/local-folders/${folderId}`, {
+    method: "DELETE"
+  });
+}
+
+export async function scanKnowledgeFolder(folderId) {
+  return request(`/api/settings/knowledge/local-folders/${folderId}/scan`, {
+    method: "POST"
+  });
+}
+
+export async function pauseKnowledgeFolder(folderId) {
+  return request(`/api/settings/knowledge/local-folders/${folderId}/pause`, {
+    method: "POST"
+  });
+}
+
+export async function resumeKnowledgeFolder(folderId) {
+  return request(`/api/settings/knowledge/local-folders/${folderId}/resume`, {
+    method: "POST"
+  });
+}
+
 export async function getOpenAiModels({ apiKey, provider, useSavedKey }) {
   return request("/api/settings/openai-models", {
     method: "POST",

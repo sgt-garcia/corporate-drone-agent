@@ -1,10 +1,14 @@
 package ai.corporatedroneagent.model;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class ApplicationSettings {
 
     private String agentName = "Corporate Drone's Agent";
     private String aiModel = "none";
     private String customInstructions = "Answer with concise, practical guidance using available local project context first.";
+    private List<KnowledgeFolder> knowledgeFolders = new ArrayList<>();
     private OpenAiSettings openAi = new OpenAiSettings();
     private OpenAiSdkSettings openAiSdk = new OpenAiSdkSettings();
     private AzureOpenAiSettings azureOpenAi = new AzureOpenAiSettings();
@@ -37,6 +41,14 @@ public class ApplicationSettings {
 
     public void setCustomInstructions(String customInstructions) {
         this.customInstructions = customInstructions;
+    }
+
+    public List<KnowledgeFolder> getKnowledgeFolders() {
+        return knowledgeFolders;
+    }
+
+    public void setKnowledgeFolders(List<KnowledgeFolder> knowledgeFolders) {
+        this.knowledgeFolders = knowledgeFolders == null ? new ArrayList<>() : knowledgeFolders;
     }
 
     public OpenAiSettings getOpenAi() {

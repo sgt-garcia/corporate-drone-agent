@@ -5,10 +5,12 @@ import ai.corporatedroneagent.dto.AzureOpenAiDeploymentsRequest;
 import ai.corporatedroneagent.dto.DeepSeekModelsRequest;
 import ai.corporatedroneagent.dto.GeminiModelsRequest;
 import ai.corporatedroneagent.dto.GroqModelsRequest;
+import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.dto.MistralModelsRequest;
 import ai.corporatedroneagent.dto.OllamaModelsRequest;
 import ai.corporatedroneagent.dto.OpenAiModelsRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
+import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.service.AnthropicModelsService;
 import ai.corporatedroneagent.service.AzureOpenAiDeploymentsService;
 import ai.corporatedroneagent.service.DeepSeekModelsService;
@@ -19,11 +21,16 @@ import ai.corporatedroneagent.service.OllamaModelsService;
 import ai.corporatedroneagent.service.OpenAiModelsService;
 import ai.corporatedroneagent.service.SettingsService;
 import java.util.List;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -70,6 +77,37 @@ public class SettingsController {
     @PutMapping
     public ApplicationSettings saveSettings(@RequestBody ApplicationSettings settings) {
         return settingsService.save(settings);
+    }
+
+    @GetMapping("/knowledge/local-folders")
+    public List<KnowledgeFolder> listKnowledgeFolders() {
+        return settingsService.listKnowledgeFolders();
+    }
+
+    @PostMapping("/knowledge/local-folders")
+    public KnowledgeFolder addKnowledgeFolder(@RequestBody KnowledgeFolderRequest request) {
+        return settingsService.addKnowledgeFolder(request);
+    }
+
+    @DeleteMapping("/knowledge/local-folders/{folderId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeKnowledgeFolder(@PathVariable UUID folderId) {
+        settingsService.removeKnowledgeFolder(folderId);
+    }
+
+    @PostMapping("/knowledge/local-folders/{folderId}/scan")
+    public KnowledgeFolder scanKnowledgeFolder(@PathVariable UUID folderId) {
+        return settingsService.scanKnowledgeFolder(folderId);
+    }
+
+    @PostMapping("/knowledge/local-folders/{folderId}/pause")
+    public KnowledgeFolder pauseKnowledgeFolder(@PathVariable UUID folderId) {
+        return settingsService.pauseKnowledgeFolder(folderId);
+    }
+
+    @PostMapping("/knowledge/local-folders/{folderId}/resume")
+    public KnowledgeFolder resumeKnowledgeFolder(@PathVariable UUID folderId) {
+        return settingsService.resumeKnowledgeFolder(folderId);
     }
 
     @PostMapping("/openai-models")

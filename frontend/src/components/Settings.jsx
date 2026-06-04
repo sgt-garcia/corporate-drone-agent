@@ -153,7 +153,10 @@ export function Settings({
   settings,
   onSave,
   knowledgeFolders,
-  setKnowledgeFolders
+  onAddKnowledgeFolder,
+  onRemoveKnowledgeFolder,
+  onScanKnowledgeFolder,
+  onToggleKnowledgeFolderPause
 }) {
   const [draft, setDraft] = useState(settings);
   const [section, setSection] = useState("general");
@@ -248,7 +251,10 @@ export function Settings({
             (knowledgeView === "local-folders" ? (
               <LocalFoldersConfig
                 folders={knowledgeFolders}
-                setFolders={setKnowledgeFolders}
+                onAddFolder={onAddKnowledgeFolder}
+                onRemoveFolder={onRemoveKnowledgeFolder}
+                onScanFolder={onScanKnowledgeFolder}
+                onTogglePause={onToggleKnowledgeFolderPause}
                 onBack={() => setKnowledgeView(null)}
               />
             ) : (
@@ -343,13 +349,15 @@ function FolderRow({
   onCancelRemove,
   onConfirmRemove
 }) {
-  const files = folder.files.toLocaleString();
+  const files = Number(folder.files ?? 0).toLocaleString();
+  const size = folder.size || "not scanned yet";
+  const nextScan = folder.nextScan ? ` · next scan ${folder.nextScan}` : "";
   const meta =
     folder.status === "paused"
-      ? `Paused · ${files} files · ${folder.size}`
+      ? `Paused · ${files} files · ${size}`
       : folder.status === "scanning"
-        ? `${files} files · ${folder.size} · scanning now`
-        : `${files} files · ${folder.size} · next scan ${folder.nextScan}`;
+        ? `${files} files · ${size} · scanning now`
+        : `${files} files · ${size}${nextScan}`;
   const paused = folder.status === "paused";
 
   return (
@@ -418,14 +426,21 @@ function FolderRow({
   );
 }
 
-function LocalFoldersConfig({ folders, setFolders, onBack }) {
+function LocalFoldersConfig({
+  folders,
+  onAddFolder,
+  onRemoveFolder,
+  onScanFolder,
+  onTogglePause,
+  onBack
+}) {
   const [draft, setDraft] = useState("");
   const [confirmId, setConfirmId] = useState(null);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
   const atMax = folders.length >= KNOWLEDGE_MAX;
 
-  function addFolder() {
+  async function addFolder() {
     const path = draft.trim();
     if (!path || atMax || checking) {
       return;
@@ -435,75 +450,44 @@ function LocalFoldersConfig({ folders, setFolders, onBack }) {
       setError("That folder is already in your list.");
       return;
     }
-    // Simulate checking that the folder exists and is readable, then a first scan.
     setChecking(true);
-    window.setTimeout(() => {
-      setChecking(false);
-      const looksValid = /^(\/|~|[A-Za-z]:\\)/.test(path);
-      if (!looksValid) {
-        setError(
-          "We couldn’t find that folder. Enter a full path, like /Users/you/Reports."
-        );
-        return;
-      }
-      const id = "k" + Math.random().toString(36).slice(2, 7);
-      setFolders((prev) => [
-        ...prev,
-        { id, path, status: "scanning", files: 0, size: "—", nextScan: "" }
-      ]);
+    try {
+      await onAddFolder(path);
       setDraft("");
-      window.setTimeout(() => {
-        setFolders((prev) =>
-          prev.map((f) =>
-            f.id === id
-              ? {
-                  ...f,
-                  status: "scanned",
-                  files: Math.floor(40 + Math.random() * 400),
-                  size: `${Math.floor(8 + Math.random() * 120)} MB`,
-                  nextScan: "~5 min"
-                }
-              : f
-          )
-        );
-      }, 2600);
-    }, 800);
+    } catch (error) {
+      setError(error.message || "Could not add that folder.");
+    } finally {
+      setChecking(false);
+    }
   }
 
-  function removeFolder(id) {
-    setFolders((prev) => prev.filter((f) => f.id !== id));
-    setConfirmId(null);
+  async function removeFolder(id) {
+    try {
+      await onRemoveFolder(id);
+      setConfirmId(null);
+    } catch (error) {
+      setError(error.message || "Could not remove that folder.");
+    }
   }
 
-  function scanNow(id) {
-    setFolders((prev) =>
-      prev.map((f) =>
-        f.id === id && f.status === "scanned"
-          ? { ...f, status: "scanning", nextScan: "" }
-          : f
-      )
-    );
-    window.setTimeout(() => {
-      setFolders((prev) =>
-        prev.map((f) =>
-          f.id === id ? { ...f, status: "scanned", nextScan: "~5 min" } : f
-        )
-      );
-    }, 2000);
+  async function scanNow(id) {
+    try {
+      await onScanFolder(id);
+    } catch (error) {
+      setError(error.message || "Could not scan that folder.");
+    }
   }
 
-  function togglePause(id) {
-    setFolders((prev) =>
-      prev.map((f) => {
-        if (f.id !== id) {
-          return f;
-        }
-        if (f.status === "paused") {
-          return { ...f, status: "scanned", nextScan: "~5 min" };
-        }
-        return { ...f, status: "paused", nextScan: "" };
-      })
-    );
+  async function togglePause(id) {
+    const folder = folders.find((item) => item.id === id);
+    if (!folder) {
+      return;
+    }
+    try {
+      await onTogglePause(folder);
+    } catch (error) {
+      setError(error.message || "Could not update that folder.");
+    }
   }
 
   return (
