@@ -8,8 +8,11 @@ import ai.corporatedroneagent.config.StorageProperties;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
+import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
+import ai.corporatedroneagent.model.knowledge.WorkStatus;
+import ai.corporatedroneagent.repository.KnowledgeResourcePipelineRepository;
 import ai.corporatedroneagent.repository.KnowledgeResourceRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootScanRepository;
@@ -18,6 +21,7 @@ import ai.corporatedroneagent.security.SecretStore;
 import ai.corporatedroneagent.util.JsonFiles;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -40,6 +44,7 @@ class KnowledgeFolderScanServiceTests {
     private KnowledgeRootRepository knowledgeRootRepository;
     private KnowledgeRootScanRepository knowledgeRootScanRepository;
     private KnowledgeResourceRepository knowledgeResourceRepository;
+    private KnowledgeResourcePipelineRepository pipelineRepository;
 
     @BeforeEach
     void setUp() {
@@ -61,10 +66,13 @@ class KnowledgeFolderScanServiceTests {
         knowledgeRootRepository = new KnowledgeRootRepository(jdbcTemplate);
         knowledgeRootScanRepository = new KnowledgeRootScanRepository(jdbcTemplate);
         knowledgeResourceRepository = new KnowledgeResourceRepository(jdbcTemplate);
+        pipelineRepository = new KnowledgeResourcePipelineRepository(jdbcTemplate);
+        LocalFolderKnowledgeReadService readService = new LocalFolderKnowledgeReadService(pipelineRepository);
         LocalFolderKnowledgeScanService localScanService = new LocalFolderKnowledgeScanService(
                 knowledgeRootRepository,
                 knowledgeRootScanRepository,
-                knowledgeResourceRepository
+                knowledgeResourceRepository,
+                readService
         );
         scanService = new KnowledgeFolderScanService(
                 settingsRepository,
@@ -77,7 +85,7 @@ class KnowledgeFolderScanServiceTests {
     @Test
     void scanFolderCountsFilesAndTheirSizeThenSavesMetadata() throws IOException {
         Path folder = Files.createDirectory(root.resolve("scan-me"));
-        Files.write(folder.resolve("one.bin"), new byte[512]);
+        Files.writeString(folder.resolve("one.txt"), "hello", StandardCharsets.UTF_8);
         Path nested = Files.createDirectory(folder.resolve("nested"));
         Files.write(nested.resolve("two.bin"), new byte[1024]);
         KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
@@ -86,7 +94,7 @@ class KnowledgeFolderScanServiceTests {
 
         assertThat(scanned.getStatus()).isEqualTo("scanned");
         assertThat(scanned.getFiles()).isEqualTo(2);
-        assertThat(scanned.getSize()).isEqualTo("1.5 KB");
+        assertThat(scanned.getSize()).isEqualTo("1.0 KB");
         assertThat(scanned.getNextScan()).isEqualTo("~15 min");
         assertThat(settingsRepository.get().getKnowledgeFolders().getFirst().getFiles()).isEqualTo(2);
 
@@ -94,13 +102,33 @@ class KnowledgeFolderScanServiceTests {
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
                 .orElseThrow();
         assertThat(knowledgeRoot.getTotalResources()).isEqualTo(2);
-        assertThat(knowledgeRoot.getTotalSizeBytes()).isEqualTo(1536);
+        assertThat(knowledgeRoot.getTotalSizeBytes()).isEqualTo(1029);
         assertThat(knowledgeRoot.getScanSuccess()).isTrue();
         assertThat(knowledgeRootScanRepository.findLatestByRootId(knowledgeRoot.getId()))
                 .hasValueSatisfying(scan -> assertThat(scan.getTotalResources()).isEqualTo(2));
         assertThat(knowledgeResourceRepository.findByRootId(knowledgeRoot.getId()))
                 .extracting(KnowledgeResource::getReference)
-                .containsExactlyInAnyOrder("one.bin", "nested/two.bin");
+                .containsExactlyInAnyOrder("one.txt", "nested/two.bin");
+
+        KnowledgeResource textResource = knowledgeResourceRepository
+                .findByRootIdAndReference(knowledgeRoot.getId(), "one.txt")
+                .orElseThrow();
+        assertThat(pipelineRepository.findReadByResourceId(textResource.getId()))
+                .hasValueSatisfying(read -> {
+                    assertThat(read.getStatus()).isEqualTo(WorkStatus.DONE);
+                    assertThat(read.getSuccess()).isTrue();
+                    assertThat(new String(read.getValue(), StandardCharsets.UTF_8)).isEqualTo("hello");
+                });
+
+        KnowledgeResource unsupportedResource = knowledgeResourceRepository
+                .findByRootIdAndReference(knowledgeRoot.getId(), "nested/two.bin")
+                .orElseThrow();
+        assertThat(pipelineRepository.findReadByResourceId(unsupportedResource.getId()))
+                .hasValueSatisfying(read -> {
+                    assertThat(read.getStatus()).isEqualTo(WorkStatus.DONE);
+                    assertThat(read.getSuccess()).isFalse();
+                    assertThat(read.getMessage()).isEqualTo("Unsupported file format");
+                });
     }
 
     @Test
@@ -139,6 +167,30 @@ class KnowledgeFolderScanServiceTests {
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isTrue());
         assertThat(knowledgeResourceRepository.findByRootIdAndReference(knowledgeRoot.getId(), "kept.txt"))
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
+    }
+
+    @Test
+    void scanFolderUpdatesReadValueWhenTextFileChanges() throws IOException {
+        Path folder = Files.createDirectory(root.resolve("read-refresh"));
+        Path file = folder.resolve("notes.md");
+        Files.writeString(file, "old", StandardCharsets.UTF_8);
+        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        scanService.scanFolder(configured.getId());
+
+        Files.writeString(file, "new", StandardCharsets.UTF_8);
+        scanService.scanFolder(configured.getId());
+
+        KnowledgeRoot knowledgeRoot = knowledgeRootRepository
+                .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
+                .orElseThrow();
+        KnowledgeResource resource = knowledgeResourceRepository
+                .findByRootIdAndReference(knowledgeRoot.getId(), "notes.md")
+                .orElseThrow();
+        Optional<KnowledgeResourceRead> read = pipelineRepository.findReadByResourceId(resource.getId());
+
+        assertThat(read).hasValueSatisfying(value ->
+                assertThat(new String(value.getValue(), StandardCharsets.UTF_8)).isEqualTo("new")
+        );
     }
 
     private KnowledgeFolder folder(java.util.UUID id) {

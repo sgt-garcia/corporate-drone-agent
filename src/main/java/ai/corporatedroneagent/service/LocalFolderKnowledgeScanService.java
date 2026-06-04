@@ -25,15 +25,18 @@ public class LocalFolderKnowledgeScanService {
     private final KnowledgeRootRepository rootRepository;
     private final KnowledgeRootScanRepository scanRepository;
     private final KnowledgeResourceRepository resourceRepository;
+    private final LocalFolderKnowledgeReadService readService;
 
     public LocalFolderKnowledgeScanService(
             KnowledgeRootRepository rootRepository,
             KnowledgeRootScanRepository scanRepository,
-            KnowledgeResourceRepository resourceRepository
+            KnowledgeResourceRepository resourceRepository,
+            LocalFolderKnowledgeReadService readService
     ) {
         this.rootRepository = rootRepository;
         this.scanRepository = scanRepository;
         this.resourceRepository = resourceRepository;
+        this.readService = readService;
     }
 
     public ScanResult scan(KnowledgeFolder folder, Path folderPath) {
@@ -170,7 +173,8 @@ public class LocalFolderKnowledgeScanService {
             resource.setLastModifiedAt(attrs.lastModifiedTime().toInstant());
             resource.setDeleted(false);
             resource.setScannedAt(scannedAt);
-            resourceRepository.save(resource);
+            KnowledgeResource savedResource = resourceRepository.save(resource);
+            readService.read(savedResource, file);
         }
 
         private ScanResult stats() {
