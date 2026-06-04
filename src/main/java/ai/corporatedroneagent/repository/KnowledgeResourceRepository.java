@@ -7,6 +7,7 @@ import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -70,17 +71,32 @@ public class KnowledgeResourceRepository {
         return update(resource, now);
     }
 
-    public int markDeletedResourcesNotScannedSince(UUID rootId, Instant scannedAt) {
+    public int markDeletedResourcesNotInReferences(UUID rootId, List<String> references) {
+        if (references == null || references.isEmpty()) {
+            return jdbcTemplate.update("""
+                    UPDATE knowledge_resources
+                    SET deleted = TRUE,
+                        updated_at = ?
+                    WHERE root_id = ?
+                    """,
+                    timestamp(Instant.now()),
+                    rootId
+            );
+        }
+
+        String placeholders = String.join(",", java.util.Collections.nCopies(references.size(), "?"));
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(timestamp(Instant.now()));
+        parameters.add(rootId);
+        parameters.addAll(references);
         return jdbcTemplate.update("""
                 UPDATE knowledge_resources
                 SET deleted = TRUE,
                     updated_at = ?
                 WHERE root_id = ?
-                  AND (scanned_at IS NULL OR scanned_at < ?)
-                """,
-                timestamp(Instant.now()),
-                rootId,
-                timestamp(scannedAt)
+                  AND resource_reference NOT IN (
+                """ + placeholders + ")",
+                parameters.toArray()
         );
     }
 

@@ -2,6 +2,7 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
+import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRootScan;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
@@ -16,6 +17,8 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import org.springframework.stereotype.Service;
 
@@ -26,17 +29,20 @@ public class LocalFolderKnowledgeScanService {
     private final KnowledgeRootScanRepository scanRepository;
     private final KnowledgeResourceRepository resourceRepository;
     private final LocalFolderKnowledgeReadService readService;
+    private final LocalFolderKnowledgeConversionService conversionService;
 
     public LocalFolderKnowledgeScanService(
             KnowledgeRootRepository rootRepository,
             KnowledgeRootScanRepository scanRepository,
             KnowledgeResourceRepository resourceRepository,
-            LocalFolderKnowledgeReadService readService
+            LocalFolderKnowledgeReadService readService,
+            LocalFolderKnowledgeConversionService conversionService
     ) {
         this.rootRepository = rootRepository;
         this.scanRepository = scanRepository;
         this.resourceRepository = resourceRepository;
         this.readService = readService;
+        this.conversionService = conversionService;
     }
 
     public ScanResult scan(KnowledgeFolder folder, Path folderPath) {
@@ -47,7 +53,7 @@ public class LocalFolderKnowledgeScanService {
         try {
             ResourceScanningVisitor visitor = new ResourceScanningVisitor(root.getId(), folderPath, startedAt);
             Files.walkFileTree(folderPath, visitor);
-            resourceRepository.markDeletedResourcesNotScannedSince(root.getId(), startedAt);
+            resourceRepository.markDeletedResourcesNotInReferences(root.getId(), visitor.references());
             completeScan(root, scan, visitor.stats(), null);
             return visitor.stats();
         } catch (IOException exception) {
@@ -139,6 +145,7 @@ public class LocalFolderKnowledgeScanService {
         private final java.util.UUID rootId;
         private final Path rootPath;
         private final Instant scannedAt;
+        private final List<String> references = new ArrayList<>();
         private long files;
         private long bytes;
 
@@ -166,7 +173,9 @@ public class LocalFolderKnowledgeScanService {
         private void saveResource(Path file, BasicFileAttributes attrs) {
             KnowledgeResource resource = new KnowledgeResource();
             resource.setRootId(rootId);
-            resource.setReference(resourceReference(rootPath, file));
+            String reference = resourceReference(rootPath, file);
+            references.add(reference);
+            resource.setReference(reference);
             resource.setDisplayName(file.getFileName().toString());
             resource.setFormat(format(file));
             resource.setSizeBytes(attrs.size());
@@ -174,11 +183,16 @@ public class LocalFolderKnowledgeScanService {
             resource.setDeleted(false);
             resource.setScannedAt(scannedAt);
             KnowledgeResource savedResource = resourceRepository.save(resource);
-            readService.read(savedResource, file);
+            KnowledgeResourceRead read = readService.read(savedResource, file);
+            conversionService.convert(savedResource, read);
         }
 
         private ScanResult stats() {
             return new ScanResult(files, bytes);
+        }
+
+        private List<String> references() {
+            return references;
         }
     }
 }

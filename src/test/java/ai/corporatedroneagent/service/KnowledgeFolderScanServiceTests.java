@@ -8,6 +8,7 @@ import ai.corporatedroneagent.config.StorageProperties;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
+import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
@@ -68,11 +69,15 @@ class KnowledgeFolderScanServiceTests {
         knowledgeResourceRepository = new KnowledgeResourceRepository(jdbcTemplate);
         pipelineRepository = new KnowledgeResourcePipelineRepository(jdbcTemplate);
         LocalFolderKnowledgeReadService readService = new LocalFolderKnowledgeReadService(pipelineRepository);
+        LocalFolderKnowledgeConversionService conversionService = new LocalFolderKnowledgeConversionService(
+                pipelineRepository
+        );
         LocalFolderKnowledgeScanService localScanService = new LocalFolderKnowledgeScanService(
                 knowledgeRootRepository,
                 knowledgeRootScanRepository,
                 knowledgeResourceRepository,
-                readService
+                readService,
+                conversionService
         );
         scanService = new KnowledgeFolderScanService(
                 settingsRepository,
@@ -119,6 +124,12 @@ class KnowledgeFolderScanServiceTests {
                     assertThat(read.getSuccess()).isTrue();
                     assertThat(new String(read.getValue(), StandardCharsets.UTF_8)).isEqualTo("hello");
                 });
+        assertThat(pipelineRepository.findConversionByResourceId(textResource.getId()))
+                .hasValueSatisfying(conversion -> {
+                    assertThat(conversion.getStatus()).isEqualTo(WorkStatus.DONE);
+                    assertThat(conversion.getSuccess()).isTrue();
+                    assertThat(conversion.getValue()).isEqualTo("hello");
+                });
 
         KnowledgeResource unsupportedResource = knowledgeResourceRepository
                 .findByRootIdAndReference(knowledgeRoot.getId(), "nested/two.bin")
@@ -128,6 +139,13 @@ class KnowledgeFolderScanServiceTests {
                     assertThat(read.getStatus()).isEqualTo(WorkStatus.DONE);
                     assertThat(read.getSuccess()).isFalse();
                     assertThat(read.getMessage()).isEqualTo("Unsupported file format");
+                });
+        assertThat(pipelineRepository.findConversionByResourceId(unsupportedResource.getId()))
+                .hasValueSatisfying(conversion -> {
+                    assertThat(conversion.getStatus()).isEqualTo(WorkStatus.DONE);
+                    assertThat(conversion.getSuccess()).isFalse();
+                    assertThat(conversion.getMessage()).isEqualTo("Read did not succeed");
+                    assertThat(conversion.getValue()).isEmpty();
                 });
     }
 
@@ -187,9 +205,13 @@ class KnowledgeFolderScanServiceTests {
                 .findByRootIdAndReference(knowledgeRoot.getId(), "notes.md")
                 .orElseThrow();
         Optional<KnowledgeResourceRead> read = pipelineRepository.findReadByResourceId(resource.getId());
+        Optional<KnowledgeResourceConversion> conversion = pipelineRepository.findConversionByResourceId(resource.getId());
 
         assertThat(read).hasValueSatisfying(value ->
                 assertThat(new String(value.getValue(), StandardCharsets.UTF_8)).isEqualTo("new")
+        );
+        assertThat(conversion).hasValueSatisfying(value ->
+                assertThat(value.getValue()).isEqualTo("new")
         );
     }
 
