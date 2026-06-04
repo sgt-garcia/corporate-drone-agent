@@ -1211,7 +1211,6 @@ select.input {
 .input.has-error,
 .input.has-error:focus {
   border: 1px solid var(--danger-500);
-  box-shadow: none;
 }
 .folder-add-error {
   display: flex;
