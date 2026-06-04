@@ -16,6 +16,7 @@ import ai.corporatedroneagent.service.AzureOpenAiDeploymentsService;
 import ai.corporatedroneagent.service.DeepSeekModelsService;
 import ai.corporatedroneagent.service.GeminiModelsService;
 import ai.corporatedroneagent.service.GroqModelsService;
+import ai.corporatedroneagent.service.KnowledgeFolderScanService;
 import ai.corporatedroneagent.service.MistralModelsService;
 import ai.corporatedroneagent.service.OllamaModelsService;
 import ai.corporatedroneagent.service.OpenAiModelsService;
@@ -46,6 +47,7 @@ public class SettingsController {
     private final AzureOpenAiDeploymentsService azureOpenAiDeploymentsService;
     private final GroqModelsService groqModelsService;
     private final DeepSeekModelsService deepSeekModelsService;
+    private final KnowledgeFolderScanService knowledgeFolderScanService;
 
     public SettingsController(
             SettingsService settingsService,
@@ -56,7 +58,8 @@ public class SettingsController {
             OllamaModelsService ollamaModelsService,
             AzureOpenAiDeploymentsService azureOpenAiDeploymentsService,
             GroqModelsService groqModelsService,
-            DeepSeekModelsService deepSeekModelsService
+            DeepSeekModelsService deepSeekModelsService,
+            KnowledgeFolderScanService knowledgeFolderScanService
     ) {
         this.settingsService = settingsService;
         this.openAiModelsService = openAiModelsService;
@@ -67,6 +70,7 @@ public class SettingsController {
         this.azureOpenAiDeploymentsService = azureOpenAiDeploymentsService;
         this.groqModelsService = groqModelsService;
         this.deepSeekModelsService = deepSeekModelsService;
+        this.knowledgeFolderScanService = knowledgeFolderScanService;
     }
 
     @GetMapping
@@ -97,7 +101,7 @@ public class SettingsController {
 
     @PostMapping("/knowledge/local-folders/{folderId}/scan")
     public KnowledgeFolder scanKnowledgeFolder(@PathVariable UUID folderId) {
-        return settingsService.scanKnowledgeFolder(folderId);
+        return knowledgeFolderScanService.scanFolder(folderId);
     }
 
     @PostMapping("/knowledge/local-folders/{folderId}/pause")

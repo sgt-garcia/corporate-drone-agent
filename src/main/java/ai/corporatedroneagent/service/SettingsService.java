@@ -119,11 +119,6 @@ public class SettingsService {
         saveAndPublish(settings);
     }
 
-    public synchronized KnowledgeFolder scanKnowledgeFolder(UUID folderId) {
-        ApplicationSettings settings = get();
-        return findKnowledgeFolder(settings, folderId);
-    }
-
     public synchronized KnowledgeFolder pauseKnowledgeFolder(UUID folderId) {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
@@ -196,7 +191,7 @@ public class SettingsService {
             KnowledgeFolder sanitizedFolder = new KnowledgeFolder();
             sanitizedFolder.setId(folder.getId() == null ? UUID.randomUUID() : folder.getId());
             sanitizedFolder.setPath(folder.getPath().trim());
-            sanitizedFolder.setStatus("paused".equals(folder.getStatus()) ? "paused" : "scanned");
+            sanitizedFolder.setStatus(sanitizeFolderStatus(folder.getStatus()));
             sanitizedFolder.setFiles(folder.getFiles());
             sanitizedFolder.setSize(folder.getSize());
             sanitizedFolder.setNextScan(folder.getNextScan());
@@ -212,5 +207,13 @@ public class SettingsService {
 
     private boolean samePath(String first, String second) {
         return Strings.defaultIfBlank(first, "").equalsIgnoreCase(Strings.defaultIfBlank(second, ""));
+    }
+
+    private String sanitizeFolderStatus(String status) {
+        String normalized = Strings.defaultIfBlank(status, "scanned");
+        return switch (normalized) {
+            case "paused", "scanning" -> normalized;
+            default -> "scanned";
+        };
     }
 }

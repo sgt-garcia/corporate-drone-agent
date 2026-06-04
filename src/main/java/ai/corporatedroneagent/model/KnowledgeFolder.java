@@ -7,7 +7,7 @@ public class KnowledgeFolder {
     private UUID id;
     private String path = "";
     private String status = "scanned";
-    private int files;
+    private long files;
     private String size = "";
     private String nextScan = "";
 
@@ -35,11 +35,11 @@ public class KnowledgeFolder {
         this.status = status == null || status.isBlank() ? "scanned" : status;
     }
 
-    public int getFiles() {
+    public long getFiles() {
         return files;
     }
 
-    public void setFiles(int files) {
+    public void setFiles(long files) {
         this.files = Math.max(0, files);
     }
 

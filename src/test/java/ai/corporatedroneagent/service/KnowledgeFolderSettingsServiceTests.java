@@ -96,18 +96,6 @@ class KnowledgeFolderSettingsServiceTests {
         assertThat(settingsRepository.get().getKnowledgeFolders().getFirst().getStatus()).isEqualTo("scanned");
     }
 
-    @Test
-    void scanNowIsANoopThatReturnsTheSavedFolder() throws IOException {
-        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
-        settingsService.pauseKnowledgeFolder(folder.getId());
-
-        KnowledgeFolder scanned = settingsService.scanKnowledgeFolder(folder.getId());
-
-        assertThat(scanned.getId()).isEqualTo(folder.getId());
-        assertThat(scanned.getStatus()).isEqualTo("paused");
-        assertThat(settingsRepository.get().getKnowledgeFolders().getFirst().getStatus()).isEqualTo("paused");
-    }
-
     private String existingFolderPath() throws IOException {
         return Files.createDirectory(root.resolve("folder-" + UUID.randomUUID())).toString();
     }
