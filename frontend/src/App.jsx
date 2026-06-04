@@ -22,6 +22,15 @@ import { findWorkItem } from "./data.js";
 const defaultProjectInstructions =
   "Use this project context when answering questions about planning, decisions, and follow-up work.";
 
+// Knowledge folders are continuously-scanned local sources. The backend has no
+// endpoint for these yet, so they live in client state only (seeded with the
+// user's locally-synced OneDrive and SharePoint libraries) — persistence is a
+// follow-up once the scanning service exists.
+const defaultKnowledgeFolders = [
+  { id: "k1", path: "OneDrive", status: "scanned", files: 1240, size: "2.1 GB", nextScan: "~4 min" },
+  { id: "k2", path: "SharePoint", status: "scanned", files: 883, size: "1.3 GB", nextScan: "~8 min" }
+];
+
 const emptySettings = {
   agentName: "Corporate Drone's Agent",
   aiModel: "none",
@@ -49,6 +58,7 @@ export default function App() {
   const [conversationsById, setConversationsById] = useState({});
   const [draftsByConversationId, setDraftsByConversationId] = useState({});
   const [settings, setSettings] = useState(emptySettings);
+  const [knowledgeFolders, setKnowledgeFolders] = useState(defaultKnowledgeFolders);
   const [activePage, setActivePage] = useState("work");
   const [activeWorkItemId, setActiveWorkItemId] = useState(null);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState([]);
@@ -475,6 +485,8 @@ export default function App() {
           onClose={() => setActivePage("work")}
           settings={settings}
           onSave={updateSettings}
+          knowledgeFolders={knowledgeFolders}
+          setKnowledgeFolders={setKnowledgeFolders}
         />
       ) : (
         <main className="main">

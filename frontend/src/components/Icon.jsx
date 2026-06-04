@@ -86,6 +86,28 @@ const ICON_PATHS = {
     "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
     "M10 11v6",
     "M14 11v6"
+  ],
+  database: [
+    "ellipse:12,5,9,3",
+    "M3 5V19A9 3 0 0 0 21 19V5",
+    "M3 12A9 3 0 0 0 21 12"
+  ],
+  "folder-open": [
+    "m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
+  ],
+  "circle-dot": ["circle:12,12,10", "circle:12,12,1"],
+  "refresh-cw": [
+    "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8",
+    "M21 3v5h-5",
+    "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16",
+    "M3 21v-5h5"
+  ],
+  pause: ["rect:6,4,4,16,1", "rect:14,4,4,16,1"],
+  play: ["M6 3 20 12 6 21Z"],
+  "alert-triangle": [
+    "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z",
+    "M12 9v4",
+    "M12 17h.01"
   ]
 };
 
@@ -115,6 +137,10 @@ export function Icon({
         if (p.startsWith("circle:")) {
           const [cx, cy, r] = p.slice(7).split(",");
           return <circle key={i} cx={cx} cy={cy} r={r} />;
+        }
+        if (p.startsWith("ellipse:")) {
+          const [cx, cy, rx, ry] = p.slice(8).split(",");
+          return <ellipse key={i} cx={cx} cy={cy} rx={rx} ry={ry} />;
         }
         if (p.startsWith("rect:")) {
           const [x, y, w, h, r] = p.slice(5).split(",");

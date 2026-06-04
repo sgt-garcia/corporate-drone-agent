@@ -108,8 +108,12 @@ const PROVIDERS = [
 
 const NAV = [
   { id: "general", label: "General", icon: "sliders" },
-  { id: "providers", label: "Models & providers", icon: "cpu" }
+  { id: "providers", label: "Models & providers", icon: "cpu" },
+  { id: "knowledge", label: "Knowledge", icon: "database" }
 ];
+
+// Maximum number of continuously-scanned local folders.
+const KNOWLEDGE_MAX = 10;
 
 // Stable module-level loaders. ProviderModelSelect keeps `loadModels` in its
 // effect deps, so these must NOT be inline closures or the effect re-runs every
@@ -144,10 +148,17 @@ function providerState(provider, settings) {
   };
 }
 
-export function Settings({ onClose, settings, onSave }) {
+export function Settings({
+  onClose,
+  settings,
+  onSave,
+  knowledgeFolders,
+  setKnowledgeFolders
+}) {
   const [draft, setDraft] = useState(settings);
   const [section, setSection] = useState("general");
   const [openProviderId, setOpenProviderId] = useState(null);
+  const [knowledgeView, setKnowledgeView] = useState(null); // null | "local-folders"
 
   useEffect(() => {
     setDraft(settings);
@@ -158,6 +169,7 @@ export function Settings({ onClose, settings, onSave }) {
   function selectSection(id) {
     setSection(id);
     setOpenProviderId(null);
+    setKnowledgeView(null);
   }
 
   function updateProviderConfig(settingsKey, patch) {
@@ -232,7 +244,373 @@ export function Settings({ onClose, settings, onSave }) {
                 onOpen={setOpenProviderId}
               />
             ))}
+          {section === "knowledge" &&
+            (knowledgeView === "local-folders" ? (
+              <LocalFoldersConfig
+                folders={knowledgeFolders}
+                setFolders={setKnowledgeFolders}
+                onBack={() => setKnowledgeView(null)}
+              />
+            ) : (
+              <KnowledgeOverview
+                folders={knowledgeFolders}
+                onOpen={() => setKnowledgeView("local-folders")}
+              />
+            ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function FolderStatus({ status }) {
+  if (status === "scanning") {
+    return (
+      <span className="badge badge-info">
+        <Icon
+          name="refresh-cw"
+          size={12}
+          color="var(--blue-700)"
+          className="cda-spin"
+        />
+        Scanning
+      </span>
+    );
+  }
+  if (status === "paused") {
+    return <span className="badge badge-neutral">Paused</span>;
+  }
+  return (
+    <span className="badge badge-success">
+      <span className="dot" />
+      Scanned
+    </span>
+  );
+}
+
+function KnowledgeOverview({ folders, onOpen }) {
+  const scanning = folders.filter((f) => f.status === "scanning").length;
+  const summary = scanning
+    ? `${scanning} scanning now`
+    : folders.length
+      ? "Auto-scanning · up to date"
+      : "No folders yet";
+
+  return (
+    <div className="settings-section wide">
+      <div className="settings-intro">
+        <h2 className="ds-h3">Knowledge</h2>
+        <p className="ds-body">
+          Sources the agent draws on to understand your work context. Everything
+          is indexed locally on this device.
+        </p>
+      </div>
+      <div className="providers-grid">
+        <button className="provider-card" type="button" onClick={onOpen}>
+          <div className="provider-card-head">
+            <span className="provider-icon local">
+              <Icon name="folder-open" size={19} color="var(--coffee-700)" />
+            </span>
+            <div className="provider-id">
+              <div className="provider-name">Local Folders</div>
+              <div className="provider-region">
+                {folders.length} of {KNOWLEDGE_MAX} folders · continuously scanned
+              </div>
+            </div>
+          </div>
+          <div className="provider-card-foot">
+            <span className="folder-summary">
+              <Icon name="circle-dot" size={12} color="var(--gray-400)" />
+              {summary}
+            </span>
+            <span className="provider-configure">
+              Manage
+              <Icon name="chevron-right" size={13} color="var(--blue-600)" />
+            </span>
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FolderRow({
+  folder,
+  confirming,
+  onScanNow,
+  onTogglePause,
+  onRequestRemove,
+  onCancelRemove,
+  onConfirmRemove
+}) {
+  const files = folder.files.toLocaleString();
+  const meta =
+    folder.status === "paused"
+      ? `Paused · ${files} files · ${folder.size}`
+      : folder.status === "scanning"
+        ? `${files} files · ${folder.size} · scanning now`
+        : `${files} files · ${folder.size} · next scan ${folder.nextScan}`;
+  const paused = folder.status === "paused";
+
+  return (
+    <div className="folder-row">
+      <Icon name="folder" size={18} color="var(--gray-500)" />
+      <div className="folder-row-id">
+        <div className="folder-path">{folder.path}</div>
+        <div className="folder-meta">{meta}</div>
+      </div>
+      {confirming ? (
+        <div className="folder-confirm">
+          <span className="folder-confirm-prompt">Remove folder?</span>
+          <button
+            className="btn btn-secondary btn-sm"
+            type="button"
+            onClick={onCancelRemove}
+          >
+            Cancel
+          </button>
+          <button
+            className="btn btn-danger btn-sm"
+            type="button"
+            onClick={onConfirmRemove}
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+        <div className="folder-row-controls">
+          <FolderStatus status={folder.status} />
+          <button
+            className="iconbtn"
+            type="button"
+            title="Scan now"
+            aria-label="Scan now"
+            onClick={onScanNow}
+            disabled={folder.status !== "scanned"}
+          >
+            <Icon name="refresh-cw" size={16} color="var(--gray-500)" />
+          </button>
+          <button
+            className="iconbtn"
+            type="button"
+            title={paused ? "Resume scanning" : "Pause scanning"}
+            aria-label={paused ? "Resume scanning" : "Pause scanning"}
+            onClick={onTogglePause}
+          >
+            <Icon
+              name={paused ? "play" : "pause"}
+              size={16}
+              color="var(--gray-500)"
+            />
+          </button>
+          <button
+            className="iconbtn"
+            type="button"
+            title="Remove folder"
+            aria-label="Remove folder"
+            onClick={onRequestRemove}
+          >
+            <Icon name="trash" size={16} color="var(--gray-500)" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LocalFoldersConfig({ folders, setFolders, onBack }) {
+  const [draft, setDraft] = useState("");
+  const [confirmId, setConfirmId] = useState(null);
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
+  const atMax = folders.length >= KNOWLEDGE_MAX;
+
+  function addFolder() {
+    const path = draft.trim();
+    if (!path || atMax || checking) {
+      return;
+    }
+    setError("");
+    if (folders.some((f) => f.path.toLowerCase() === path.toLowerCase())) {
+      setError("That folder is already in your list.");
+      return;
+    }
+    // Simulate checking that the folder exists and is readable, then a first scan.
+    setChecking(true);
+    window.setTimeout(() => {
+      setChecking(false);
+      const looksValid = /^(\/|~|[A-Za-z]:\\)/.test(path);
+      if (!looksValid) {
+        setError(
+          "We couldn’t find that folder. Enter a full path, like /Users/you/Reports."
+        );
+        return;
+      }
+      const id = "k" + Math.random().toString(36).slice(2, 7);
+      setFolders((prev) => [
+        ...prev,
+        { id, path, status: "scanning", files: 0, size: "—", nextScan: "" }
+      ]);
+      setDraft("");
+      window.setTimeout(() => {
+        setFolders((prev) =>
+          prev.map((f) =>
+            f.id === id
+              ? {
+                  ...f,
+                  status: "scanned",
+                  files: Math.floor(40 + Math.random() * 400),
+                  size: `${Math.floor(8 + Math.random() * 120)} MB`,
+                  nextScan: "~5 min"
+                }
+              : f
+          )
+        );
+      }, 2600);
+    }, 800);
+  }
+
+  function removeFolder(id) {
+    setFolders((prev) => prev.filter((f) => f.id !== id));
+    setConfirmId(null);
+  }
+
+  function scanNow(id) {
+    setFolders((prev) =>
+      prev.map((f) =>
+        f.id === id && f.status === "scanned"
+          ? { ...f, status: "scanning", nextScan: "" }
+          : f
+      )
+    );
+    window.setTimeout(() => {
+      setFolders((prev) =>
+        prev.map((f) =>
+          f.id === id ? { ...f, status: "scanned", nextScan: "~5 min" } : f
+        )
+      );
+    }, 2000);
+  }
+
+  function togglePause(id) {
+    setFolders((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) {
+          return f;
+        }
+        if (f.status === "paused") {
+          return { ...f, status: "scanned", nextScan: "~5 min" };
+        }
+        return { ...f, status: "paused", nextScan: "" };
+      })
+    );
+  }
+
+  return (
+    <div className="settings-section">
+      <button className="config-back" type="button" onClick={onBack}>
+        <Icon name="arrow-left" size={15} color="var(--gray-600)" /> All knowledge
+      </button>
+
+      <div className="config-head">
+        <span className="provider-icon local lg">
+          <Icon name="folder-open" size={22} color="var(--coffee-700)" />
+        </span>
+        <div className="provider-id">
+          <h2 className="ds-h3">Local Folders</h2>
+          <div className="provider-region">
+            Folders on this device — including the local copies of synced OneDrive
+            and SharePoint libraries. The agent re-scans them automatically to keep
+            its context current; files never leave this device. Up to {KNOWLEDGE_MAX}.
+          </div>
+        </div>
+      </div>
+
+      <div className="ds-card folders-card">
+        <div className="folder-add">
+          <div className="folder-add-row">
+            <span className="folder-count">
+              {folders.length}{" "}
+              <span className="folder-count-max">/ {KNOWLEDGE_MAX} folders</span>
+            </span>
+            <div className="folder-add-controls">
+              <span className="input-icon">
+                <Icon name="folder" size={16} />
+                <input
+                  className={error ? "input has-error" : "input"}
+                  type="text"
+                  placeholder={atMax ? "Folder limit reached" : "Add a folder path…"}
+                  value={draft}
+                  disabled={atMax}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    if (error) {
+                      setError("");
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      addFolder();
+                    }
+                  }}
+                />
+              </span>
+              <button
+                className="btn btn-primary btn-sm"
+                type="button"
+                onClick={addFolder}
+                disabled={atMax || !draft.trim() || checking}
+              >
+                {checking ? (
+                  <>
+                    <Icon
+                      name="refresh-cw"
+                      size={15}
+                      color="#fff"
+                      className="cda-spin"
+                    />
+                    Checking…
+                  </>
+                ) : (
+                  <>
+                    <Icon name="plus" size={15} color="#fff" /> Add
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+          {error && (
+            <div className="folder-add-error">
+              <Icon name="alert-triangle" size={14} color="var(--danger-600)" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+
+        {folders.length === 0 ? (
+          <div className="folder-empty">
+            No folders yet. Add one above to start building local context.
+          </div>
+        ) : (
+          folders.map((folder) => (
+            <FolderRow
+              key={folder.id}
+              folder={folder}
+              confirming={confirmId === folder.id}
+              onScanNow={() => scanNow(folder.id)}
+              onTogglePause={() => togglePause(folder.id)}
+              onRequestRemove={() => setConfirmId(folder.id)}
+              onCancelRemove={() => setConfirmId(null)}
+              onConfirmRemove={() => removeFolder(folder.id)}
+            />
+          ))
+        )}
+      </div>
+
+      <div className="knowledge-privacy">
+        <Icon name="shield-check" size={14} color="var(--success-600)" />
+        Indexing runs on device. Nothing is uploaded — only the agent on this
+        machine can read it.
       </div>
     </div>
   );

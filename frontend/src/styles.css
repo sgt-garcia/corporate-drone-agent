@@ -49,6 +49,7 @@
   --warning-500: #c2820e;
   --warning-700: #7a4f06;
   --danger-50: #fbeae8;
+  --danger-500: #c8362c;
   --danger-600: #b42318;
   --danger-700: #8f1b12;
 
@@ -178,6 +179,16 @@ a {
 }
 .cda-pulse {
   animation: cdaPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes cdaSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.cda-spin {
+  animation: cdaSpin 0.9s linear infinite;
+  transform-origin: center;
 }
 
 /* ---- Type helpers ---- */
@@ -815,7 +826,7 @@ select.input {
   margin-top: 6px;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--gray-400);
+  color: var(--gray-500);
 }
 .streaming-dots {
   display: flex;
@@ -1141,6 +1152,146 @@ select.input {
   margin: 2px 0 0;
   font-size: 12px;
   color: var(--gray-500);
+}
+
+/* =====================================================================
+   KNOWLEDGE — Local Folders
+   ===================================================================== */
+.folder-summary {
+  font-size: 12px;
+  color: var(--gray-500);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+/* Folder list lives in a card with seamless, full-bleed rows. */
+.folders-card {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.folder-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-divider);
+  background: var(--gray-50);
+}
+.folder-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.folder-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-700);
+  white-space: nowrap;
+}
+.folder-count-max {
+  color: var(--gray-400);
+  font-weight: 400;
+}
+.folder-add-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 420px;
+}
+.folder-add-controls .input-icon {
+  flex: 1;
+}
+.input.has-error,
+.input.has-error:focus {
+  border: 1px solid var(--danger-500);
+  box-shadow: none;
+}
+.folder-add-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--danger-700);
+}
+.folder-add-error svg {
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+.folder-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border-divider);
+}
+.folder-row:last-child {
+  border-bottom: none;
+}
+.folder-row-id {
+  flex: 1;
+  min-width: 0;
+}
+.folder-path {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.folder-meta {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.folder-row-controls,
+.folder-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.folder-confirm {
+  gap: 8px;
+}
+.folder-confirm-prompt {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray-600);
+  white-space: nowrap;
+}
+.folder-empty {
+  padding: 40px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--gray-500);
+}
+.iconbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.iconbtn:disabled:hover {
+  background: transparent;
+}
+.knowledge-privacy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--gray-500);
+}
+.knowledge-privacy svg {
+  flex-shrink: 0;
 }
 
 /* ---- Project settings (workspace) ---- */
