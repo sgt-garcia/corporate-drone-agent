@@ -70,13 +70,13 @@ public class KnowledgeResourceRepository {
         return update(resource, now);
     }
 
-    public int markDeletedResourcesNotScannedAt(UUID rootId, Instant scannedAt) {
+    public int markDeletedResourcesNotScannedSince(UUID rootId, Instant scannedAt) {
         return jdbcTemplate.update("""
                 UPDATE knowledge_resources
                 SET deleted = TRUE,
                     updated_at = ?
                 WHERE root_id = ?
-                  AND (scanned_at IS NULL OR scanned_at <> ?)
+                  AND (scanned_at IS NULL OR scanned_at < ?)
                 """,
                 timestamp(Instant.now()),
                 rootId,

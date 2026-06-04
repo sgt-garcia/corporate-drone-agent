@@ -3,9 +3,16 @@ package ai.corporatedroneagent.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import ai.corporatedroneagent.config.KnowledgeDatabaseConfig;
 import ai.corporatedroneagent.config.StorageProperties;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.KnowledgeFolder;
+import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
+import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
+import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
+import ai.corporatedroneagent.repository.KnowledgeResourceRepository;
+import ai.corporatedroneagent.repository.KnowledgeRootRepository;
+import ai.corporatedroneagent.repository.KnowledgeRootScanRepository;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.security.SecretStore;
 import ai.corporatedroneagent.util.JsonFiles;
@@ -16,9 +23,12 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import javax.sql.DataSource;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class KnowledgeFolderScanServiceTests {
 
@@ -27,18 +37,41 @@ class KnowledgeFolderScanServiceTests {
     private SettingsRepository settingsRepository;
     private SettingsService settingsService;
     private KnowledgeFolderScanService scanService;
+    private KnowledgeRootRepository knowledgeRootRepository;
+    private KnowledgeRootScanRepository knowledgeRootScanRepository;
+    private KnowledgeResourceRepository knowledgeResourceRepository;
 
     @BeforeEach
     void setUp() {
         StorageProperties storageProperties = new StorageProperties();
         storageProperties.setRoot(root);
         JsonFiles jsonFiles = new JsonFiles(new ObjectMapper().findAndRegisterModules());
-        SettingsSecretsService secretsService = new SettingsSecretsService(new InMemorySecretStore());
+        InMemorySecretStore secretStore = new InMemorySecretStore();
+        SettingsSecretsService secretsService = new SettingsSecretsService(secretStore);
         EventService eventService = mock(EventService.class);
+        DataSource dataSource = new KnowledgeDatabaseConfig().dataSource(
+                storageProperties,
+                new DatabaseKeyService(secretStore)
+        );
+        Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
         settingsRepository = new SettingsRepository(jsonFiles, storageProperties);
         settingsService = new SettingsService(settingsRepository, secretsService, eventService);
-        scanService = new KnowledgeFolderScanService(settingsRepository, secretsService, eventService);
+        knowledgeRootRepository = new KnowledgeRootRepository(jdbcTemplate);
+        knowledgeRootScanRepository = new KnowledgeRootScanRepository(jdbcTemplate);
+        knowledgeResourceRepository = new KnowledgeResourceRepository(jdbcTemplate);
+        LocalFolderKnowledgeScanService localScanService = new LocalFolderKnowledgeScanService(
+                knowledgeRootRepository,
+                knowledgeRootScanRepository,
+                knowledgeResourceRepository
+        );
+        scanService = new KnowledgeFolderScanService(
+                settingsRepository,
+                secretsService,
+                eventService,
+                localScanService
+        );
     }
 
     @Test
@@ -56,6 +89,18 @@ class KnowledgeFolderScanServiceTests {
         assertThat(scanned.getSize()).isEqualTo("1.5 KB");
         assertThat(scanned.getNextScan()).isEqualTo("~15 min");
         assertThat(settingsRepository.get().getKnowledgeFolders().getFirst().getFiles()).isEqualTo(2);
+
+        KnowledgeRoot knowledgeRoot = knowledgeRootRepository
+                .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
+                .orElseThrow();
+        assertThat(knowledgeRoot.getTotalResources()).isEqualTo(2);
+        assertThat(knowledgeRoot.getTotalSizeBytes()).isEqualTo(1536);
+        assertThat(knowledgeRoot.getScanSuccess()).isTrue();
+        assertThat(knowledgeRootScanRepository.findLatestByRootId(knowledgeRoot.getId()))
+                .hasValueSatisfying(scan -> assertThat(scan.getTotalResources()).isEqualTo(2));
+        assertThat(knowledgeResourceRepository.findByRootId(knowledgeRoot.getId()))
+                .extracting(KnowledgeResource::getReference)
+                .containsExactlyInAnyOrder("one.bin", "nested/two.bin");
     }
 
     @Test
@@ -74,6 +119,26 @@ class KnowledgeFolderScanServiceTests {
         assertThat(folder(active.getId()).getStatus()).isEqualTo("scanned");
         assertThat(folder(paused.getId()).getFiles()).isZero();
         assertThat(folder(paused.getId()).getStatus()).isEqualTo("paused");
+    }
+
+    @Test
+    void scanFolderMarksResourcesDeletedWhenTheyDisappear() throws IOException {
+        Path folder = Files.createDirectory(root.resolve("refresh-me"));
+        Path staleFile = Files.write(folder.resolve("stale.txt"), new byte[3]);
+        Files.write(folder.resolve("kept.txt"), new byte[4]);
+        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        scanService.scanFolder(configured.getId());
+
+        Files.delete(staleFile);
+        scanService.scanFolder(configured.getId());
+
+        KnowledgeRoot knowledgeRoot = knowledgeRootRepository
+                .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
+                .orElseThrow();
+        assertThat(knowledgeResourceRepository.findByRootIdAndReference(knowledgeRoot.getId(), "stale.txt"))
+                .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isTrue());
+        assertThat(knowledgeResourceRepository.findByRootIdAndReference(knowledgeRoot.getId(), "kept.txt"))
+                .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
     }
 
     private KnowledgeFolder folder(java.util.UUID id) {

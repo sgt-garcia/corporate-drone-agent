@@ -3,12 +3,9 @@ package ai.corporatedroneagent.service;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.repository.SettingsRepository;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -25,15 +22,18 @@ public class KnowledgeFolderScanService {
     private final SettingsRepository settingsRepository;
     private final SettingsSecretsService settingsSecretsService;
     private final EventService eventService;
+    private final LocalFolderKnowledgeScanService localFolderKnowledgeScanService;
 
     public KnowledgeFolderScanService(
             SettingsRepository settingsRepository,
             SettingsSecretsService settingsSecretsService,
-            EventService eventService
+            EventService eventService,
+            LocalFolderKnowledgeScanService localFolderKnowledgeScanService
     ) {
         this.settingsRepository = settingsRepository;
         this.settingsSecretsService = settingsSecretsService;
         this.eventService = eventService;
+        this.localFolderKnowledgeScanService = localFolderKnowledgeScanService;
     }
 
     public synchronized void scanAllFolders() {
@@ -70,7 +70,7 @@ public class KnowledgeFolderScanService {
         folder.setNextScan("");
         saveAndPublish(settings);
 
-        FolderStats stats = countFiles(folderPath);
+        LocalFolderKnowledgeScanService.ScanResult stats = scanKnowledgeFolder(folder, folderPath);
         settings = settingsRepository.get();
         folder = findFolder(settings, folderId);
         if (STATUS_PAUSED.equals(folder.getStatus())) {
@@ -100,14 +100,12 @@ public class KnowledgeFolderScanService {
         }
     }
 
-    private FolderStats countFiles(Path folderPath) {
-        CountingVisitor visitor = new CountingVisitor();
+    private LocalFolderKnowledgeScanService.ScanResult scanKnowledgeFolder(KnowledgeFolder folder, Path folderPath) {
         try {
-            Files.walkFileTree(folderPath, visitor);
-        } catch (IOException exception) {
+            return localFolderKnowledgeScanService.scan(folder, folderPath);
+        } catch (LocalFolderKnowledgeScanService.KnowledgeScanException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not scan folder");
         }
-        return visitor.stats();
     }
 
     private void saveAndPublish(ApplicationSettings settings) {
@@ -133,30 +131,4 @@ public class KnowledgeFolderScanService {
         return String.format(java.util.Locale.ROOT, "%.1f %s", value, units[unitIndex]);
     }
 
-    private record FolderStats(long files, long bytes) {
-    }
-
-    private static class CountingVisitor extends SimpleFileVisitor<Path> {
-
-        private long files;
-        private long bytes;
-
-        @Override
-        public java.nio.file.FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-            if (attrs.isRegularFile()) {
-                files++;
-                bytes += attrs.size();
-            }
-            return java.nio.file.FileVisitResult.CONTINUE;
-        }
-
-        @Override
-        public java.nio.file.FileVisitResult visitFileFailed(Path file, IOException exception) {
-            return java.nio.file.FileVisitResult.CONTINUE;
-        }
-
-        private FolderStats stats() {
-            return new FolderStats(files, bytes);
-        }
-    }
 }
