@@ -53,6 +53,34 @@ class AiChatServiceTests {
         assertThat(text(promptMessages.get(4))).isEqualTo("What should you remember?");
     }
 
+    @Test
+    void buildPromptMessagesAddsKnowledgeContextToSystemInstructions() {
+        ApplicationSettings settings = new ApplicationSettings();
+        Project project = new Project();
+        Conversation conversation = new Conversation();
+        conversation.getMessages().add(message("user", "What is the release name?"));
+        KnowledgeContextSnippet snippet = new KnowledgeContextSnippet(
+                "LOCAL_FOLDER",
+                "Docs",
+                "plans/release.txt",
+                "release.txt",
+                0,
+                "The release name is Aurora.",
+                1.25f
+        );
+
+        List<org.springframework.ai.chat.messages.Message> promptMessages =
+                AiChatService.buildPromptMessages(settings, project, conversation, List.of(snippet));
+
+        assertThat(promptMessages)
+                .extracting(Object::getClass)
+                .containsExactly(SystemMessage.class, UserMessage.class);
+        assertThat(text(promptMessages.get(0)))
+                .contains("Local knowledge:")
+                .contains("[1] Docs / plans/release.txt")
+                .contains("The release name is Aurora.");
+    }
+
     private Message message(String role, String content) {
         return new Message(UUID.randomUUID(), role, content, Instant.now());
     }

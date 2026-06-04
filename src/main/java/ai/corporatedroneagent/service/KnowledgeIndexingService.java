@@ -13,7 +13,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
+import java.util.UUID;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -25,9 +25,10 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.FSDirectory;
 import org.springframework.stereotype.Service;
 
@@ -91,26 +92,39 @@ public class KnowledgeIndexingService {
     }
 
     public List<String> searchTerm(String term, int limit) {
-        String normalizedTerm = term == null ? "" : term.toLowerCase(Locale.ROOT).trim();
-        if (normalizedTerm.isEmpty() || limit <= 0 || !Files.exists(indexPath)) {
+        return search(term, limit).stream()
+                .map(KnowledgeIndexHit::documentId)
+                .toList();
+    }
+
+    public List<KnowledgeIndexHit> search(String query, int limit) {
+        String normalizedQuery = query == null ? "" : query.trim();
+        if (normalizedQuery.isEmpty() || limit <= 0 || !Files.exists(indexPath)) {
             return List.of();
         }
 
-        try (FSDirectory directory = FSDirectory.open(indexPath);
+        try (StandardAnalyzer analyzer = new StandardAnalyzer();
+                FSDirectory directory = FSDirectory.open(indexPath);
                 DirectoryReader reader = DirectoryReader.open(directory)) {
             IndexSearcher searcher = new IndexSearcher(reader);
             StoredFields storedFields = reader.storedFields();
             ScoreDoc[] hits = searcher.search(
-                    new TermQuery(new Term(FIELD_CONTENT, normalizedTerm)),
+                    new QueryParser(FIELD_CONTENT, analyzer).parse(QueryParser.escape(normalizedQuery)),
                     limit
             ).scoreDocs;
-            List<String> documentIds = new ArrayList<>();
+            List<KnowledgeIndexHit> results = new ArrayList<>();
             for (ScoreDoc hit : hits) {
                 Document document = storedFields.document(hit.doc);
-                documentIds.add(document.get(FIELD_DOCUMENT_ID));
+                results.add(new KnowledgeIndexHit(
+                        document.get(FIELD_DOCUMENT_ID),
+                        UUID.fromString(document.get(FIELD_CHUNK_ID)),
+                        hit.score
+                ));
             }
-            return documentIds;
+            return results;
         } catch (IndexNotFoundException exception) {
+            return List.of();
+        } catch (ParseException exception) {
             return List.of();
         } catch (IOException exception) {
             throw new KnowledgeIndexException("Could not search knowledge index", exception);
@@ -203,5 +217,8 @@ public class KnowledgeIndexingService {
         public KnowledgeIndexException(String message, Throwable cause) {
             super(message, cause);
         }
+    }
+
+    public record KnowledgeIndexHit(String documentId, UUID chunkId, float score) {
     }
 }

@@ -114,6 +114,8 @@ class KnowledgeResourcePipelineRepositoryTests {
         KnowledgeResourceChunk savedChunk = pipelineRepository.saveChunk(chunk);
 
         assertThat(pipelineRepository.findChunksByResourceId(savedResource.getId())).hasSize(1);
+        assertThat(pipelineRepository.findChunkById(savedChunk.getId()))
+                .hasValueSatisfying(loaded -> assertThat(loaded.getContentHash()).isEqualTo("hash"));
 
         KnowledgeResourceIndex index = new KnowledgeResourceIndex();
         index.setChunkId(savedChunk.getId());

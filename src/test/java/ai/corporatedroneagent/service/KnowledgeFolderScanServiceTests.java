@@ -49,6 +49,7 @@ class KnowledgeFolderScanServiceTests {
     private KnowledgeResourceRepository knowledgeResourceRepository;
     private KnowledgeResourcePipelineRepository pipelineRepository;
     private KnowledgeIndexingService indexingService;
+    private KnowledgeSearchService searchService;
 
     @BeforeEach
     void setUp() {
@@ -77,6 +78,12 @@ class KnowledgeFolderScanServiceTests {
         );
         KnowledgeChunkingService chunkingService = new KnowledgeChunkingService(pipelineRepository);
         indexingService = new KnowledgeIndexingService(pipelineRepository, storageProperties);
+        searchService = new KnowledgeSearchService(
+                indexingService,
+                pipelineRepository,
+                knowledgeResourceRepository,
+                knowledgeRootRepository
+        );
         LocalFolderKnowledgeScanService localScanService = new LocalFolderKnowledgeScanService(
                 knowledgeRootRepository,
                 knowledgeRootScanRepository,
@@ -156,6 +163,14 @@ class KnowledgeFolderScanServiceTests {
                 });
         assertThat(indexingService.searchTerm("hello", 10))
                 .containsExactly(textResource.getId() + ":0");
+        assertThat(searchService.search("hello", 10))
+                .hasSize(1)
+                .first()
+                .satisfies(snippet -> {
+                    assertThat(snippet.rootName()).isEqualTo("scan-me");
+                    assertThat(snippet.resourceReference()).isEqualTo("one.txt");
+                    assertThat(snippet.content()).isEqualTo("hello");
+                });
 
         KnowledgeResource unsupportedResource = knowledgeResourceRepository
                 .findByRootIdAndReference(knowledgeRoot.getId(), "nested/two.bin")
@@ -257,6 +272,10 @@ class KnowledgeFolderScanServiceTests {
                 });
         assertThat(indexingService.searchTerm("old", 10)).isEmpty();
         assertThat(indexingService.searchTerm("new", 10)).containsExactly(resource.getId() + ":0");
+        assertThat(searchService.search("new", 10))
+                .hasSize(1)
+                .first()
+                .satisfies(snippet -> assertThat(snippet.content()).isEqualTo("new"));
     }
 
     @Test

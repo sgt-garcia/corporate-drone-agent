@@ -15,6 +15,7 @@ import ai.corporatedroneagent.model.OpenAiSettings;
 import ai.corporatedroneagent.model.Project;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.repository.ProjectRepository;
+import ai.corporatedroneagent.util.Strings;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.core.credential.AzureKeyCredential;
 import com.google.genai.Client;
@@ -50,40 +51,59 @@ import org.springframework.stereotype.Service;
 @Service
 public class AiChatService {
 
+    private static final int KNOWLEDGE_SEARCH_LIMIT = 5;
+
     private final SettingsService settingsService;
     private final ConversationRepository conversationRepository;
     private final ProjectRepository projectRepository;
+    private final KnowledgeSearchService knowledgeSearchService;
 
     public AiChatService(
             SettingsService settingsService,
             ConversationRepository conversationRepository,
-            ProjectRepository projectRepository
+            ProjectRepository projectRepository,
+            KnowledgeSearchService knowledgeSearchService
     ) {
         this.settingsService = settingsService;
         this.conversationRepository = conversationRepository;
         this.projectRepository = projectRepository;
+        this.knowledgeSearchService = knowledgeSearchService;
     }
 
     public String reply(UUID conversationId, String userContent) {
         ApplicationSettings settings = settingsService.getWithSecrets();
         Conversation conversation = getConversation(conversationId);
         Project project = getProject(conversation.getProjectId());
+        List<KnowledgeContextSnippet> knowledgeContext = knowledgeContext(userContent);
 
         return switch (settings.getAiModel()) {
-            case "azure-openai" -> azureOpenAiReply(settings, conversation, project);
-            case "openai" -> openAiReply(settings, conversation, project);
-            case "openai-sdk" -> openAiSdkReply(settings, conversation, project);
-            case "ollama" -> ollamaReply(settings, conversation, project);
-            case "mistral" -> mistralReply(settings, conversation, project);
-            case "gemini" -> geminiReply(settings, conversation, project);
-            case "anthropic" -> anthropicReply(settings, conversation, project);
-            case "groq" -> groqReply(settings, conversation, project);
-            case "deepseek" -> deepSeekReply(settings, conversation, project);
+            case "azure-openai" -> azureOpenAiReply(settings, conversation, project, knowledgeContext);
+            case "openai" -> openAiReply(settings, conversation, project, knowledgeContext);
+            case "openai-sdk" -> openAiSdkReply(settings, conversation, project, knowledgeContext);
+            case "ollama" -> ollamaReply(settings, conversation, project, knowledgeContext);
+            case "mistral" -> mistralReply(settings, conversation, project, knowledgeContext);
+            case "gemini" -> geminiReply(settings, conversation, project, knowledgeContext);
+            case "anthropic" -> anthropicReply(settings, conversation, project, knowledgeContext);
+            case "groq" -> groqReply(settings, conversation, project, knowledgeContext);
+            case "deepseek" -> deepSeekReply(settings, conversation, project, knowledgeContext);
             default -> echoReply(userContent);
         };
     }
 
-    private String openAiReply(ApplicationSettings settings, Conversation conversation, Project project) {
+    private List<KnowledgeContextSnippet> knowledgeContext(String userContent) {
+        try {
+            return knowledgeSearchService.search(userContent, KNOWLEDGE_SEARCH_LIMIT);
+        } catch (RuntimeException exception) {
+            return List.of();
+        }
+    }
+
+    private String openAiReply(
+            ApplicationSettings settings,
+            Conversation conversation,
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         OpenAiSettings openAiSettings = settings.getOpenAi();
         if (isBlank(openAiSettings.getApiKey()) || isBlank(openAiSettings.getModel())) {
             return "OpenAI is selected, but API key and model are required before I can call it.";
@@ -94,14 +114,20 @@ public class AiChatService {
                     settings,
                     buildOpenAiChatModel(openAiSettings),
                     conversation,
-                    project
+                    project,
+                    knowledgeContext
             );
         } catch (RuntimeException exception) {
             return "OpenAI request failed: " + exception.getMessage();
         }
     }
 
-    private String openAiSdkReply(ApplicationSettings settings, Conversation conversation, Project project) {
+    private String openAiSdkReply(
+            ApplicationSettings settings,
+            Conversation conversation,
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         OpenAiSdkSettings openAiSettings = settings.getOpenAiSdk();
         if (isBlank(openAiSettings.getApiKey()) || isBlank(openAiSettings.getModel())) {
             return "OpenAI (SDK) is selected, but API key and model are required before I can call it.";
@@ -112,14 +138,20 @@ public class AiChatService {
                     settings,
                     buildOpenAiSdkChatModel(openAiSettings),
                     conversation,
-                    project
+                    project,
+                    knowledgeContext
             );
         } catch (RuntimeException exception) {
             return "OpenAI (SDK) request failed: " + exception.getMessage();
         }
     }
 
-    private String azureOpenAiReply(ApplicationSettings settings, Conversation conversation, Project project) {
+    private String azureOpenAiReply(
+            ApplicationSettings settings,
+            Conversation conversation,
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         AzureOpenAiSettings azureSettings = settings.getAzureOpenAi();
         if (isBlank(azureSettings.getEndpoint())
                 || isBlank(azureSettings.getApiKey())
@@ -132,14 +164,20 @@ public class AiChatService {
                     settings,
                     buildAzureChatModel(azureSettings),
                     conversation,
-                    project
+                    project,
+                    knowledgeContext
             );
         } catch (RuntimeException exception) {
             return "Azure OpenAI request failed: " + exception.getMessage();
         }
     }
 
-    private String ollamaReply(ApplicationSettings settings, Conversation conversation, Project project) {
+    private String ollamaReply(
+            ApplicationSettings settings,
+            Conversation conversation,
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         OllamaSettings ollamaSettings = settings.getOllama();
         if (isBlank(ollamaSettings.getBaseUrl()) || isBlank(ollamaSettings.getModel())) {
             return "Ollama is selected, but base URL and model are required before I can call it.";
@@ -150,14 +188,20 @@ public class AiChatService {
                     settings,
                     buildOllamaChatModel(ollamaSettings),
                     conversation,
-                    project
+                    project,
+                    knowledgeContext
             );
         } catch (RuntimeException exception) {
             return "Ollama request failed: " + exception.getMessage();
         }
     }
 
-    private String mistralReply(ApplicationSettings settings, Conversation conversation, Project project) {
+    private String mistralReply(
+            ApplicationSettings settings,
+            Conversation conversation,
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         MistralSettings mistralSettings = settings.getMistral();
         if (isBlank(mistralSettings.getApiKey()) || isBlank(mistralSettings.getModel())) {
             return "Mistral is selected, but API key and model are required before I can call it.";
@@ -168,14 +212,20 @@ public class AiChatService {
                     settings,
                     buildMistralChatModel(mistralSettings),
                     conversation,
-                    project
+                    project,
+                    knowledgeContext
             );
         } catch (RuntimeException exception) {
             return "Mistral request failed: " + exception.getMessage();
         }
     }
 
-    private String geminiReply(ApplicationSettings settings, Conversation conversation, Project project) {
+    private String geminiReply(
+            ApplicationSettings settings,
+            Conversation conversation,
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         GeminiSettings geminiSettings = settings.getGemini();
         if (isBlank(geminiSettings.getApiKey()) || isBlank(geminiSettings.getModel())) {
             return "Gemini is selected, but API key and model are required before I can call it.";
@@ -187,7 +237,8 @@ public class AiChatService {
                     settings,
                     chatModel,
                     conversation,
-                    project
+                    project,
+                    knowledgeContext
             );
         } catch (RuntimeException exception) {
             return "Gemini request failed: " + exception.getMessage();
@@ -196,7 +247,12 @@ public class AiChatService {
         }
     }
 
-    private String anthropicReply(ApplicationSettings settings, Conversation conversation, Project project) {
+    private String anthropicReply(
+            ApplicationSettings settings,
+            Conversation conversation,
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         AnthropicSettings anthropicSettings = settings.getAnthropic();
         if (isBlank(anthropicSettings.getApiKey()) || isBlank(anthropicSettings.getModel())) {
             return "Anthropic is selected, but API key and model are required before I can call it.";
@@ -207,14 +263,20 @@ public class AiChatService {
                     settings,
                     buildAnthropicChatModel(anthropicSettings),
                     conversation,
-                    project
+                    project,
+                    knowledgeContext
             );
         } catch (RuntimeException exception) {
             return "Anthropic request failed: " + exception.getMessage();
         }
     }
 
-    private String groqReply(ApplicationSettings settings, Conversation conversation, Project project) {
+    private String groqReply(
+            ApplicationSettings settings,
+            Conversation conversation,
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         GroqSettings groqSettings = settings.getGroq();
         if (isBlank(groqSettings.getApiKey()) || isBlank(groqSettings.getModel())) {
             return "Groq is selected, but API key and model are required before I can call it.";
@@ -225,14 +287,20 @@ public class AiChatService {
                     settings,
                     buildGroqChatModel(groqSettings),
                     conversation,
-                    project
+                    project,
+                    knowledgeContext
             );
         } catch (RuntimeException exception) {
             return "Groq request failed: " + exception.getMessage();
         }
     }
 
-    private String deepSeekReply(ApplicationSettings settings, Conversation conversation, Project project) {
+    private String deepSeekReply(
+            ApplicationSettings settings,
+            Conversation conversation,
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         DeepSeekSettings deepSeekSettings = settings.getDeepSeek();
         if (isBlank(deepSeekSettings.getApiKey()) || isBlank(deepSeekSettings.getModel())) {
             return "DeepSeek is selected, but API key and model are required before I can call it.";
@@ -243,7 +311,8 @@ public class AiChatService {
                     settings,
                     buildDeepSeekChatModel(deepSeekSettings),
                     conversation,
-                    project
+                    project,
+                    knowledgeContext
             );
         } catch (RuntimeException exception) {
             return "DeepSeek request failed: " + exception.getMessage();
@@ -254,12 +323,13 @@ public class AiChatService {
             ApplicationSettings settings,
             ChatModel chatModel,
             Conversation conversation,
-            Project project
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
     ) {
         ChatClient chatClient = ChatClient.builder(chatModel).build();
 
         return chatClient.prompt()
-                .messages(buildPromptMessages(settings, project, conversation))
+                .messages(buildPromptMessages(settings, project, conversation, knowledgeContext))
                 .call()
                 .content();
     }
@@ -269,8 +339,17 @@ public class AiChatService {
             Project project,
             Conversation conversation
     ) {
+        return buildPromptMessages(settings, project, conversation, List.of());
+    }
+
+    static List<org.springframework.ai.chat.messages.Message> buildPromptMessages(
+            ApplicationSettings settings,
+            Project project,
+            Conversation conversation,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         List<org.springframework.ai.chat.messages.Message> promptMessages = new ArrayList<>();
-        String systemInstructions = composeSystemInstructions(settings, project);
+        String systemInstructions = composeSystemInstructions(settings, project, knowledgeContext);
         if (!isBlank(systemInstructions)) {
             promptMessages.add(new SystemMessage(systemInstructions));
         }
@@ -293,6 +372,14 @@ public class AiChatService {
     }
 
     static String composeSystemInstructions(ApplicationSettings settings, Project project) {
+        return composeSystemInstructions(settings, project, List.of());
+    }
+
+    static String composeSystemInstructions(
+            ApplicationSettings settings,
+            Project project,
+            List<KnowledgeContextSnippet> knowledgeContext
+    ) {
         List<String> sections = new ArrayList<>();
         if (!isBlank(settings.getCustomInstructions())) {
             sections.add("Global instructions:\n" + settings.getCustomInstructions().trim());
@@ -300,7 +387,25 @@ public class AiChatService {
         if (!isBlank(project.getCustomInstructions())) {
             sections.add("Project instructions:\n" + project.getCustomInstructions().trim());
         }
+        if (knowledgeContext != null && !knowledgeContext.isEmpty()) {
+            sections.add("Local knowledge:\n"
+                    + "Use these indexed snippets when they are relevant. Prefer them over memory, and cite the bracketed source label when it materially supports the answer.\n\n"
+                    + formatKnowledgeContext(knowledgeContext));
+        }
         return String.join("\n\n", sections);
+    }
+
+    private static String formatKnowledgeContext(List<KnowledgeContextSnippet> knowledgeContext) {
+        List<String> snippets = new ArrayList<>();
+        for (int index = 0; index < knowledgeContext.size(); index++) {
+            KnowledgeContextSnippet snippet = knowledgeContext.get(index);
+            String label = "[" + (index + 1) + "] "
+                    + Strings.defaultIfBlank(snippet.rootName(), "Knowledge")
+                    + " / "
+                    + Strings.defaultIfBlank(snippet.resourceReference(), snippet.resourceName());
+            snippets.add(label + "\n" + snippet.content().trim());
+        }
+        return String.join("\n\n", snippets);
     }
 
     private OpenAiChatModel buildOpenAiChatModel(OpenAiSettings settings) {

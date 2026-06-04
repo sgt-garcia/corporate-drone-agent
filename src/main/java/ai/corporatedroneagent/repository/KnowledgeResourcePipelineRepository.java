@@ -157,6 +157,18 @@ public class KnowledgeResourcePipelineRepository {
                 """, this::mapChunk, resourceId);
     }
 
+    public Optional<KnowledgeResourceChunk> findChunkById(UUID chunkId) {
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(
+                    "SELECT * FROM knowledge_resource_chunks WHERE id = ?",
+                    this::mapChunk,
+                    chunkId
+            ));
+        } catch (EmptyResultDataAccessException exception) {
+            return Optional.empty();
+        }
+    }
+
     public KnowledgeResourceChunk saveChunk(KnowledgeResourceChunk chunk) {
         Instant now = Instant.now();
         Optional<KnowledgeResourceChunk> existing = findChunksByResourceId(chunk.getResourceId()).stream()
