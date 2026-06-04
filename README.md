@@ -28,6 +28,15 @@ Working today:
 - Provider model/deployment lookup from the Settings screen, using saved API
   keys when available.
 - Local API-key storage that avoids returning secrets from the settings API.
+- Settings -> Knowledge -> Local Folders backend support for adding, removing,
+  pausing, resuming, and scanning local folders.
+- Backend validation for local folders, including existence checks, duplicate
+  prevention, a 10-folder limit, and prevention of nested folder roots.
+- Scheduled local-folder scans every 15 minutes, at minute 0, 15, 30, and 45.
+- Recursive local-folder scanning into an encrypted H2 knowledge database.
+- Local read, conversion, character chunking, and Lucene indexing for common
+  text formats.
+- Best-effort local knowledge retrieval for chat prompts using indexed chunks.
 - Automatic browser launch on startup, with app shutdown when the browser closes
   by default.
 
@@ -35,7 +44,9 @@ Still planned:
 
 - Connectors for corporate systems such as Jira, Confluence, GitHub,
   SharePoint, OneDrive, ServiceNow, and Salesforce.
-- Local indexing and retrieval over files, repositories, tickets, and documents.
+- Indexing and retrieval for non-local-folder sources such as repositories,
+  tickets, and documents.
+- Rich document conversion beyond the current common text formats.
 - Scheduled jobs tied to conversations and projects.
 - Write-back workflows for external systems.
 - End-user packaging beyond the current runnable jar.
@@ -45,6 +56,9 @@ Still planned:
 - Java 21
 - Spring Boot 3.5.14
 - Spring AI 1.1.2
+- H2 for the local encrypted knowledge database
+- Flyway for knowledge database schema setup
+- Apache Lucene for local full-text indexing
 - Maven
 - Node.js 22.16.0 and npm 10.9.2 for the frontend build
 - React 19
@@ -77,6 +91,32 @@ is chosen in **General**.
 When no provider is configured, the app falls back to a local echo response so
 the conversation flow can still be exercised without an external API key.
 
+## Knowledge
+
+Local folders are configured in Settings under **Knowledge -> Local Folders**.
+The backend currently supports up to 10 local folder roots. A folder must exist,
+must not already be configured, and must not contain or be contained by another
+configured root.
+
+Each enabled local folder can be scanned manually from the settings screen and
+is also scanned by a scheduled job every 15 minutes, exactly at minute 0, 15,
+30, and 45. Scans are recursive. Paused folders remain configured but are
+skipped by the scheduled scan.
+
+For local folders, the indexing pipeline is:
+
+1. Scan the root and record resources.
+2. Read supported files.
+3. Convert readable content to markdown/text.
+4. Split converted content into character chunks.
+5. Index each chunk in Lucene.
+
+The first implementation intentionally keeps conversion narrow: common text
+formats are supported, while richer document conversion is planned separately.
+Chat requests perform a best-effort Lucene search over indexed chunks and add
+matching snippets to the model prompt as local knowledge context. If retrieval
+fails, chat continues without local knowledge context.
+
 ## Local data
 
 By default, application data is written under your user profile in
@@ -89,6 +129,9 @@ By default, application data is written under your user profile in
 - `.corporate-drone-agent/conversations/*.json` stores conversations and
   message history.
 - `.corporate-drone-agent/secrets.json` stores protected API keys.
+- `.corporate-drone-agent/database/knowledge*` stores the encrypted H2
+  knowledge database.
+- `.corporate-drone-agent/lucene/` stores the Lucene full-text index.
 
 The storage root can be changed with:
 
@@ -104,6 +147,11 @@ Secret protection:
 
 - On Windows, secrets are protected with the current user's DPAPI profile.
 - On non-Windows systems, set `CDA_SECRET_KEY` to enable AES-GCM protection.
+
+The H2 knowledge database is encrypted at rest. Its encryption key is generated
+automatically and stored in the same protected local secret store as provider
+API keys, so a copied database is not useful without access to that machine's
+protected secret material.
 
 ## Running the app
 
@@ -183,6 +231,12 @@ The current backend exposes:
 - `POST /api/conversations/{conversationId}/messages`
 - `GET /api/settings`
 - `PUT /api/settings`
+- `GET /api/settings/knowledge/local-folders`
+- `POST /api/settings/knowledge/local-folders`
+- `DELETE /api/settings/knowledge/local-folders/{folderId}`
+- `POST /api/settings/knowledge/local-folders/{folderId}/scan`
+- `POST /api/settings/knowledge/local-folders/{folderId}/pause`
+- `POST /api/settings/knowledge/local-folders/{folderId}/resume`
 - `POST /api/settings/openai-models`
 - `POST /api/settings/azure-openai-deployments`
 - `POST /api/settings/ollama-models`
@@ -207,5 +261,7 @@ mvn test
 ```
 
 The current tests cover Spring context startup, browser/headless mode selection,
-prompt construction, API-key serialization/migration behavior, and provider
-model/deployment lookup parsing.
+prompt construction, local knowledge prompt context, API-key
+serialization/migration behavior, settings validation, provider model/deployment
+lookup parsing, local-folder scan/read/convert/chunk/index behavior, and
+knowledge database repositories.
