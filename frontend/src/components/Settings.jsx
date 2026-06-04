@@ -175,7 +175,7 @@ export function Settings({ onClose, settings, onSave }) {
           Settings
         </span>
         <button className="btn btn-secondary btn-sm" type="button" onClick={onClose}>
-          <Icon name="arrow-left" size={14} color="var(--gray-700)" /> Back to work
+          <Icon name="arrow-left" size={14} color="var(--gray-700)" /> Back
         </button>
       </header>
 

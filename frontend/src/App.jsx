@@ -71,12 +71,16 @@ export default function App() {
   );
 
   const breadcrumbProject =
-    activeWorkItem.type === "conversation" ? activeWorkItem.project?.name : null;
+    activeWorkItem.type === "conversation"
+      ? activeWorkItem.project?.name
+      : activeWorkItem.type === "project"
+        ? activeWorkItem.name
+        : null;
   const headerTitle =
     activeWorkItem.type === "conversation"
       ? activeWorkItem.name
       : activeWorkItem.type === "project"
-        ? "Project settings"
+        ? "Settings"
         : "Workspace";
 
   useEffect(() => {
@@ -268,6 +272,20 @@ export default function App() {
   function selectWorkItem(id) {
     setActivePage("work");
     setActiveWorkItemId(id);
+  }
+
+  // From a project's settings, return to a conversation — the active project's
+  // first one, or any available conversation as a fallback.
+  function backToWork() {
+    const project = activeWorkItem.type === "project" ? activeWorkItem.item : null;
+    const target =
+      project?.conversations[0]?.id ??
+      projects.flatMap((item) => item.conversations)[0]?.id ??
+      null;
+    if (target) {
+      setActivePage("work");
+      setActiveWorkItemId(target);
+    }
   }
 
   async function renameConversation(conversationId, name) {
@@ -470,6 +488,16 @@ export default function App() {
               )}
               <span className="breadcrumb-title">{headerTitle}</span>
             </div>
+            {activeWorkItem.type === "project" && (
+              <button
+                className="btn btn-secondary btn-sm"
+                type="button"
+                onClick={backToWork}
+              >
+                <Icon name="arrow-left" size={14} color="var(--gray-700)" />
+                Back
+              </button>
+            )}
             {activeWorkItem.type === "conversation" && (
               <div
                 className="header-menu"
