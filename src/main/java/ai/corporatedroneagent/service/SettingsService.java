@@ -26,17 +26,20 @@ public class SettingsService {
     private final SettingsSecretsService settingsSecretsService;
     private final EventService eventService;
     private final KnowledgeRootCleanupService knowledgeRootCleanupService;
+    private final KnowledgeScanCoordinator knowledgeScanCoordinator;
 
     public SettingsService(
             SettingsRepository settingsRepository,
             SettingsSecretsService settingsSecretsService,
             EventService eventService,
-            KnowledgeRootCleanupService knowledgeRootCleanupService
+            KnowledgeRootCleanupService knowledgeRootCleanupService,
+            KnowledgeScanCoordinator knowledgeScanCoordinator
     ) {
         this.settingsRepository = settingsRepository;
         this.settingsSecretsService = settingsSecretsService;
         this.eventService = eventService;
         this.knowledgeRootCleanupService = knowledgeRootCleanupService;
+        this.knowledgeScanCoordinator = knowledgeScanCoordinator;
     }
 
     public ApplicationSettings get() {
@@ -118,6 +121,11 @@ public class SettingsService {
         normalizeKnowledgeFolders(settings);
 
         KnowledgeFolder removedFolder = findKnowledgeFolder(settings, folderId);
+        knowledgeScanCoordinator.cancelFolderScanAndWait(folderId);
+        settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        normalizeKnowledgeFolders(settings);
+        removedFolder = findKnowledgeFolder(settings, folderId);
         settings.getKnowledgeFolders().removeIf(folder -> folderId.equals(folder.getId()));
 
         knowledgeRootCleanupService.removeLocalFolderRoot(removedFolder.getPath());

@@ -31,6 +31,13 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +59,7 @@ class KnowledgeFolderScanServiceTests {
     private KnowledgeResourcePipelineRepository pipelineRepository;
     private KnowledgeIndexingService indexingService;
     private KnowledgeSearchService searchService;
+    private KnowledgeScanCoordinator scanCoordinator;
 
     @BeforeEach
     void setUp() {
@@ -78,6 +86,7 @@ class KnowledgeFolderScanServiceTests {
         );
         KnowledgeChunkingService chunkingService = new KnowledgeChunkingService(pipelineRepository);
         indexingService = new KnowledgeIndexingService(pipelineRepository, storageProperties);
+        scanCoordinator = new KnowledgeScanCoordinator();
         searchService = new KnowledgeSearchService(
                 indexingService,
                 pipelineRepository,
@@ -93,7 +102,8 @@ class KnowledgeFolderScanServiceTests {
                         knowledgeRootRepository,
                         knowledgeResourceRepository,
                         indexingService
-                )
+                ),
+                scanCoordinator
         );
         LocalFolderKnowledgeScanService localScanService = new LocalFolderKnowledgeScanService(
                 knowledgeRootRepository,
@@ -108,7 +118,8 @@ class KnowledgeFolderScanServiceTests {
                 settingsRepository,
                 secretsService,
                 eventService,
-                localScanService
+                localScanService,
+                scanCoordinator
         );
     }
 
@@ -263,6 +274,72 @@ class KnowledgeFolderScanServiceTests {
     }
 
     @Test
+    void removingFolderStopsRunningScanBeforeNextFile() throws Exception {
+        Path folder = Files.createDirectory(root.resolve("remove-while-scanning"));
+        Files.writeString(folder.resolve("first.txt"), "first-token", StandardCharsets.UTF_8);
+        Files.writeString(folder.resolve("second.txt"), "second-token", StandardCharsets.UTF_8);
+        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        CountDownLatch firstReadStarted = new CountDownLatch(1);
+        CountDownLatch allowFirstReadToFinish = new CountDownLatch(1);
+        AtomicBoolean blockedFirstRead = new AtomicBoolean();
+        AtomicInteger reads = new AtomicInteger();
+        LocalFolderKnowledgeReadService blockingReadService = new LocalFolderKnowledgeReadService(pipelineRepository) {
+            @Override
+            public KnowledgeResourceRead read(KnowledgeResource resource, Path file) {
+                reads.incrementAndGet();
+                if (blockedFirstRead.compareAndSet(false, true)) {
+                    firstReadStarted.countDown();
+                    try {
+                        assertThat(allowFirstReadToFinish.await(5, TimeUnit.SECONDS)).isTrue();
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(exception);
+                    }
+                }
+                return super.read(resource, file);
+            }
+        };
+        LocalFolderKnowledgeScanService blockingLocalScanService = new LocalFolderKnowledgeScanService(
+                knowledgeRootRepository,
+                knowledgeRootScanRepository,
+                knowledgeResourceRepository,
+                blockingReadService,
+                new LocalFolderKnowledgeConversionService(pipelineRepository),
+                new KnowledgeChunkingService(pipelineRepository),
+                indexingService
+        );
+        KnowledgeFolderScanService blockingScanService = new KnowledgeFolderScanService(
+                settingsRepository,
+                new SettingsSecretsService(new InMemorySecretStore()),
+                mock(EventService.class),
+                blockingLocalScanService,
+                scanCoordinator
+        );
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<?> scan = executor.submit(() -> blockingScanService.scanFolder(configured.getId()));
+            assertThat(firstReadStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<?> removal = executor.submit(() -> settingsService.removeKnowledgeFolder(configured.getId()));
+
+            allowFirstReadToFinish.countDown();
+
+            assertThatThrownBy(() -> scan.get(5, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(ResponseStatusException.class);
+            removal.get(5, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(reads.get()).isEqualTo(1);
+        assertThat(settingsRepository.get().getKnowledgeFolders()).isEmpty();
+        assertThat(knowledgeRootRepository.findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString()))
+                .isEmpty();
+        assertThat(searchService.search("first-token", 10)).isEmpty();
+        assertThat(searchService.search("second-token", 10)).isEmpty();
+    }
+
+    @Test
     void scanFolderRecordsFailureWhenPipelineThrows() throws IOException {
         Path folder = Files.createDirectory(root.resolve("fail-me"));
         Files.writeString(folder.resolve("broken.txt"), "broken", StandardCharsets.UTF_8);
@@ -286,7 +363,8 @@ class KnowledgeFolderScanServiceTests {
                 settingsRepository,
                 new SettingsSecretsService(new InMemorySecretStore()),
                 mock(EventService.class),
-                failingLocalScanService
+                failingLocalScanService,
+                new KnowledgeScanCoordinator()
         );
 
         assertThatThrownBy(() -> failingScanService.scanFolder(configured.getId()))

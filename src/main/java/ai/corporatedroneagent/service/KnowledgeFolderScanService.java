@@ -23,17 +23,20 @@ public class KnowledgeFolderScanService {
     private final SettingsSecretsService settingsSecretsService;
     private final EventService eventService;
     private final LocalFolderKnowledgeScanService localFolderKnowledgeScanService;
+    private final KnowledgeScanCoordinator knowledgeScanCoordinator;
 
     public KnowledgeFolderScanService(
             SettingsRepository settingsRepository,
             SettingsSecretsService settingsSecretsService,
             EventService eventService,
-            LocalFolderKnowledgeScanService localFolderKnowledgeScanService
+            LocalFolderKnowledgeScanService localFolderKnowledgeScanService,
+            KnowledgeScanCoordinator knowledgeScanCoordinator
     ) {
         this.settingsRepository = settingsRepository;
         this.settingsSecretsService = settingsSecretsService;
         this.eventService = eventService;
         this.localFolderKnowledgeScanService = localFolderKnowledgeScanService;
+        this.knowledgeScanCoordinator = knowledgeScanCoordinator;
     }
 
     public synchronized void scanAllFolders() {
@@ -52,43 +55,51 @@ public class KnowledgeFolderScanService {
     }
 
     public synchronized KnowledgeFolder scanFolder(UUID folderId) {
-        ApplicationSettings settings = settingsRepository.get();
-        KnowledgeFolder folder = findFolder(settings, folderId);
-        if (STATUS_PAUSED.equals(folder.getStatus())) {
-            return folder;
+        if (!knowledgeScanCoordinator.tryStartFolderScan(folderId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge folder not found");
         }
 
-        Path folderPath = folderPath(folder.getPath());
-        if (!Files.isDirectory(folderPath)) {
-            folder.setStatus(STATUS_SCANNED);
+        try {
+            ApplicationSettings settings = settingsRepository.get();
+            KnowledgeFolder folder = findFolder(settings, folderId);
+            if (STATUS_PAUSED.equals(folder.getStatus())) {
+                return folder;
+            }
+
+            Path folderPath = folderPath(folder.getPath());
+            if (!Files.isDirectory(folderPath)) {
+                folder.setStatus(STATUS_SCANNED);
+                folder.setNextScan("");
+                saveAndPublish(settings);
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path must be an existing folder");
+            }
+
+            folder.setStatus(STATUS_SCANNING);
             folder.setNextScan("");
             saveAndPublish(settings);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path must be an existing folder");
-        }
 
-        folder.setStatus(STATUS_SCANNING);
-        folder.setNextScan("");
-        saveAndPublish(settings);
+            LocalFolderKnowledgeScanService.ScanResult stats;
+            try {
+                stats = scanKnowledgeFolder(folder, folderPath, folderId);
+            } catch (RuntimeException exception) {
+                resetScanningFolder(folderId);
+                throw exception;
+            }
+            settings = settingsRepository.get();
+            folder = findFolder(settings, folderId);
+            if (STATUS_PAUSED.equals(folder.getStatus())) {
+                return folder;
+            }
 
-        LocalFolderKnowledgeScanService.ScanResult stats;
-        try {
-            stats = scanKnowledgeFolder(folder, folderPath);
-        } catch (RuntimeException exception) {
-            resetScanningFolder(folderId);
-            throw exception;
-        }
-        settings = settingsRepository.get();
-        folder = findFolder(settings, folderId);
-        if (STATUS_PAUSED.equals(folder.getStatus())) {
+            folder.setFiles(stats.files());
+            folder.setSize(formatBytes(stats.bytes()));
+            folder.setStatus(STATUS_SCANNED);
+            folder.setNextScan("~15 min");
+            saveAndPublish(settings);
             return folder;
+        } finally {
+            knowledgeScanCoordinator.finishFolderScan(folderId);
         }
-
-        folder.setFiles(stats.files());
-        folder.setSize(formatBytes(stats.bytes()));
-        folder.setStatus(STATUS_SCANNED);
-        folder.setNextScan("~15 min");
-        saveAndPublish(settings);
-        return folder;
     }
 
     private void resetScanningFolder(UUID folderId) {
@@ -118,9 +129,17 @@ public class KnowledgeFolderScanService {
         }
     }
 
-    private LocalFolderKnowledgeScanService.ScanResult scanKnowledgeFolder(KnowledgeFolder folder, Path folderPath) {
+    private LocalFolderKnowledgeScanService.ScanResult scanKnowledgeFolder(
+            KnowledgeFolder folder,
+            Path folderPath,
+            UUID folderId
+    ) {
         try {
-            return localFolderKnowledgeScanService.scan(folder, folderPath);
+            return localFolderKnowledgeScanService.scan(
+                    folder,
+                    folderPath,
+                    () -> knowledgeScanCoordinator.isFolderScanCancelled(folderId)
+            );
         } catch (LocalFolderKnowledgeScanService.KnowledgeScanException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not scan folder");
         }

@@ -24,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -56,16 +57,26 @@ public class LocalFolderKnowledgeScanService {
     }
 
     public ScanResult scan(KnowledgeFolder folder, Path folderPath) {
+        return scan(folder, folderPath, () -> false);
+    }
+
+    public ScanResult scan(KnowledgeFolder folder, Path folderPath, BooleanSupplier isCancelled) {
         Instant startedAt = Instant.now();
         KnowledgeRoot root = startRootScan(knowledgeRoot(folder), startedAt);
         KnowledgeRootScan scan = startScan(root.getId(), startedAt);
-        ResourceScanningVisitor visitor = new ResourceScanningVisitor(root.getId(), folderPath, startedAt);
+        ResourceScanningVisitor visitor = new ResourceScanningVisitor(root.getId(), folderPath, startedAt, isCancelled);
 
         try {
             Files.walkFileTree(folderPath, visitor);
+            if (visitor.cancelled()) {
+                completeScan(root, scan, visitor.stats(), "Scan cancelled");
+                throw new KnowledgeScanException("Scan cancelled", null);
+            }
             removeDeletedResourceIndexes(root.getId(), visitor.references());
             completeScan(root, scan, visitor.stats(), null);
             return visitor.stats();
+        } catch (KnowledgeScanException exception) {
+            throw exception;
         } catch (IOException | RuntimeException exception) {
             completeScan(root, scan, visitor.stats(), "Could not scan folder");
             throw new KnowledgeScanException("Could not scan folder", exception);
@@ -165,18 +176,39 @@ public class LocalFolderKnowledgeScanService {
         private final java.util.UUID rootId;
         private final Path rootPath;
         private final Instant scannedAt;
+        private final BooleanSupplier isCancelled;
         private final List<String> references = new ArrayList<>();
+        private boolean cancelled;
         private long files;
         private long bytes;
 
-        private ResourceScanningVisitor(java.util.UUID rootId, Path rootPath, Instant scannedAt) {
+        private ResourceScanningVisitor(
+                java.util.UUID rootId,
+                Path rootPath,
+                Instant scannedAt,
+                BooleanSupplier isCancelled
+        ) {
             this.rootId = rootId;
             this.rootPath = rootPath;
             this.scannedAt = scannedAt;
+            this.isCancelled = isCancelled;
+        }
+
+        @Override
+        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+            if (isCancelled.getAsBoolean()) {
+                cancelled = true;
+                return FileVisitResult.TERMINATE;
+            }
+            return FileVisitResult.CONTINUE;
         }
 
         @Override
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+            if (isCancelled.getAsBoolean()) {
+                cancelled = true;
+                return FileVisitResult.TERMINATE;
+            }
             if (attrs.isRegularFile()) {
                 files++;
                 bytes += attrs.size();
@@ -216,6 +248,10 @@ public class LocalFolderKnowledgeScanService {
 
         private List<String> references() {
             return references;
+        }
+
+        private boolean cancelled() {
+            return cancelled;
         }
     }
 }
