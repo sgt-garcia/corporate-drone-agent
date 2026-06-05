@@ -35,8 +35,12 @@ Working today:
 - Scheduled local-folder scans every 15 minutes, at minute 0, 15, 30, and 45.
 - Recursive local-folder scanning into an encrypted H2 knowledge database.
 - Local read, conversion, character chunking, and Lucene indexing for common
-  text formats.
-- Best-effort local knowledge retrieval for chat prompts using indexed chunks.
+  text formats, with files larger than 1 MB skipped for now.
+- Best-effort local knowledge retrieval for chat prompts using indexed chunks,
+  with retrieved snippets added as untrusted context instead of system
+  instructions.
+- Operational logging for local-folder configuration, scans, indexing, cleanup,
+  and retrieval failures.
 - Automatic browser launch on startup, with app shutdown when the browser closes
   by default.
 
@@ -101,7 +105,10 @@ configured root.
 Each enabled local folder can be scanned manually from the settings screen and
 is also scanned by a scheduled job every 15 minutes, exactly at minute 0, 15,
 30, and 45. Scans are recursive. Paused folders remain configured but are
-skipped by the scheduled scan.
+skipped by the scheduled scan. Removing a folder also removes its knowledge root
+from the database and deletes its Lucene documents. If the folder is being
+scanned when it is removed, the current scan is asked to stop before the next
+file and removal waits for that scan to finish.
 
 For local folders, the indexing pipeline is:
 
@@ -112,10 +119,12 @@ For local folders, the indexing pipeline is:
 5. Index each chunk in Lucene.
 
 The first implementation intentionally keeps conversion narrow: common text
-formats are supported, while richer document conversion is planned separately.
-Chat requests perform a best-effort Lucene search over indexed chunks and add
-matching snippets to the model prompt as local knowledge context. If retrieval
-fails, chat continues without local knowledge context.
+formats are supported, files larger than 1 MB are skipped, and richer document
+conversion is planned separately. Chat requests perform a best-effort Lucene
+search over indexed chunks. Matching snippets are added to the model prompt as a
+separate user context message and are explicitly marked as untrusted reference
+content, not instructions. If retrieval fails, chat continues without local
+knowledge context and the failure is logged.
 
 ## Local data
 
@@ -132,6 +141,12 @@ By default, application data is written under your user profile in
 - `.corporate-drone-agent/database/knowledge*` stores the encrypted H2
   knowledge database.
 - `.corporate-drone-agent/lucene/` stores the Lucene full-text index.
+
+The application logs local knowledge lifecycle events such as folder
+add/remove/pause/resume, scheduled scans, scan completion/failure/cancellation,
+index cleanup, read failures, indexing failures, and retrieval failures. Expected
+per-file skips, such as unsupported formats and files over 1 MB, are logged at
+debug level.
 
 The storage root can be changed with:
 
@@ -261,7 +276,8 @@ mvn test
 ```
 
 The current tests cover Spring context startup, browser/headless mode selection,
-prompt construction, local knowledge prompt context, API-key
-serialization/migration behavior, settings validation, provider model/deployment
-lookup parsing, local-folder scan/read/convert/chunk/index behavior, and
-knowledge database repositories.
+prompt construction, local knowledge prompt context and retrieval failure
+logging, API-key serialization/migration behavior, settings validation, provider
+model/deployment lookup parsing, local-folder scan/read/convert/chunk/index
+behavior, scan cancellation during folder removal, and knowledge database
+repositories.
