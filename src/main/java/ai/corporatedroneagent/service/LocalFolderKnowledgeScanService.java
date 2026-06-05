@@ -59,16 +59,15 @@ public class LocalFolderKnowledgeScanService {
         Instant startedAt = Instant.now();
         KnowledgeRoot root = startRootScan(knowledgeRoot(folder), startedAt);
         KnowledgeRootScan scan = startScan(root.getId(), startedAt);
+        ResourceScanningVisitor visitor = new ResourceScanningVisitor(root.getId(), folderPath, startedAt);
 
         try {
-            ResourceScanningVisitor visitor = new ResourceScanningVisitor(root.getId(), folderPath, startedAt);
             Files.walkFileTree(folderPath, visitor);
             removeDeletedResourceIndexes(root.getId(), visitor.references());
             completeScan(root, scan, visitor.stats(), null);
             return visitor.stats();
-        } catch (IOException exception) {
-            ScanResult emptyResult = new ScanResult(0, 0);
-            completeScan(root, scan, emptyResult, "Could not scan folder");
+        } catch (IOException | RuntimeException exception) {
+            completeScan(root, scan, visitor.stats(), "Could not scan folder");
             throw new KnowledgeScanException("Could not scan folder", exception);
         }
     }

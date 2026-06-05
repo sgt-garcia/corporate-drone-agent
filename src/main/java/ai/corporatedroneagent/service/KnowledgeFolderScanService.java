@@ -70,7 +70,13 @@ public class KnowledgeFolderScanService {
         folder.setNextScan("");
         saveAndPublish(settings);
 
-        LocalFolderKnowledgeScanService.ScanResult stats = scanKnowledgeFolder(folder, folderPath);
+        LocalFolderKnowledgeScanService.ScanResult stats;
+        try {
+            stats = scanKnowledgeFolder(folder, folderPath);
+        } catch (RuntimeException exception) {
+            resetScanningFolder(folderId);
+            throw exception;
+        }
         settings = settingsRepository.get();
         folder = findFolder(settings, folderId);
         if (STATUS_PAUSED.equals(folder.getStatus())) {
@@ -83,6 +89,18 @@ public class KnowledgeFolderScanService {
         folder.setNextScan("~15 min");
         saveAndPublish(settings);
         return folder;
+    }
+
+    private void resetScanningFolder(UUID folderId) {
+        ApplicationSettings settings = settingsRepository.get();
+        settings.getKnowledgeFolders().stream()
+                .filter(folder -> folderId.equals(folder.getId()))
+                .findFirst()
+                .ifPresent(folder -> {
+                    folder.setStatus(STATUS_SCANNED);
+                    folder.setNextScan("");
+                    saveAndPublish(settings);
+                });
     }
 
     private KnowledgeFolder findFolder(ApplicationSettings settings, UUID folderId) {

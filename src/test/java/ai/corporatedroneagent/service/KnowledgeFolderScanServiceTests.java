@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import ai.corporatedroneagent.config.KnowledgeDatabaseConfig;
@@ -36,6 +37,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
 class KnowledgeFolderScanServiceTests {
 
@@ -66,8 +68,6 @@ class KnowledgeFolderScanServiceTests {
         Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
-        settingsRepository = new SettingsRepository(jsonFiles, storageProperties);
-        settingsService = new SettingsService(settingsRepository, secretsService, eventService);
         knowledgeRootRepository = new KnowledgeRootRepository(jdbcTemplate);
         knowledgeRootScanRepository = new KnowledgeRootScanRepository(jdbcTemplate);
         knowledgeResourceRepository = new KnowledgeResourceRepository(jdbcTemplate);
@@ -83,6 +83,17 @@ class KnowledgeFolderScanServiceTests {
                 pipelineRepository,
                 knowledgeResourceRepository,
                 knowledgeRootRepository
+        );
+        settingsRepository = new SettingsRepository(jsonFiles, storageProperties);
+        settingsService = new SettingsService(
+                settingsRepository,
+                secretsService,
+                eventService,
+                new KnowledgeRootCleanupService(
+                        knowledgeRootRepository,
+                        knowledgeResourceRepository,
+                        indexingService
+                )
         );
         LocalFolderKnowledgeScanService localScanService = new LocalFolderKnowledgeScanService(
                 knowledgeRootRepository,
@@ -232,6 +243,68 @@ class KnowledgeFolderScanServiceTests {
                 .orElseThrow();
         assertThat(pipelineRepository.findChunksByResourceId(staleResource.getId())).isEmpty();
         assertThat(indexingService.searchTerm("stale", 10)).isEmpty();
+    }
+
+    @Test
+    void removingFolderDeletesKnowledgeRootAndIndexedContent() throws IOException {
+        Path folder = Files.createDirectory(root.resolve("remove-me"));
+        Files.writeString(folder.resolve("removed.txt"), "remove-token", StandardCharsets.UTF_8);
+        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        scanService.scanFolder(configured.getId());
+
+        assertThat(searchService.search("remove-token", 10)).hasSize(1);
+
+        settingsService.removeKnowledgeFolder(configured.getId());
+
+        assertThat(knowledgeRootRepository.findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString()))
+                .isEmpty();
+        assertThat(indexingService.searchTerm("remove-token", 10)).isEmpty();
+        assertThat(searchService.search("remove-token", 10)).isEmpty();
+    }
+
+    @Test
+    void scanFolderRecordsFailureWhenPipelineThrows() throws IOException {
+        Path folder = Files.createDirectory(root.resolve("fail-me"));
+        Files.writeString(folder.resolve("broken.txt"), "broken", StandardCharsets.UTF_8);
+        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        LocalFolderKnowledgeReadService failingReadService = new LocalFolderKnowledgeReadService(pipelineRepository) {
+            @Override
+            public KnowledgeResourceRead read(KnowledgeResource resource, Path file) {
+                throw new IllegalStateException("boom");
+            }
+        };
+        LocalFolderKnowledgeScanService failingLocalScanService = new LocalFolderKnowledgeScanService(
+                knowledgeRootRepository,
+                knowledgeRootScanRepository,
+                knowledgeResourceRepository,
+                failingReadService,
+                new LocalFolderKnowledgeConversionService(pipelineRepository),
+                new KnowledgeChunkingService(pipelineRepository),
+                indexingService
+        );
+        KnowledgeFolderScanService failingScanService = new KnowledgeFolderScanService(
+                settingsRepository,
+                new SettingsSecretsService(new InMemorySecretStore()),
+                mock(EventService.class),
+                failingLocalScanService
+        );
+
+        assertThatThrownBy(() -> failingScanService.scanFolder(configured.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Could not scan folder");
+
+        assertThat(folder(configured.getId()).getStatus()).isEqualTo("scanned");
+        KnowledgeRoot knowledgeRoot = knowledgeRootRepository
+                .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
+                .orElseThrow();
+        assertThat(knowledgeRoot.getScanStatus()).isEqualTo(WorkStatus.DONE);
+        assertThat(knowledgeRoot.getScanSuccess()).isFalse();
+        assertThat(knowledgeRoot.getScanMessage()).isEqualTo("Could not scan folder");
+        assertThat(knowledgeRootScanRepository.findLatestByRootId(knowledgeRoot.getId()))
+                .hasValueSatisfying(scan -> {
+                    assertThat(scan.getStatus()).isEqualTo(WorkStatus.DONE);
+                    assertThat(scan.getSuccess()).isFalse();
+                });
     }
 
     @Test

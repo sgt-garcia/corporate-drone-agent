@@ -25,15 +25,18 @@ public class SettingsService {
     private final SettingsRepository settingsRepository;
     private final SettingsSecretsService settingsSecretsService;
     private final EventService eventService;
+    private final KnowledgeRootCleanupService knowledgeRootCleanupService;
 
     public SettingsService(
             SettingsRepository settingsRepository,
             SettingsSecretsService settingsSecretsService,
-            EventService eventService
+            EventService eventService,
+            KnowledgeRootCleanupService knowledgeRootCleanupService
     ) {
         this.settingsRepository = settingsRepository;
         this.settingsSecretsService = settingsSecretsService;
         this.eventService = eventService;
+        this.knowledgeRootCleanupService = knowledgeRootCleanupService;
     }
 
     public ApplicationSettings get() {
@@ -114,11 +117,10 @@ public class SettingsService {
         migratePlaintextSecrets(settings);
         normalizeKnowledgeFolders(settings);
 
-        boolean removed = settings.getKnowledgeFolders().removeIf(folder -> folderId.equals(folder.getId()));
-        if (!removed) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge folder not found");
-        }
+        KnowledgeFolder removedFolder = findKnowledgeFolder(settings, folderId);
+        settings.getKnowledgeFolders().removeIf(folder -> folderId.equals(folder.getId()));
 
+        knowledgeRootCleanupService.removeLocalFolderRoot(removedFolder.getPath());
         saveAndPublish(settings);
     }
 

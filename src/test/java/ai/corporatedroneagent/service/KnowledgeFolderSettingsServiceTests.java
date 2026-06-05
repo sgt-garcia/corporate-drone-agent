@@ -46,7 +46,8 @@ class KnowledgeFolderSettingsServiceTests {
         settingsService = new SettingsService(
                 settingsRepository,
                 new SettingsSecretsService(new InMemorySecretStore()),
-                eventService
+                eventService,
+                mock(KnowledgeRootCleanupService.class)
         );
     }
 
