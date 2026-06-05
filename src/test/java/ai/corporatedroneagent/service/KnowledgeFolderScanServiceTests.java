@@ -308,6 +308,42 @@ class KnowledgeFolderScanServiceTests {
     }
 
     @Test
+    void scanFolderSkipsTextFilesLargerThanOneMb() throws IOException {
+        Path folder = Files.createDirectory(root.resolve("too-big"));
+        byte[] content = new byte[(int) LocalFolderKnowledgeReadService.MAX_READ_BYTES + 1];
+        java.util.Arrays.fill(content, (byte) 'x');
+        Files.write(folder.resolve("large.txt"), content);
+        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+
+        KnowledgeFolder scanned = scanService.scanFolder(configured.getId());
+
+        assertThat(scanned.getFiles()).isEqualTo(1);
+        assertThat(scanned.getSize()).isEqualTo("1.0 MB");
+        KnowledgeRoot knowledgeRoot = knowledgeRootRepository
+                .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
+                .orElseThrow();
+        KnowledgeResource resource = knowledgeResourceRepository
+                .findByRootIdAndReference(knowledgeRoot.getId(), "large.txt")
+                .orElseThrow();
+        assertThat(resource.getSizeBytes()).isEqualTo(LocalFolderKnowledgeReadService.MAX_READ_BYTES + 1);
+        assertThat(pipelineRepository.findReadByResourceId(resource.getId()))
+                .hasValueSatisfying(read -> {
+                    assertThat(read.getStatus()).isEqualTo(WorkStatus.DONE);
+                    assertThat(read.getSuccess()).isFalse();
+                    assertThat(read.getMessage()).isEqualTo("File is larger than 1 MB");
+                    assertThat(read.getValue()).isNull();
+                });
+        assertThat(pipelineRepository.findConversionByResourceId(resource.getId()))
+                .hasValueSatisfying(conversion -> {
+                    assertThat(conversion.getStatus()).isEqualTo(WorkStatus.DONE);
+                    assertThat(conversion.getSuccess()).isFalse();
+                    assertThat(conversion.getMessage()).isEqualTo("Read did not succeed");
+                });
+        assertThat(pipelineRepository.findChunksByResourceId(resource.getId())).isEmpty();
+        assertThat(searchService.search("xxx", 10)).isEmpty();
+    }
+
+    @Test
     void scanFolderUpdatesReadValueWhenTextFileChanges() throws IOException {
         Path folder = Files.createDirectory(root.resolve("read-refresh"));
         Path file = folder.resolve("notes.md");

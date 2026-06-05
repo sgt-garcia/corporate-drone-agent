@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class LocalFolderKnowledgeReadService {
 
+    static final long MAX_READ_BYTES = 1024L * 1024L;
+
     private static final Set<String> SUPPORTED_TEXT_FORMATS = Set.of(
             "bat",
             "cmd",
@@ -52,6 +54,9 @@ public class LocalFolderKnowledgeReadService {
         KnowledgeResourceRead read = startRead(resource);
         if (!isSupported(resource)) {
             return finishRead(read, false, "Unsupported file format", null);
+        }
+        if (resource.getSizeBytes() > MAX_READ_BYTES) {
+            return finishRead(read, false, "File is larger than 1 MB", null);
         }
 
         try {
