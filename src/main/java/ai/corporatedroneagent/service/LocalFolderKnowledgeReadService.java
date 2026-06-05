@@ -10,10 +10,14 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class LocalFolderKnowledgeReadService {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalFolderKnowledgeReadService.class);
 
     static final long MAX_READ_BYTES = 1024L * 1024L;
 
@@ -53,15 +57,26 @@ public class LocalFolderKnowledgeReadService {
     public KnowledgeResourceRead read(KnowledgeResource resource, Path file) {
         KnowledgeResourceRead read = startRead(resource);
         if (!isSupported(resource)) {
+            log.debug(
+                    "Skipping local knowledge resource {} because format '{}' is unsupported.",
+                    resource.getReference(),
+                    resource.getFormat()
+            );
             return finishRead(read, false, "Unsupported file format", null);
         }
         if (resource.getSizeBytes() > MAX_READ_BYTES) {
+            log.debug(
+                    "Skipping local knowledge resource {} because it is {} bytes.",
+                    resource.getReference(),
+                    resource.getSizeBytes()
+            );
             return finishRead(read, false, "File is larger than 1 MB", null);
         }
 
         try {
             return finishRead(read, true, "", Files.readAllBytes(file));
         } catch (IOException exception) {
+            log.warn("Could not read local knowledge resource {}.", resource.getReference(), exception);
             return finishRead(read, false, "Could not read resource", null);
         }
     }

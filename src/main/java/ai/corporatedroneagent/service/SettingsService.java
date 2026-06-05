@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -20,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class SettingsService {
 
+    private static final Logger log = LoggerFactory.getLogger(SettingsService.class);
     private static final int MAX_KNOWLEDGE_FOLDERS = 10;
 
     private final SettingsRepository settingsRepository;
@@ -112,6 +115,7 @@ public class SettingsService {
         folder.setStatus("scanned");
         settings.getKnowledgeFolders().add(folder);
         saveAndPublish(settings);
+        log.info("Added local knowledge folder {} at {}.", folder.getId(), path);
         return folder;
     }
 
@@ -130,6 +134,7 @@ public class SettingsService {
 
         knowledgeRootCleanupService.removeLocalFolderRoot(removedFolder.getPath());
         saveAndPublish(settings);
+        log.info("Removed local knowledge folder {} at {}.", folderId, removedFolder.getPath());
     }
 
     public synchronized KnowledgeFolder pauseKnowledgeFolder(UUID folderId) {
@@ -140,6 +145,7 @@ public class SettingsService {
         folder.setStatus("paused");
         folder.setNextScan("");
         saveAndPublish(settings);
+        log.info("Paused local knowledge folder {}.", folderId);
         return folder;
     }
 
@@ -150,6 +156,7 @@ public class SettingsService {
         KnowledgeFolder folder = findKnowledgeFolder(settings, folderId);
         folder.setStatus("scanned");
         saveAndPublish(settings);
+        log.info("Resumed local knowledge folder {}.", folderId);
         return folder;
     }
 

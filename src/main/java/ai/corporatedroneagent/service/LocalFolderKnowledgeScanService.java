@@ -25,10 +25,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class LocalFolderKnowledgeScanService {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalFolderKnowledgeScanService.class);
 
     private final KnowledgeRootRepository rootRepository;
     private final KnowledgeRootScanRepository scanRepository;
@@ -65,20 +69,40 @@ public class LocalFolderKnowledgeScanService {
         KnowledgeRoot root = startRootScan(knowledgeRoot(folder), startedAt);
         KnowledgeRootScan scan = startScan(root.getId(), startedAt);
         ResourceScanningVisitor visitor = new ResourceScanningVisitor(root.getId(), folderPath, startedAt, isCancelled);
+        log.info("Started local folder scan for {}.", folderPath);
 
         try {
             Files.walkFileTree(folderPath, visitor);
             if (visitor.cancelled()) {
                 completeScan(root, scan, visitor.stats(), "Scan cancelled");
+                log.info(
+                        "Cancelled local folder scan for {} after {} files and {} bytes.",
+                        folderPath,
+                        visitor.stats().files(),
+                        visitor.stats().bytes()
+                );
                 throw new KnowledgeScanException("Scan cancelled", null);
             }
             removeDeletedResourceIndexes(root.getId(), visitor.references());
             completeScan(root, scan, visitor.stats(), null);
+            log.info(
+                    "Completed local folder scan for {} with {} files and {} bytes.",
+                    folderPath,
+                    visitor.stats().files(),
+                    visitor.stats().bytes()
+            );
             return visitor.stats();
         } catch (KnowledgeScanException exception) {
             throw exception;
         } catch (IOException | RuntimeException exception) {
             completeScan(root, scan, visitor.stats(), "Could not scan folder");
+            log.warn(
+                    "Local folder scan failed for {} after {} files and {} bytes.",
+                    folderPath,
+                    visitor.stats().files(),
+                    visitor.stats().bytes(),
+                    exception
+            );
             throw new KnowledgeScanException("Could not scan folder", exception);
         }
     }
@@ -155,6 +179,7 @@ public class LocalFolderKnowledgeScanService {
         resourceRepository.findByRootId(rootId).stream()
                 .filter(resource -> !activeReferences.contains(resource.getReference()))
                 .forEach(resource -> {
+                    log.debug("Removing stale local knowledge resource {}.", resource.getReference());
                     indexingService.deleteResource(resource);
                     chunkingService.deleteChunks(resource);
                 });
@@ -219,6 +244,7 @@ public class LocalFolderKnowledgeScanService {
 
         @Override
         public FileVisitResult visitFileFailed(Path file, IOException exception) {
+            log.warn("Could not visit local knowledge file {}; skipping it.", file, exception);
             return FileVisitResult.CONTINUE;
         }
 

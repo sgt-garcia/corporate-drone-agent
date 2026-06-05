@@ -1,13 +1,19 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
+import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
 import ai.corporatedroneagent.repository.KnowledgeResourceRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class KnowledgeRootCleanupService {
+
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeRootCleanupService.class);
 
     private final KnowledgeRootRepository rootRepository;
     private final KnowledgeResourceRepository resourceRepository;
@@ -33,7 +39,14 @@ public class KnowledgeRootCleanupService {
     }
 
     private void removeRoot(KnowledgeRoot root) {
-        resourceRepository.findByRootId(root.getId()).forEach(indexingService::deleteResource);
+        List<KnowledgeResource> resources = resourceRepository.findByRootId(root.getId());
+        log.info(
+                "Removing local knowledge root {} at {} with {} resources.",
+                root.getId(),
+                root.getReference(),
+                resources.size()
+        );
+        resources.forEach(indexingService::deleteResource);
         rootRepository.delete(root.getId());
     }
 }

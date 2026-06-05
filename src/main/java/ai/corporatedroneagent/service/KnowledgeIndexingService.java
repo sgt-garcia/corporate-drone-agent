@@ -30,10 +30,14 @@ import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.store.FSDirectory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class KnowledgeIndexingService {
+
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeIndexingService.class);
 
     private static final String FIELD_DOCUMENT_ID = "documentId";
     private static final String FIELD_RESOURCE_ID = "resourceId";
@@ -63,6 +67,7 @@ public class KnowledgeIndexingService {
         }
 
         try {
+            log.debug("Indexing local knowledge resource {} with {} chunks.", resource.getReference(), chunks.size());
             Files.createDirectories(indexPath);
             try (StandardAnalyzer analyzer = new StandardAnalyzer();
                     FSDirectory directory = FSDirectory.open(indexPath);
@@ -72,7 +77,9 @@ public class KnowledgeIndexingService {
                 }
                 writer.commit();
             }
+            log.debug("Indexed local knowledge resource {} with {} chunks.", resource.getReference(), chunks.size());
         } catch (IOException | RuntimeException exception) {
+            log.warn("Could not index local knowledge resource {}.", resource.getReference(), exception);
             chunks.forEach(chunk -> markFailed(chunk, "Could not index resource"));
         }
     }
@@ -87,7 +94,7 @@ public class KnowledgeIndexingService {
                 writer.commit();
             }
         } catch (IOException | RuntimeException exception) {
-            // A cleanup miss should not prevent the scan from recording the current filesystem state.
+            log.warn("Could not remove local knowledge resource {} from the Lucene index.", resource.getReference(), exception);
         }
     }
 
@@ -125,6 +132,7 @@ public class KnowledgeIndexingService {
         } catch (IndexNotFoundException exception) {
             return List.of();
         } catch (ParseException exception) {
+            log.warn("Could not parse knowledge search query '{}'.", normalizedQuery, exception);
             return List.of();
         } catch (IOException exception) {
             throw new KnowledgeIndexException("Could not search knowledge index", exception);

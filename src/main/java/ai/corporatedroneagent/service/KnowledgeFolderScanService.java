@@ -8,12 +8,16 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class KnowledgeFolderScanService {
+
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeFolderScanService.class);
 
     private static final String STATUS_PAUSED = "paused";
     private static final String STATUS_SCANNING = "scanning";
@@ -44,14 +48,16 @@ public class KnowledgeFolderScanService {
                 .filter(folder -> !STATUS_PAUSED.equals(folder.getStatus()))
                 .map(KnowledgeFolder::getId)
                 .toList();
+        log.info("Starting scheduled knowledge scan for {} local folders.", folderIds.size());
 
         for (UUID folderId : folderIds) {
             try {
                 scanFolder(folderId);
             } catch (RuntimeException exception) {
-                // Keep one unavailable folder from preventing the rest of the scheduled scan.
+                log.warn("Scheduled knowledge scan failed for local folder {}.", folderId, exception);
             }
         }
+        log.info("Finished scheduled knowledge scan for {} local folders.", folderIds.size());
     }
 
     public synchronized KnowledgeFolder scanFolder(UUID folderId) {
@@ -63,6 +69,7 @@ public class KnowledgeFolderScanService {
             ApplicationSettings settings = settingsRepository.get();
             KnowledgeFolder folder = findFolder(settings, folderId);
             if (STATUS_PAUSED.equals(folder.getStatus())) {
+                log.debug("Skipping paused local knowledge folder {}.", folderId);
                 return folder;
             }
 
@@ -77,6 +84,7 @@ public class KnowledgeFolderScanService {
             folder.setStatus(STATUS_SCANNING);
             folder.setNextScan("");
             saveAndPublish(settings);
+            log.info("Scanning local knowledge folder {} at {}.", folderId, folderPath);
 
             LocalFolderKnowledgeScanService.ScanResult stats;
             try {
@@ -96,6 +104,12 @@ public class KnowledgeFolderScanService {
             folder.setStatus(STATUS_SCANNED);
             folder.setNextScan("~15 min");
             saveAndPublish(settings);
+            log.info(
+                    "Scanned local knowledge folder {} with {} files and size {}.",
+                    folderId,
+                    stats.files(),
+                    folder.getSize()
+            );
             return folder;
         } finally {
             knowledgeScanCoordinator.finishFolderScan(folderId);
