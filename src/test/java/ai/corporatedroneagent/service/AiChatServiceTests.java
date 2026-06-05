@@ -1,20 +1,29 @@
 package ai.corporatedroneagent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.model.Project;
+import ai.corporatedroneagent.repository.ConversationRepository;
+import ai.corporatedroneagent.repository.ProjectRepository;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.ai.chat.messages.AbstractMessage;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
+@ExtendWith(OutputCaptureExtension.class)
 class AiChatServiceTests {
 
     @Test
@@ -84,6 +93,40 @@ class AiChatServiceTests {
                 .contains("[1] Docs / plans/release.txt")
                 .contains("The release name is Aurora.");
         assertThat(text(promptMessages.get(2))).isEqualTo("What is the release name?");
+    }
+
+    @Test
+    void replyLogsKnowledgeRetrievalFailuresAndContinues(CapturedOutput output) {
+        UUID conversationId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        ApplicationSettings settings = new ApplicationSettings();
+        settings.setAiModel("none");
+        Conversation conversation = new Conversation();
+        conversation.setId(conversationId);
+        conversation.setProjectId(projectId);
+        Project project = new Project();
+        project.setId(projectId);
+        SettingsService settingsService = mock(SettingsService.class);
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        ProjectRepository projectRepository = mock(ProjectRepository.class);
+        KnowledgeSearchService knowledgeSearchService = mock(KnowledgeSearchService.class);
+        when(settingsService.getWithSecrets()).thenReturn(settings);
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
+        when(knowledgeSearchService.search("hello", 5)).thenThrow(new IllegalStateException("index unavailable"));
+        AiChatService service = new AiChatService(
+                settingsService,
+                conversationRepository,
+                projectRepository,
+                knowledgeSearchService
+        );
+
+        String reply = service.reply(conversationId, "hello");
+
+        assertThat(reply).isEqualTo("You said:\n\nhello");
+        assertThat(output)
+                .contains("Knowledge retrieval failed; continuing without local knowledge context.")
+                .contains("index unavailable");
     }
 
     private Message message(String role, String content) {

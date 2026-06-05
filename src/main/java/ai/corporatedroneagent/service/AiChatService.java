@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.anthropic.api.AnthropicApi;
@@ -51,6 +53,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class AiChatService {
 
+    private static final Logger log = LoggerFactory.getLogger(AiChatService.class);
     private static final int KNOWLEDGE_SEARCH_LIMIT = 5;
 
     private final SettingsService settingsService;
@@ -94,6 +97,7 @@ public class AiChatService {
         try {
             return knowledgeSearchService.search(userContent, KNOWLEDGE_SEARCH_LIMIT);
         } catch (RuntimeException exception) {
+            log.warn("Knowledge retrieval failed; continuing without local knowledge context.", exception);
             return List.of();
         }
     }
