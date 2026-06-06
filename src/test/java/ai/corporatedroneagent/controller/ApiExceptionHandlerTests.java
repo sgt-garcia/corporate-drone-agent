@@ -28,4 +28,24 @@ class ApiExceptionHandlerTests {
         assertThat(body.message()).isEqualTo("Folders must not be nested inside each other");
         assertThat(body.path()).isEqualTo("/api/settings/knowledge/local-folders");
     }
+
+    @Test
+    void genericExceptionReturnsSanitizedInternalServerError() {
+        ApiExceptionHandler handler = new ApiExceptionHandler();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/settings");
+
+        var response = handler.handleException(
+                new IllegalStateException("Could not read C:\\Users\\Andre\\secrets.json"),
+                request
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        ApiErrorDto body = response.getBody();
+        assertThat(body.status()).isEqualTo(500);
+        assertThat(body.error()).isEqualTo("Internal Server Error");
+        assertThat(body.message()).isEqualTo("An unexpected error occurred.");
+        assertThat(body.message()).doesNotContain("secrets.json");
+        assertThat(body.path()).isEqualTo("/api/settings");
+    }
 }
