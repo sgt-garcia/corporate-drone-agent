@@ -17,12 +17,63 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class KnowledgeResourcePipelineRepository {
+
+    private static final PipelineTable<KnowledgeResourceRead> READ_PIPELINE = new PipelineTable<>(
+            "knowledge_resource_reads",
+            "resource_id",
+            "read_value",
+            "read_at",
+            KnowledgeResourceRead::getId,
+            KnowledgeResourceRead::setId,
+            KnowledgeResourceRead::getResourceId,
+            KnowledgeResourceRead::getStatus,
+            KnowledgeResourceRead::getSuccess,
+            KnowledgeResourceRead::getMessage,
+            KnowledgeResourceRead::getValue,
+            KnowledgeResourceRead::getReadAt,
+            KnowledgeResourceRead::setCreatedAt,
+            KnowledgeResourceRead::setUpdatedAt
+    );
+    private static final PipelineTable<KnowledgeResourceConversion> CONVERSION_PIPELINE = new PipelineTable<>(
+            "knowledge_resource_conversions",
+            "resource_id",
+            "conversion_value",
+            "converted_at",
+            KnowledgeResourceConversion::getId,
+            KnowledgeResourceConversion::setId,
+            KnowledgeResourceConversion::getResourceId,
+            KnowledgeResourceConversion::getStatus,
+            KnowledgeResourceConversion::getSuccess,
+            KnowledgeResourceConversion::getMessage,
+            KnowledgeResourceConversion::getValue,
+            KnowledgeResourceConversion::getConvertedAt,
+            KnowledgeResourceConversion::setCreatedAt,
+            KnowledgeResourceConversion::setUpdatedAt
+    );
+    private static final PipelineTable<KnowledgeResourceIndex> INDEX_PIPELINE = new PipelineTable<>(
+            "knowledge_resource_indexes",
+            "chunk_id",
+            "index_reference",
+            "indexed_at",
+            KnowledgeResourceIndex::getId,
+            KnowledgeResourceIndex::setId,
+            KnowledgeResourceIndex::getChunkId,
+            KnowledgeResourceIndex::getStatus,
+            KnowledgeResourceIndex::getSuccess,
+            KnowledgeResourceIndex::getMessage,
+            KnowledgeResourceIndex::getIndexReference,
+            KnowledgeResourceIndex::getIndexedAt,
+            KnowledgeResourceIndex::setCreatedAt,
+            KnowledgeResourceIndex::setUpdatedAt
+    );
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -112,51 +163,7 @@ public class KnowledgeResourcePipelineRepository {
     }
 
     public KnowledgeResourceRead saveRead(KnowledgeResourceRead read) {
-        Instant now = Instant.now();
-        if (findReadByResourceId(read.getResourceId()).isEmpty()) {
-            if (read.getId() == null) {
-                read.setId(UUID.randomUUID());
-            }
-            read.setCreatedAt(now);
-            read.setUpdatedAt(now);
-            jdbcTemplate.update("""
-                    INSERT INTO knowledge_resource_reads (
-                        id, resource_id, status, success, message, read_value, read_at, created_at, updated_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    read.getId(),
-                    read.getResourceId(),
-                    read.getStatus().name(),
-                    read.getSuccess(),
-                    read.getMessage(),
-                    read.getValue(),
-                    timestamp(read.getReadAt()),
-                    timestamp(read.getCreatedAt()),
-                    timestamp(read.getUpdatedAt())
-            );
-            return read;
-        }
-        read.setUpdatedAt(now);
-        jdbcTemplate.update("""
-                UPDATE knowledge_resource_reads
-                SET status = ?,
-                    success = ?,
-                    message = ?,
-                    read_value = ?,
-                    read_at = ?,
-                    updated_at = ?
-                WHERE resource_id = ?
-                """,
-                read.getStatus().name(),
-                read.getSuccess(),
-                read.getMessage(),
-                read.getValue(),
-                timestamp(read.getReadAt()),
-                timestamp(read.getUpdatedAt()),
-                read.getResourceId()
-        );
-        return findReadByResourceId(read.getResourceId()).orElseThrow();
+        return savePipelineState(read, READ_PIPELINE, this::findReadByResourceId);
     }
 
     public Optional<KnowledgeResourceConversion> findConversionByResourceId(UUID resourceId) {
@@ -172,51 +179,7 @@ public class KnowledgeResourcePipelineRepository {
     }
 
     public KnowledgeResourceConversion saveConversion(KnowledgeResourceConversion conversion) {
-        Instant now = Instant.now();
-        if (findConversionByResourceId(conversion.getResourceId()).isEmpty()) {
-            if (conversion.getId() == null) {
-                conversion.setId(UUID.randomUUID());
-            }
-            conversion.setCreatedAt(now);
-            conversion.setUpdatedAt(now);
-            jdbcTemplate.update("""
-                    INSERT INTO knowledge_resource_conversions (
-                        id, resource_id, status, success, message, conversion_value, converted_at, created_at, updated_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    conversion.getId(),
-                    conversion.getResourceId(),
-                    conversion.getStatus().name(),
-                    conversion.getSuccess(),
-                    conversion.getMessage(),
-                    conversion.getValue(),
-                    timestamp(conversion.getConvertedAt()),
-                    timestamp(conversion.getCreatedAt()),
-                    timestamp(conversion.getUpdatedAt())
-            );
-            return conversion;
-        }
-        conversion.setUpdatedAt(now);
-        jdbcTemplate.update("""
-                UPDATE knowledge_resource_conversions
-                SET status = ?,
-                    success = ?,
-                    message = ?,
-                    conversion_value = ?,
-                    converted_at = ?,
-                    updated_at = ?
-                WHERE resource_id = ?
-                """,
-                conversion.getStatus().name(),
-                conversion.getSuccess(),
-                conversion.getMessage(),
-                conversion.getValue(),
-                timestamp(conversion.getConvertedAt()),
-                timestamp(conversion.getUpdatedAt()),
-                conversion.getResourceId()
-        );
-        return findConversionByResourceId(conversion.getResourceId()).orElseThrow();
+        return savePipelineState(conversion, CONVERSION_PIPELINE, this::findConversionByResourceId);
     }
 
     public List<KnowledgeResourceChunk> findChunksByResourceId(UUID resourceId) {
@@ -306,52 +269,47 @@ public class KnowledgeResourcePipelineRepository {
     }
 
     public KnowledgeResourceIndex saveIndex(KnowledgeResourceIndex index) {
+        return savePipelineState(index, INDEX_PIPELINE, this::findIndexByChunkId);
+    }
+
+    private <T> T savePipelineState(
+            T state,
+            PipelineTable<T> table,
+            Function<UUID, Optional<T>> finder) {
         Instant now = Instant.now();
-        if (findIndexByChunkId(index.getChunkId()).isEmpty()) {
-            if (index.getId() == null) {
-                index.setId(UUID.randomUUID());
+        UUID key = table.key().apply(state);
+        if (finder.apply(key).isEmpty()) {
+            if (table.id().apply(state) == null) {
+                table.setId().accept(state, UUID.randomUUID());
             }
-            index.setCreatedAt(now);
-            index.setUpdatedAt(now);
-            jdbcTemplate.update("""
-                    INSERT INTO knowledge_resource_indexes (
-                        id, chunk_id, status, success, message, index_reference,
-                        indexed_at, created_at, updated_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    index.getId(),
-                    index.getChunkId(),
-                    index.getStatus().name(),
-                    index.getSuccess(),
-                    index.getMessage(),
-                    index.getIndexReference(),
-                    timestamp(index.getIndexedAt()),
-                    timestamp(index.getCreatedAt()),
-                    timestamp(index.getUpdatedAt())
+            table.setCreatedAt().accept(state, now);
+            table.setUpdatedAt().accept(state, now);
+            jdbcTemplate.update(
+                    table.insertSql(),
+                    table.id().apply(state),
+                    key,
+                    table.status().apply(state).name(),
+                    table.success().apply(state),
+                    table.message().apply(state),
+                    table.value().apply(state),
+                    timestamp(table.processedAt().apply(state)),
+                    timestamp(now),
+                    timestamp(now)
             );
-            return index;
+            return state;
         }
-        index.setUpdatedAt(now);
-        jdbcTemplate.update("""
-                UPDATE knowledge_resource_indexes
-                SET status = ?,
-                    success = ?,
-                    message = ?,
-                    index_reference = ?,
-                    indexed_at = ?,
-                    updated_at = ?
-                WHERE chunk_id = ?
-                """,
-                index.getStatus().name(),
-                index.getSuccess(),
-                index.getMessage(),
-                index.getIndexReference(),
-                timestamp(index.getIndexedAt()),
-                timestamp(index.getUpdatedAt()),
-                index.getChunkId()
+        table.setUpdatedAt().accept(state, now);
+        jdbcTemplate.update(
+                table.updateSql(),
+                table.status().apply(state).name(),
+                table.success().apply(state),
+                table.message().apply(state),
+                table.value().apply(state),
+                timestamp(table.processedAt().apply(state)),
+                timestamp(now),
+                key
         );
-        return findIndexByChunkId(index.getChunkId()).orElseThrow();
+        return finder.apply(key).orElseThrow();
     }
 
     private KnowledgeResourceRead mapRead(ResultSet resultSet, int rowNumber) throws SQLException {
@@ -407,6 +365,46 @@ public class KnowledgeResourcePipelineRepository {
         index.setCreatedAt(instant(resultSet, "created_at"));
         index.setUpdatedAt(instant(resultSet, "updated_at"));
         return index;
+    }
+
+    private record PipelineTable<T>(
+            String tableName,
+            String keyColumn,
+            String valueColumn,
+            String processedAtColumn,
+            Function<T, UUID> id,
+            BiConsumer<T, UUID> setId,
+            Function<T, UUID> key,
+            Function<T, WorkStatus> status,
+            Function<T, Boolean> success,
+            Function<T, String> message,
+            Function<T, Object> value,
+            Function<T, Instant> processedAt,
+            BiConsumer<T, Instant> setCreatedAt,
+            BiConsumer<T, Instant> setUpdatedAt
+    ) {
+
+        String insertSql() {
+            return """
+                    INSERT INTO %s (
+                        id, %s, status, success, message, %s, %s, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """.formatted(tableName, keyColumn, valueColumn, processedAtColumn);
+        }
+
+        String updateSql() {
+            return """
+                    UPDATE %s
+                    SET status = ?,
+                        success = ?,
+                        message = ?,
+                        %s = ?,
+                        %s = ?,
+                        updated_at = ?
+                    WHERE %s = ?
+                    """.formatted(tableName, valueColumn, processedAtColumn, keyColumn);
+        }
     }
 
 }
