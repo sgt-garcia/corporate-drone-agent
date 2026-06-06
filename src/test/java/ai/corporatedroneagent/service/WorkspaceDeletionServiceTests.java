@@ -6,7 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import ai.corporatedroneagent.config.StorageProperties;
+import ai.corporatedroneagent.TestDatabaseSupport;
 import ai.corporatedroneagent.dto.ConversationDto;
 import ai.corporatedroneagent.dto.ConversationRequest;
 import ai.corporatedroneagent.dto.ProjectDeletedDto;
@@ -15,14 +15,11 @@ import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Project;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.repository.ProjectRepository;
-import ai.corporatedroneagent.util.JsonFiles;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class WorkspaceDeletionServiceTests {
 
@@ -34,13 +31,11 @@ class WorkspaceDeletionServiceTests {
     private ProjectService projectService;
 
     @BeforeEach
-    void setUp(@TempDir Path root) {
-        StorageProperties storageProperties = new StorageProperties();
-        storageProperties.setRoot(root);
-        JsonFiles jsonFiles = new JsonFiles(new ObjectMapper().findAndRegisterModules());
+    void setUp() {
+        JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
 
-        conversationRepository = new ConversationRepository(jsonFiles, storageProperties);
-        projectRepository = new ProjectRepository(jsonFiles, storageProperties);
+        conversationRepository = new ConversationRepository(jdbcTemplate);
+        projectRepository = new ProjectRepository(jdbcTemplate);
         eventService = mock(EventService.class);
         messagePushJob = mock(MessagePushJob.class);
 
@@ -86,6 +81,24 @@ class WorkspaceDeletionServiceTests {
         assertThat(conversationRepository.findById(two.getId())).isEmpty();
         verify(eventService).publish(eq("project-deleted"), eq(new ProjectDeletedDto(project.getId())));
         verify(eventService).publish(eq("projects-updated"), any());
+    }
+
+    @Test
+    void sendingAUserMessagePersistsItInConversationHistory() {
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+
+        conversationService.sendUserMessage(conversation.getId(), "Draft the kickoff note");
+
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .hasSize(1)
+                .first()
+                .satisfies(message -> {
+                    assertThat(message.getRole()).isEqualTo("user");
+                    assertThat(message.getContent()).isEqualTo("Draft the kickoff note");
+                    assertThat(message.getCreatedAt()).isNotNull();
+                });
+        verify(messagePushJob).queueAssistantReply(conversation.getId(), "Draft the kickoff note");
     }
 
     private Project saveProject(String name) {

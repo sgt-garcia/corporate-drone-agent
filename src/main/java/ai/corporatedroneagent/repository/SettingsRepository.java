@@ -1,33 +1,68 @@
 package ai.corporatedroneagent.repository;
 
-import ai.corporatedroneagent.config.StorageProperties;
 import ai.corporatedroneagent.model.ApplicationSettings;
-import ai.corporatedroneagent.util.JsonFiles;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.UncheckedIOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Instant;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class SettingsRepository {
 
-    private final JsonFiles jsonFiles;
-    private final Path path;
+    private static final int SETTINGS_ID = 1;
 
-    public SettingsRepository(JsonFiles jsonFiles, StorageProperties storageProperties) {
-        this.jsonFiles = jsonFiles;
-        this.path = storageProperties.getRoot().resolve("application-settings.json");
+    private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
+
+    public SettingsRepository(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
     }
 
     public ApplicationSettings get() {
-        if (!Files.exists(path)) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    "SELECT settings_json FROM app_settings WHERE id = ?",
+                    this::mapSettings,
+                    SETTINGS_ID
+            );
+        } catch (EmptyResultDataAccessException exception) {
             return save(new ApplicationSettings());
         }
-
-        return jsonFiles.read(path, ApplicationSettings.class);
     }
 
     public ApplicationSettings save(ApplicationSettings settings) {
-        jsonFiles.write(path, settings);
+        jdbcTemplate.update("""
+                MERGE INTO app_settings (id, settings_json, updated_at)
+                KEY(id)
+                VALUES (?, ?, ?)
+                """,
+                SETTINGS_ID,
+                writeSettings(settings),
+                Timestamp.from(Instant.now())
+        );
         return settings;
+    }
+
+    private ApplicationSettings mapSettings(ResultSet resultSet, int rowNumber) throws SQLException {
+        try {
+            return objectMapper.readValue(resultSet.getString("settings_json"), ApplicationSettings.class);
+        } catch (JsonProcessingException exception) {
+            throw new UncheckedIOException("Could not read application settings from database", exception);
+        }
+    }
+
+    private String writeSettings(ApplicationSettings settings) {
+        try {
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(settings);
+        } catch (JsonProcessingException exception) {
+            throw new UncheckedIOException("Could not write application settings to database", exception);
+        }
     }
 }

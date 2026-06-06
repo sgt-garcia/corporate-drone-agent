@@ -7,7 +7,7 @@ provider you want to use for chat.
 The application is currently an early desktop-style local web app: a Spring Boot
 backend serves a React/Vite frontend, opens the UI in a Playwright-managed
 browser window, and keeps projects, conversations, settings, and secrets on the
-local filesystem.
+local machine.
 
 ## Current status
 
@@ -18,7 +18,8 @@ Working today:
 - Project creation and editing, including a project name, optional working
   folder, and project-level custom instructions.
 - Conversation creation inside projects.
-- Persistent conversation history stored as local JSON files.
+- Persistent projects, conversations, message history, settings, and knowledge
+  metadata stored in the local encrypted H2 database.
 - Async assistant replies with status updates pushed to the UI over server-sent
   events.
 - Configurable global assistant name, active AI provider, and custom
@@ -60,8 +61,8 @@ Still planned:
 - Java 21
 - Spring Boot 3.5.14
 - Spring AI 1.1.2
-- H2 for the local encrypted knowledge database
-- Flyway for knowledge database schema setup
+- H2 for the local encrypted application and knowledge database
+- Flyway for database schema setup
 - Apache Lucene for local full-text indexing
 - Maven
 - Node.js 22.16.0 and npm 10.9.2 for the frontend build
@@ -89,9 +90,9 @@ The backend is organized around a few focused seams:
 - API-key-backed provider settings share `ApiKeySettings` /
   `ApiKeyModelSettings`, and `SettingsSecretsService` drives migration, save,
   status, apply, and clear behavior from a descriptor list.
-- `JsonFiles` includes a small typed document store used by the project and
-  conversation repositories for `UUID.json` list, lookup, save, and delete
-  behavior.
+- `SettingsRepository`, `ProjectRepository`, and `ConversationRepository` store
+  application settings, projects, conversations, and messages in H2 through
+  JDBC.
 - `KnowledgeResourcePipelineRepository` keeps read, conversion, and index saves
   on a shared table-binding helper so insert/update timestamp behavior stays
   consistent across pipeline stages.
@@ -155,14 +156,10 @@ By default, application data is written under your user profile in
 `.corporate-drone-agent`. On Windows this is typically
 `C:\Users\your-user\.corporate-drone-agent`:
 
-- `.corporate-drone-agent/application-settings.json` stores non-secret
-  settings.
-- `.corporate-drone-agent/projects/*.json` stores projects.
-- `.corporate-drone-agent/conversations/*.json` stores conversations and
-  message history.
+- `.corporate-drone-agent/database/knowledge*` stores the encrypted H2 database,
+  including application settings, projects, conversations, message history, and
+  knowledge metadata.
 - `.corporate-drone-agent/secrets.json` stores protected API keys.
-- `.corporate-drone-agent/database/knowledge*` stores the encrypted H2
-  knowledge database.
 - `.corporate-drone-agent/lucene/` stores the Lucene full-text index.
 
 The application logs local knowledge lifecycle events such as folder
@@ -178,15 +175,15 @@ The storage root can be changed with:
 ```
 
 API keys are accepted through the settings UI/API, then moved into the secret
-store. They are not written to `application-settings.json` and are not returned
-by `GET /api/settings`.
+store. They are not written to the database-backed application settings document
+and are not returned by `GET /api/settings`.
 
 Secret protection:
 
 - On Windows, secrets are protected with the current user's DPAPI profile.
 - On non-Windows systems, set `CDA_SECRET_KEY` to enable AES-GCM protection.
 
-The H2 knowledge database is encrypted at rest. Its encryption key is generated
+The H2 database is encrypted at rest. Its encryption key is generated
 automatically and stored in the same protected local secret store as provider
 API keys, so a copied database is not useful without access to that machine's
 protected secret material.

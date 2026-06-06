@@ -56,7 +56,7 @@ public class ProjectService {
         project.setWorkingFolder(Strings.emptyIfNull(request.workingFolder()));
         project.setCustomInstructions(Strings.defaultIfBlank(request.customInstructions(), DEFAULT_PROJECT_INSTRUCTIONS));
         project.setCreatedAt(Instant.now());
-        projectRepository.save(project);
+        project = projectRepository.save(project);
         ProjectDto dto = toDto(project);
         eventService.publish("projects-updated", listProjects());
         return dto;
@@ -67,7 +67,7 @@ public class ProjectService {
         project.setName(Strings.defaultIfBlank(request.name(), project.getName()));
         project.setWorkingFolder(Strings.emptyIfNull(request.workingFolder()));
         project.setCustomInstructions(Strings.emptyIfNull(request.customInstructions()));
-        projectRepository.save(project);
+        project = projectRepository.save(project);
         ProjectDto dto = toDto(project);
         eventService.publish("project-updated", dto);
         eventService.publish("projects-updated", listProjects());
@@ -133,6 +133,7 @@ public class ProjectService {
         project.setWorkingFolder("");
         project.setCustomInstructions(DEFAULT_PROJECT_INSTRUCTIONS);
         project.setCreatedAt(Instant.now());
+        project = projectRepository.save(project);
 
         for (String conversationName : conversationNames) {
             Conversation conversation = new Conversation();

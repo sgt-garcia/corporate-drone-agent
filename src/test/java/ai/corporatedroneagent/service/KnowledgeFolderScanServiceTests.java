@@ -22,7 +22,6 @@ import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootScanRepository;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.security.SecretStore;
-import ai.corporatedroneagent.util.JsonFiles;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -67,7 +66,7 @@ class KnowledgeFolderScanServiceTests {
     void setUp() {
         StorageProperties storageProperties = new StorageProperties();
         storageProperties.setRoot(root);
-        JsonFiles jsonFiles = new JsonFiles(new ObjectMapper().findAndRegisterModules());
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         InMemorySecretStore secretStore = new InMemorySecretStore();
         SettingsSecretsService secretsService = new SettingsSecretsService(secretStore);
         EventService eventService = mock(EventService.class);
@@ -95,7 +94,7 @@ class KnowledgeFolderScanServiceTests {
                 knowledgeResourceRepository,
                 knowledgeRootRepository
         );
-        settingsRepository = new SettingsRepository(jsonFiles, storageProperties);
+        settingsRepository = new SettingsRepository(jdbcTemplate, objectMapper);
         settingsService = new SettingsService(
                 settingsRepository,
                 secretsService,

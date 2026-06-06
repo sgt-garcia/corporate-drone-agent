@@ -3,21 +3,18 @@ package ai.corporatedroneagent.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-import ai.corporatedroneagent.config.StorageProperties;
+import ai.corporatedroneagent.TestDatabaseSupport;
 import ai.corporatedroneagent.dto.ProjectDto;
 import ai.corporatedroneagent.dto.ProjectRequest;
 import ai.corporatedroneagent.model.Project;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.repository.ProjectRepository;
-import ai.corporatedroneagent.util.JsonFiles;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class ProjectListingServiceTests {
 
@@ -25,14 +22,11 @@ class ProjectListingServiceTests {
     private ProjectService projectService;
 
     @BeforeEach
-    void setUp(@TempDir Path root) {
-        StorageProperties storageProperties = new StorageProperties();
-        storageProperties.setRoot(root);
-        JsonFiles jsonFiles = new JsonFiles(new ObjectMapper().findAndRegisterModules());
+    void setUp() {
+        JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
 
-        projectRepository = new ProjectRepository(jsonFiles, storageProperties);
-        ConversationRepository conversationRepository =
-                new ConversationRepository(jsonFiles, storageProperties);
+        projectRepository = new ProjectRepository(jdbcTemplate);
+        ConversationRepository conversationRepository = new ConversationRepository(jdbcTemplate);
         projectService = new ProjectService(
                 projectRepository, conversationRepository, mock(EventService.class));
     }

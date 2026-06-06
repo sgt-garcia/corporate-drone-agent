@@ -7,13 +7,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import ai.corporatedroneagent.config.StorageProperties;
+import ai.corporatedroneagent.TestDatabaseSupport;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.security.SecretStore;
-import ai.corporatedroneagent.util.JsonFiles;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,6 +25,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class KnowledgeFolderSettingsServiceTests {
 
@@ -37,11 +37,9 @@ class KnowledgeFolderSettingsServiceTests {
 
     @BeforeEach
     void setUp() {
-        StorageProperties storageProperties = new StorageProperties();
-        storageProperties.setRoot(root);
-        JsonFiles jsonFiles = new JsonFiles(new ObjectMapper().findAndRegisterModules());
+        JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
 
-        settingsRepository = new SettingsRepository(jsonFiles, storageProperties);
+        settingsRepository = new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules());
         eventService = mock(EventService.class);
         settingsService = new SettingsService(
                 settingsRepository,
