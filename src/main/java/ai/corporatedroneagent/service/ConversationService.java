@@ -101,7 +101,7 @@ public class ConversationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Message content is required");
         }
 
-        conversationRepository.update(conversationId, conversation -> conversation.getMessages().add(message))
+        conversationRepository.appendMessage(conversationId, message)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
         MessageDto dto = toDto(message);
         eventService.publish("message-created", new MessageEventDto(conversationId, dto));

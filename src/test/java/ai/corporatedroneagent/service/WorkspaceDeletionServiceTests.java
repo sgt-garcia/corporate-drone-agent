@@ -101,6 +101,19 @@ class WorkspaceDeletionServiceTests {
         verify(messagePushJob).queueAssistantReply(conversation.getId(), "Draft the kickoff note");
     }
 
+    @Test
+    void appendedMessagesKeepTheirInsertOrder() {
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+
+        conversationService.sendUserMessage(conversation.getId(), "First");
+        conversationService.sendUserMessage(conversation.getId(), "Second");
+
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .extracting(message -> message.getContent())
+                .containsExactly("First", "Second");
+    }
+
     private Project saveProject(String name) {
         Project project = new Project();
         project.setId(UUID.randomUUID());

@@ -76,8 +76,8 @@ public class MessagePushJob {
                 Instant.now()
         );
 
-        conversationRepository.update(conversationId, conversation -> conversation.getMessages().add(message))
-                .ifPresent(conversation -> eventService.publish(
+        conversationRepository.appendMessage(conversationId, message)
+                .ifPresent(savedMessage -> eventService.publish(
                         "message-created",
                         new MessageEventDto(conversationId, toDto(message))
                 ));

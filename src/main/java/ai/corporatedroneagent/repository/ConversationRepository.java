@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Consumer;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -80,18 +79,40 @@ public class ConversationRepository {
             );
         }
 
-        replaceMessages(conversation);
         return conversation;
     }
 
     @Transactional
-    public synchronized Optional<Conversation> update(UUID id, Consumer<Conversation> updater) {
-        Optional<Conversation> conversation = findById(id);
-        conversation.ifPresent(currentConversation -> {
-            updater.accept(currentConversation);
-            save(currentConversation);
-        });
-        return conversation;
+    public synchronized Optional<Message> appendMessage(UUID conversationId, Message message) {
+        if (!exists(conversationId)) {
+            return Optional.empty();
+        }
+        if (message.getId() == null) {
+            message.setId(UUID.randomUUID());
+        }
+        if (message.getCreatedAt() == null) {
+            message.setCreatedAt(Instant.now());
+        }
+
+        jdbcTemplate.update("""
+                INSERT INTO conversation_messages (
+                    id, conversation_id, message_index, role, content, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                message.getId(),
+                conversationId,
+                nextMessageIndex(conversationId),
+                message.getRole(),
+                message.getContent(),
+                timestamp(message.getCreatedAt())
+        );
+        jdbcTemplate.update(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                Timestamp.from(Instant.now()),
+                conversationId
+        );
+        return Optional.of(message);
     }
 
     @Transactional
@@ -136,25 +157,22 @@ public class ConversationRepository {
         return next == null ? 0 : next;
     }
 
-    private void replaceMessages(Conversation conversation) {
-        jdbcTemplate.update("DELETE FROM conversation_messages WHERE conversation_id = ?", conversation.getId());
-        List<Message> messages = conversation.getMessages();
-        for (int index = 0; index < messages.size(); index++) {
-            Message message = messages.get(index);
-            jdbcTemplate.update("""
-                    INSERT INTO conversation_messages (
-                        id, conversation_id, message_index, role, content, created_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    message.getId(),
-                    conversation.getId(),
-                    index,
-                    message.getRole(),
-                    message.getContent(),
-                    timestamp(message.getCreatedAt())
-            );
-        }
+    private int nextMessageIndex(UUID conversationId) {
+        Integer next = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(MAX(message_index) + 1, 0)
+                FROM conversation_messages
+                WHERE conversation_id = ?
+                """, Integer.class, conversationId);
+        return next == null ? 0 : next;
+    }
+
+    private boolean exists(UUID conversationId) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM conversations WHERE id = ?",
+                Integer.class,
+                conversationId
+        );
+        return count != null && count > 0;
     }
 
     private Timestamp timestamp(Instant instant) {
