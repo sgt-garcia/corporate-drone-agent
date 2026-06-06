@@ -11,6 +11,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -19,8 +21,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Service
 public class EventService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventService.class);
     private static final int EVENT_THREADS = 2;
     private static final int EVENT_QUEUE_CAPACITY = 256;
+    private static final String MESSAGE_CREATED_EVENT = "message-created";
 
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
     private final ThreadPoolExecutor eventExecutor = new ThreadPoolExecutor(
@@ -30,7 +34,7 @@ public class EventService {
             TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>(EVENT_QUEUE_CAPACITY),
             namedThreadFactory(),
-            new ThreadPoolExecutor.DiscardPolicy()
+            new EventRejectionHandler()
     );
 
     public SseEmitter subscribe() {
@@ -72,7 +76,7 @@ public class EventService {
     }
 
     private void sendAsync(SseEmitter emitter, ApiEvent event) {
-        eventExecutor.execute(() -> send(emitter, event));
+        eventExecutor.execute(new EventSendTask(event, () -> send(emitter, event)));
     }
 
     private void send(SseEmitter emitter, ApiEvent event) {
@@ -92,5 +96,43 @@ public class EventService {
             thread.setDaemon(true);
             return thread;
         };
+    }
+
+    static final class EventSendTask implements Runnable {
+
+        private final ApiEvent event;
+        private final Runnable delegate;
+
+        EventSendTask(ApiEvent event, Runnable delegate) {
+            this.event = event;
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void run() {
+            delegate.run();
+        }
+
+        boolean isMessageCreated() {
+            return MESSAGE_CREATED_EVENT.equals(event.type());
+        }
+
+        String type() {
+            return event.type();
+        }
+    }
+
+    static final class EventRejectionHandler extends ThreadPoolExecutor.DiscardPolicy {
+
+        @Override
+        public void rejectedExecution(Runnable runnable, ThreadPoolExecutor executor) {
+            if (executor.isShutdown()) {
+                return;
+            }
+            if (runnable instanceof EventSendTask task && task.isMessageCreated()) {
+                LOGGER.warn("SSE event executor is saturated; sending {} event on caller thread.", task.type());
+                task.run();
+            }
+        }
     }
 }
