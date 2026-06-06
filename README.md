@@ -73,6 +73,29 @@ The Maven build installs the configured Node.js and npm versions, builds the
 frontend, copies `frontend/dist` into the Spring Boot static resources, and then
 packages the backend.
 
+## Backend structure
+
+The backend is organized around a few focused seams:
+
+- `SettingsController` owns the main settings read/write API.
+- `KnowledgeFolderController` owns local knowledge-folder management and scan
+  actions.
+- `ProviderModelsController` owns provider model/deployment lookup endpoints.
+- `AiChatService` selects a `ChatProvider` by provider id and delegates
+  provider-specific validation, model construction, and reply generation.
+- Provider model lookup services share common request, saved-key resolution,
+  exception handling, filtering, de-duplication, and sorting through
+  `ModelLookupSupport`.
+- API-key-backed provider settings share `ApiKeySettings` /
+  `ApiKeyModelSettings`, and `SettingsSecretsService` drives migration, save,
+  status, apply, and clear behavior from a descriptor list.
+- `JsonFiles` includes a small typed document store used by the project and
+  conversation repositories for `UUID.json` list, lookup, save, and delete
+  behavior.
+- `KnowledgeResourcePipelineRepository` keeps read, conversion, and index saves
+  on a shared table-binding helper so insert/update timestamp behavior stays
+  consistent across pipeline stages.
+
 ## AI providers
 
 Chat providers are configured in Settings under **Models & providers**, which
