@@ -80,7 +80,7 @@ class WorkspaceDeletionServiceTests {
         assertThat(conversationRepository.findById(one.getId())).isEmpty();
         assertThat(conversationRepository.findById(two.getId())).isEmpty();
         verify(eventService).publish(eq("project-deleted"), eq(new ProjectDeletedDto(project.getId())));
-        verify(eventService).publish(eq("projects-updated"), any());
+        verify(eventService).publish(eq("projects-updated"));
     }
 
     @Test

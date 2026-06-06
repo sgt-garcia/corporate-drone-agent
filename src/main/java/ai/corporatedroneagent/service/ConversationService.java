@@ -13,6 +13,7 @@ import ai.corporatedroneagent.repository.ProjectRepository;
 import ai.corporatedroneagent.util.Strings;
 import ai.corporatedroneagent.job.MessagePushJob;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -68,7 +69,7 @@ public class ConversationService {
         conversation.setName(Strings.defaultIfBlank(request.name(), conversation.getName()));
         conversationRepository.save(conversation);
         ConversationDto dto = toDto(conversation);
-        eventService.publish("conversation-updated", dto);
+        eventService.publish("conversation-updated", Map.of("id", conversationId));
         return dto;
     }
 

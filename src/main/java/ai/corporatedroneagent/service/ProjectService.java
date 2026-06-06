@@ -58,7 +58,7 @@ public class ProjectService {
         project.setCreatedAt(Instant.now());
         project = projectRepository.save(project);
         ProjectDto dto = toDto(project);
-        eventService.publish("projects-updated", listProjects());
+        eventService.publish("projects-updated");
         return dto;
     }
 
@@ -69,8 +69,7 @@ public class ProjectService {
         project.setCustomInstructions(Strings.emptyIfNull(request.customInstructions()));
         project = projectRepository.save(project);
         ProjectDto dto = toDto(project);
-        eventService.publish("project-updated", dto);
-        eventService.publish("projects-updated", listProjects());
+        eventService.publish("projects-updated");
         return dto;
     }
 
@@ -81,7 +80,7 @@ public class ProjectService {
         }
         projectRepository.delete(projectId);
         eventService.publish("project-deleted", new ProjectDeletedDto(projectId));
-        eventService.publish("projects-updated", listProjects());
+        eventService.publish("projects-updated");
     }
 
     public synchronized List<ConversationSummaryDto> listConversations(UUID projectId) {

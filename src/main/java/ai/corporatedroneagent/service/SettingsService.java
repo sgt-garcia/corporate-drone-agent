@@ -91,7 +91,7 @@ public class SettingsService {
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);
         ApplicationSettings savedSettings = get();
-        eventService.publish("settings-updated", savedSettings);
+        eventService.publish("settings-updated");
         return savedSettings;
     }
 
@@ -181,7 +181,7 @@ public class SettingsService {
     }
 
     private void publishSettingsUpdated() {
-        eventService.publish("settings-updated", get());
+        eventService.publish("settings-updated");
     }
 
     private KnowledgeRoot findKnowledgeRoot(UUID folderId) {

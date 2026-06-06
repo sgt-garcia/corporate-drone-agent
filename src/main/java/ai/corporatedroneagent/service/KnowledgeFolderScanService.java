@@ -152,7 +152,7 @@ public class KnowledgeFolderScanService {
     }
 
     private void publishSettingsUpdated() {
-        eventService.publish("settings-updated", settingsService.get());
+        eventService.publish("settings-updated");
     }
 
     private KnowledgeFolder knowledgeFolder(KnowledgeRoot root) {

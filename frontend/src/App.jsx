@@ -112,14 +112,11 @@ export default function App() {
       const payload = JSON.parse(event.data);
       addMessageToConversation(payload.conversationId, payload.message);
     });
-    events.addEventListener("projects-updated", (event) => {
-      setProjects(JSON.parse(event.data));
+    events.addEventListener("projects-updated", () => {
+      refreshProjectsFromServer();
     });
-    events.addEventListener("project-updated", (event) => {
-      const project = JSON.parse(event.data);
-      setProjects((currentProjects) =>
-        currentProjects.map((item) => (item.id === project.id ? project : item))
-      );
+    events.addEventListener("project-updated", () => {
+      refreshProjectsFromServer();
     });
     events.addEventListener("conversation-created", (event) => {
       const conversation = JSON.parse(event.data);
@@ -145,30 +142,12 @@ export default function App() {
       removeProjectFromState(id);
     });
     events.addEventListener("conversation-updated", (event) => {
-      const conversation = JSON.parse(event.data);
-      setConversationsById((currentConversations) => ({
-        ...currentConversations,
-        [conversation.id]: conversation
-      }));
-      setProjects((currentProjects) =>
-        currentProjects.map((project) =>
-          project.id === conversation.projectId
-            ? {
-                ...project,
-                conversations: upsertById(project.conversations, {
-                  id: conversation.id,
-                  projectId: conversation.projectId,
-                  name: conversation.name
-                })
-              }
-            : project
-        )
-      );
+      const { id } = JSON.parse(event.data);
+      refreshProjectsFromServer();
+      refreshConversationFromServer(id);
     });
-    events.addEventListener("settings-updated", (event) => {
-      const updatedSettings = JSON.parse(event.data);
-      setSettings(updatedSettings);
-      setKnowledgeFolders(updatedSettings.knowledgeFolders ?? []);
+    events.addEventListener("settings-updated", () => {
+      refreshSettingsFromServer();
     });
     events.onerror = () => setStatusText("Backend event stream disconnected.");
 
@@ -444,6 +423,44 @@ export default function App() {
     const savedSettings = await saveSettings(nextSettings);
     setSettings(savedSettings);
     setKnowledgeFolders(savedSettings.knowledgeFolders ?? []);
+  }
+
+  async function refreshProjectsFromServer() {
+    try {
+      setProjects(await getProjects());
+    } catch (error) {
+      setStatusText(error.message);
+    }
+  }
+
+  async function refreshSettingsFromServer() {
+    try {
+      const loadedSettings = await getSettings();
+      setSettings(loadedSettings);
+      setKnowledgeFolders(loadedSettings.knowledgeFolders ?? []);
+    } catch (error) {
+      setStatusText(error.message);
+    }
+  }
+
+  async function refreshConversationFromServer(conversationId) {
+    if (!conversationId) {
+      return;
+    }
+
+    try {
+      const conversation = await getConversation(conversationId);
+      setConversationsById((currentConversations) =>
+        conversation.id in currentConversations
+          ? {
+              ...currentConversations,
+              [conversation.id]: conversation
+            }
+          : currentConversations
+      );
+    } catch (error) {
+      setStatusText(error.message);
+    }
   }
 
   async function addKnowledgeFolder(path) {
