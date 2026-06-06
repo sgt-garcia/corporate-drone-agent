@@ -114,6 +114,24 @@ class WorkspaceDeletionServiceTests {
                 .containsExactly("First", "Second");
     }
 
+    @Test
+    void savingAProjectDoesNotReparentForeignConversations() {
+        Project firstProject = saveProject("First");
+        Project secondProject = saveProject("Second");
+        Conversation secondConversation = saveConversation(secondProject, "Second conversation");
+
+        Project storedFirstProject = projectRepository.findById(firstProject.getId()).orElseThrow();
+        storedFirstProject.getConversationIds().add(secondConversation.getId());
+        projectRepository.save(storedFirstProject);
+
+        assertThat(conversationRepository.findById(secondConversation.getId()).orElseThrow().getProjectId())
+                .isEqualTo(secondProject.getId());
+        assertThat(projectRepository.findById(firstProject.getId()).orElseThrow().getConversationIds())
+                .doesNotContain(secondConversation.getId());
+        assertThat(projectRepository.findById(secondProject.getId()).orElseThrow().getConversationIds())
+                .containsExactly(secondConversation.getId());
+    }
+
     private Project saveProject(String name) {
         Project project = new Project();
         project.setId(UUID.randomUUID());

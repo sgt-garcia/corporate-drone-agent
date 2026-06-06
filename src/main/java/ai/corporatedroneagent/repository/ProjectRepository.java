@@ -113,15 +113,15 @@ public class ProjectRepository {
         for (int index = 0; index < conversationIds.size(); index++) {
             jdbcTemplate.update("""
                     UPDATE conversations
-                    SET project_id = ?,
-                        sort_order = ?,
+                    SET sort_order = ?,
                         updated_at = ?
                     WHERE id = ?
+                      AND project_id = ?
                     """,
-                    project.getId(),
                     index,
                     Timestamp.from(Instant.now()),
-                    conversationIds.get(index)
+                    conversationIds.get(index),
+                    project.getId()
             );
         }
     }
