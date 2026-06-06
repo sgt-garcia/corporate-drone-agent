@@ -21,11 +21,14 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -77,6 +80,9 @@ public class LocalFolderKnowledgeScanService {
 
         try {
             Files.walkFileTree(folderPath, visitor);
+            if (!visitor.cancelled()) {
+                processResources(root.getId(), visitor, isCancelled);
+            }
             if (visitor.cancelled()) {
                 completeScan(root, scan, visitor.stats(), "Scan cancelled");
                 log.info(
@@ -87,7 +93,7 @@ public class LocalFolderKnowledgeScanService {
                 );
                 throw new KnowledgeScanException("Scan cancelled", null);
             }
-            removeDeletedResourceIndexes(root.getId(), visitor.references());
+            removeDeletedResourceIndexes(visitor.references(), visitor.existingResources());
             completeScan(root, scan, visitor.stats(), null);
             log.info(
                     "Completed local folder scan for {} with {} files and {} bytes.",
@@ -108,6 +114,31 @@ public class LocalFolderKnowledgeScanService {
                     exception
             );
             throw new KnowledgeScanException("Could not scan folder", exception);
+        }
+    }
+
+    private void processResources(
+            java.util.UUID rootId,
+            ResourceScanningVisitor visitor,
+            BooleanSupplier isCancelled
+    ) {
+        visitor.loadExistingResources(resourceRepository.findByRootId(rootId));
+        Set<java.util.UUID> reusablePipelineResourceIds = pipelineRepository.findReusablePipelineResourceIds(
+                visitor.existingResources().stream()
+                        .map(KnowledgeResource::getId)
+                        .toList()
+        );
+
+        for (ScannedFile scannedFile : visitor.scannedFiles()) {
+            if (isCancelled.getAsBoolean()) {
+                visitor.cancel();
+                return;
+            }
+            saveResource(
+                    scannedFile,
+                    visitor.existingResource(scannedFile.reference()),
+                    reusablePipelineResourceIds
+            );
         }
     }
 
@@ -178,11 +209,15 @@ public class LocalFolderKnowledgeScanService {
         return fileName.substring(extensionStart + 1).toLowerCase(Locale.ROOT);
     }
 
-    private boolean canReusePipeline(KnowledgeResource resource, BasicFileAttributes attrs) {
+    private boolean canReusePipeline(
+            KnowledgeResource resource,
+            ScannedFile scannedFile,
+            Set<java.util.UUID> reusablePipelineResourceIds
+    ) {
         return !resource.isDeleted()
-                && resource.getSizeBytes() == attrs.size()
-                && sameTimestamp(resource.getLastModifiedAt(), attrs.lastModifiedTime().toInstant())
-                && hasReusablePipelineResult(resource);
+                && resource.getSizeBytes() == scannedFile.sizeBytes()
+                && sameTimestamp(resource.getLastModifiedAt(), scannedFile.lastModifiedAt())
+                && reusablePipelineResourceIds.contains(resource.getId());
     }
 
     private boolean sameTimestamp(Instant first, Instant second) {
@@ -192,57 +227,69 @@ public class LocalFolderKnowledgeScanService {
         return first.toEpochMilli() == second.toEpochMilli();
     }
 
-    private boolean hasReusablePipelineResult(KnowledgeResource resource) {
-        return pipelineTerminalReadFailure(resource)
-                || pipelineTerminalConversionFailure(resource)
-                || pipelineIndexedSuccessfully(resource);
+    private void saveResource(
+            ScannedFile scannedFile,
+            KnowledgeResource existingResource,
+            Set<java.util.UUID> reusablePipelineResourceIds
+    ) {
+        if (existingResource != null && canReusePipeline(
+                existingResource,
+                scannedFile,
+                reusablePipelineResourceIds
+        )) {
+            log.debug("Skipping unchanged local knowledge resource {}.", scannedFile.reference());
+            return;
+        }
+
+        KnowledgeResource resource = new KnowledgeResource();
+        resource.setRootId(scannedFile.rootId());
+        if (existingResource != null) {
+            resource.setId(existingResource.getId());
+        }
+        resource.setReference(scannedFile.reference());
+        resource.setDisplayName(scannedFile.displayName());
+        resource.setFormat(scannedFile.format());
+        resource.setSizeBytes(scannedFile.sizeBytes());
+        resource.setLastModifiedAt(scannedFile.lastModifiedAt());
+        resource.setDeleted(false);
+        resource.setScannedAt(scannedFile.scannedAt());
+        KnowledgeResource savedResource = resourceRepository.save(resource);
+        indexingService.deleteResource(savedResource);
+        KnowledgeResourceRead read = readService.read(savedResource, scannedFile.file());
+        KnowledgeResourceConversion conversion = conversionService.convert(savedResource, read);
+        List<KnowledgeResourceChunk> chunks = chunkingService.chunk(savedResource, conversion);
+        indexingService.index(savedResource, conversion, chunks);
     }
 
-    private boolean pipelineTerminalReadFailure(KnowledgeResource resource) {
-        return pipelineRepository.findReadByResourceId(resource.getId())
-                .filter(read -> WorkStatus.DONE.equals(read.getStatus()))
-                .filter(read -> Boolean.FALSE.equals(read.getSuccess()))
-                .map(KnowledgeResourceRead::getMessage)
-                .filter(message -> "Unsupported file format".equals(message) || "File is larger than 1 MB".equals(message))
-                .isPresent();
-    }
-
-    private boolean pipelineTerminalConversionFailure(KnowledgeResource resource) {
-        return pipelineRepository.findConversionByResourceId(resource.getId())
-                .filter(conversion -> WorkStatus.DONE.equals(conversion.getStatus()))
-                .filter(conversion -> Boolean.FALSE.equals(conversion.getSuccess()))
-                .map(KnowledgeResourceConversion::getMessage)
-                .filter("Could not decode resource as UTF-8"::equals)
-                .isPresent();
-    }
-
-    private boolean pipelineIndexedSuccessfully(KnowledgeResource resource) {
-        return pipelineRepository.findConversionByResourceId(resource.getId())
-                .filter(conversion -> WorkStatus.DONE.equals(conversion.getStatus()))
-                .filter(conversion -> Boolean.TRUE.equals(conversion.getSuccess()))
-                .map(conversion -> conversion.getValue().isEmpty() || chunksIndexedSuccessfully(resource))
-                .orElse(false);
-    }
-
-    private boolean chunksIndexedSuccessfully(KnowledgeResource resource) {
-        List<KnowledgeResourceChunk> chunks = pipelineRepository.findChunksByResourceId(resource.getId());
-        return !chunks.isEmpty() && chunks.stream()
-                .allMatch(chunk -> pipelineRepository.findIndexByChunkId(chunk.getId())
-                        .filter(index -> WorkStatus.DONE.equals(index.getStatus()))
-                        .filter(index -> Boolean.TRUE.equals(index.getSuccess()))
-                        .isPresent());
-    }
-
-    private void removeDeletedResourceIndexes(java.util.UUID rootId, List<String> currentReferences) {
+    private void removeDeletedResourceIndexes(
+            List<String> currentReferences,
+            Collection<KnowledgeResource> existingResources
+    ) {
         Set<String> activeReferences = new HashSet<>(currentReferences);
-        resourceRepository.findByRootId(rootId).stream()
+        List<KnowledgeResource> staleResources = existingResources.stream()
+                .filter(resource -> !resource.isDeleted())
                 .filter(resource -> !activeReferences.contains(resource.getReference()))
-                .forEach(resource -> {
+                .toList();
+        staleResources.forEach(resource -> {
                     log.debug("Removing stale local knowledge resource {}.", resource.getReference());
                     indexingService.deleteResource(resource);
                     chunkingService.deleteChunks(resource);
                 });
-        resourceRepository.markDeletedResourcesNotInReferences(rootId, currentReferences);
+        resourceRepository.markDeletedResourcesByIds(staleResources.stream()
+                .map(KnowledgeResource::getId)
+                .toList());
+    }
+
+    private record ScannedFile(
+            java.util.UUID rootId,
+            Path file,
+            String reference,
+            String displayName,
+            String format,
+            long sizeBytes,
+            Instant lastModifiedAt,
+            Instant scannedAt
+    ) {
     }
 
     public record ScanResult(long files, long bytes) {
@@ -262,6 +309,8 @@ public class LocalFolderKnowledgeScanService {
         private final Instant scannedAt;
         private final BooleanSupplier isCancelled;
         private final List<String> references = new ArrayList<>();
+        private final List<ScannedFile> scannedFiles = new ArrayList<>();
+        private Map<String, KnowledgeResource> existingResources = Map.of();
         private boolean cancelled;
         private long files;
         private long bytes;
@@ -296,7 +345,7 @@ public class LocalFolderKnowledgeScanService {
             if (attrs.isRegularFile()) {
                 files++;
                 bytes += attrs.size();
-                saveResource(file, attrs);
+                collectResource(file, attrs);
             }
             return FileVisitResult.CONTINUE;
         }
@@ -307,33 +356,19 @@ public class LocalFolderKnowledgeScanService {
             return FileVisitResult.CONTINUE;
         }
 
-        private void saveResource(Path file, BasicFileAttributes attrs) {
+        private void collectResource(Path file, BasicFileAttributes attrs) {
             String reference = resourceReference(rootPath, file);
-            java.util.Optional<KnowledgeResource> existingResource =
-                    resourceRepository.findByRootIdAndReference(rootId, reference);
-            KnowledgeResource resource = new KnowledgeResource();
-            resource.setRootId(rootId);
             references.add(reference);
-            resource.setReference(reference);
-            resource.setDisplayName(file.getFileName().toString());
-            resource.setFormat(format(file));
-            resource.setSizeBytes(attrs.size());
-            resource.setLastModifiedAt(attrs.lastModifiedTime().toInstant());
-            resource.setDeleted(false);
-            resource.setScannedAt(scannedAt);
-            KnowledgeResource savedResource = resourceRepository.save(resource);
-            if (existingResource
-                    .filter(existing -> savedResource.getId().equals(existing.getId()))
-                    .filter(existing -> canReusePipeline(existing, attrs))
-                    .isPresent()) {
-                log.debug("Skipping unchanged local knowledge resource {}.", reference);
-                return;
-            }
-            indexingService.deleteResource(savedResource);
-            KnowledgeResourceRead read = readService.read(savedResource, file);
-            KnowledgeResourceConversion conversion = conversionService.convert(savedResource, read);
-            List<KnowledgeResourceChunk> chunks = chunkingService.chunk(savedResource, conversion);
-            indexingService.index(savedResource, conversion, chunks);
+            scannedFiles.add(new ScannedFile(
+                    rootId,
+                    file,
+                    reference,
+                    file.getFileName().toString(),
+                    format(file),
+                    attrs.size(),
+                    attrs.lastModifiedTime().toInstant(),
+                    scannedAt
+            ));
         }
 
         private ScanResult stats() {
@@ -347,5 +382,31 @@ public class LocalFolderKnowledgeScanService {
         private boolean cancelled() {
             return cancelled;
         }
+
+        private void cancel() {
+            cancelled = true;
+        }
+
+        private List<ScannedFile> scannedFiles() {
+            return scannedFiles;
+        }
+
+        private void loadExistingResources(Collection<KnowledgeResource> resources) {
+            existingResources = resources.stream()
+                    .collect(Collectors.toMap(
+                            KnowledgeResource::getReference,
+                            resource -> resource,
+                            (first, second) -> first
+                    ));
+        }
+
+        private Collection<KnowledgeResource> existingResources() {
+            return existingResources.values();
+        }
+
+        private KnowledgeResource existingResource(String reference) {
+            return existingResources.get(reference);
+        }
+
     }
 }

@@ -12,8 +12,11 @@ import ai.corporatedroneagent.model.knowledge.WorkStatus;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -38,6 +41,77 @@ public class KnowledgeResourcePipelineRepository {
         } catch (EmptyResultDataAccessException exception) {
             return Optional.empty();
         }
+    }
+
+    public Set<UUID> findReusablePipelineResourceIds(Collection<UUID> resourceIds) {
+        if (resourceIds == null || resourceIds.isEmpty()) {
+            return Set.of();
+        }
+
+        String placeholders = placeholders(resourceIds.size());
+        Object[] parameters = resourceIds.toArray();
+        Set<UUID> reusableResourceIds = new HashSet<>();
+
+        reusableResourceIds.addAll(jdbcTemplate.queryForList("""
+                SELECT resource_id
+                FROM knowledge_resource_reads
+                WHERE resource_id IN (
+                """ + placeholders + """
+                )
+                  AND status = 'DONE'
+                  AND success = FALSE
+                  AND message IN ('Unsupported file format', 'File is larger than 1 MB')
+                """, UUID.class, parameters));
+
+        reusableResourceIds.addAll(jdbcTemplate.queryForList("""
+                SELECT resource_id
+                FROM knowledge_resource_conversions
+                WHERE resource_id IN (
+                """ + placeholders + """
+                )
+                  AND status = 'DONE'
+                  AND success = FALSE
+                  AND message = 'Could not decode resource as UTF-8'
+                """, UUID.class, parameters));
+
+        reusableResourceIds.addAll(jdbcTemplate.queryForList("""
+                SELECT resource_id
+                FROM knowledge_resource_conversions
+                WHERE resource_id IN (
+                """ + placeholders + """
+                )
+                  AND status = 'DONE'
+                  AND success = TRUE
+                  AND (conversion_value IS NULL OR CHAR_LENGTH(conversion_value) = 0)
+                """, UUID.class, parameters));
+
+        reusableResourceIds.addAll(jdbcTemplate.queryForList("""
+                SELECT conversion.resource_id
+                FROM knowledge_resource_conversions conversion
+                WHERE conversion.resource_id IN (
+                """ + placeholders + """
+                )
+                  AND conversion.status = 'DONE'
+                  AND conversion.success = TRUE
+                  AND CHAR_LENGTH(conversion.conversion_value) > 0
+                  AND EXISTS (
+                      SELECT 1
+                      FROM knowledge_resource_chunks chunk
+                      WHERE chunk.resource_id = conversion.resource_id
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM knowledge_resource_chunks chunk
+                      LEFT JOIN knowledge_resource_indexes index_state
+                        ON index_state.chunk_id = chunk.id
+                       AND index_state.status = 'DONE'
+                       AND index_state.success = TRUE
+                      WHERE chunk.resource_id = conversion.resource_id
+                        AND index_state.id IS NULL
+                  )
+                """, UUID.class, parameters));
+
+        return reusableResourceIds;
     }
 
     public KnowledgeResourceRead saveRead(KnowledgeResourceRead read) {
@@ -336,5 +410,9 @@ public class KnowledgeResourcePipelineRepository {
         index.setCreatedAt(instant(resultSet, "created_at"));
         index.setUpdatedAt(instant(resultSet, "updated_at"));
         return index;
+    }
+
+    private String placeholders(int count) {
+        return String.join(",", java.util.Collections.nCopies(count, "?"));
     }
 }

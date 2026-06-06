@@ -8,6 +8,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -71,30 +72,20 @@ public class KnowledgeResourceRepository {
         return update(resource, now);
     }
 
-    public int markDeletedResourcesNotInReferences(UUID rootId, List<String> references) {
-        if (references == null || references.isEmpty()) {
-            return jdbcTemplate.update("""
-                    UPDATE knowledge_resources
-                    SET deleted = TRUE,
-                        updated_at = ?
-                    WHERE root_id = ?
-                    """,
-                    timestamp(Instant.now()),
-                    rootId
-            );
+    public int markDeletedResourcesByIds(Collection<UUID> resourceIds) {
+        if (resourceIds == null || resourceIds.isEmpty()) {
+            return 0;
         }
 
-        String placeholders = String.join(",", java.util.Collections.nCopies(references.size(), "?"));
+        String placeholders = String.join(",", java.util.Collections.nCopies(resourceIds.size(), "?"));
         List<Object> parameters = new ArrayList<>();
         parameters.add(timestamp(Instant.now()));
-        parameters.add(rootId);
-        parameters.addAll(references);
+        parameters.addAll(resourceIds);
         return jdbcTemplate.update("""
                 UPDATE knowledge_resources
                 SET deleted = TRUE,
                     updated_at = ?
-                WHERE root_id = ?
-                  AND resource_reference NOT IN (
+                WHERE id IN (
                 """ + placeholders + ")",
                 parameters.toArray()
         );
