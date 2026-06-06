@@ -1,27 +1,21 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.dto.OpenAiModelsRequest;
-import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import java.util.Comparator;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class OpenAiModelsService {
 
-    private final SettingsService settingsService;
+    private final ModelLookupSupport modelLookupSupport;
     private final RestClient restClient;
 
-    public OpenAiModelsService(SettingsService settingsService, RestClient.Builder restClientBuilder) {
-        this.settingsService = settingsService;
+    public OpenAiModelsService(ModelLookupSupport modelLookupSupport, RestClient.Builder restClientBuilder) {
+        this.modelLookupSupport = modelLookupSupport;
         this.restClient = restClientBuilder
                 .baseUrl("https://api.openai.com")
                 .build();
@@ -33,36 +27,22 @@ public class OpenAiModelsService {
             return List.of();
         }
 
-        OpenAiModelsResponse response;
-        try {
-            response = restClient.get()
+        OpenAiModelsResponse response = modelLookupSupport.request(
+                "OpenAI models",
+                () -> restClient.get()
                     .uri("/v1/models")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .retrieve()
-                    .body(OpenAiModelsResponse.class);
-        } catch (RestClientResponseException exception) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    "OpenAI models request failed: "
-                            + exception.getStatusCode().value()
-                            + " "
-                            + exception.getStatusText()
-            );
-        } catch (RestClientException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "OpenAI models request failed.");
-        }
+                    .body(OpenAiModelsResponse.class)
+        );
 
         if (response == null || response.data() == null) {
             return List.of();
         }
 
-        return response.data().stream()
+        return modelLookupSupport.sortedDistinct(response.data().stream()
                 .map(OpenAiModel::id)
-                .filter(id -> id != null && !id.isBlank())
-                .filter(OpenAiModelsService::isChatModelId)
-                .distinct()
-                .sorted(Comparator.naturalOrder())
-                .toList();
+                .filter(OpenAiModelsService::isChatModelId));
     }
 
     static boolean isChatModelId(String id) {
@@ -106,19 +86,15 @@ public class OpenAiModelsService {
     }
 
     private String apiKeyFor(OpenAiModelsRequest request) {
-        if (request != null && request.getApiKey() != null && !request.getApiKey().isBlank()) {
-            return request.getApiKey().trim();
-        }
-        if (request != null && !request.isUseSavedKey()) {
-            return "";
-        }
-
-        ApplicationSettings settings = settingsService.getWithSecrets();
         String provider = request == null ? "openai" : Strings.defaultIfBlank(request.getProvider(), "openai");
-        return switch (provider) {
-            case "openai-sdk" -> Strings.defaultIfBlank(settings.getOpenAiSdk().getApiKey(), "");
-            default -> Strings.defaultIfBlank(settings.getOpenAi().getApiKey(), "");
-        };
+        return modelLookupSupport.apiKey(
+                request == null ? "" : request.getApiKey(),
+                request == null || request.isUseSavedKey(),
+                settings -> switch (provider) {
+                    case "openai-sdk" -> settings.getOpenAiSdk().getApiKey();
+                    default -> settings.getOpenAi().getApiKey();
+                }
+        );
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

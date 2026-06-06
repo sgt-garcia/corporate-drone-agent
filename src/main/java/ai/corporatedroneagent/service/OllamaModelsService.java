@@ -3,22 +3,18 @@ package ai.corporatedroneagent.service;
 import ai.corporatedroneagent.dto.OllamaModelsRequest;
 import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.StreamSupport;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class OllamaModelsService {
 
+    private final ModelLookupSupport modelLookupSupport;
     private final RestClient.Builder restClientBuilder;
 
-    public OllamaModelsService(RestClient.Builder restClientBuilder) {
+    public OllamaModelsService(ModelLookupSupport modelLookupSupport, RestClient.Builder restClientBuilder) {
+        this.modelLookupSupport = modelLookupSupport;
         this.restClientBuilder = restClientBuilder;
     }
 
@@ -28,38 +24,20 @@ public class OllamaModelsService {
             return List.of();
         }
 
-        JsonNode response;
-        try {
-            response = restClientBuilder
+        JsonNode response = modelLookupSupport.request(
+                "Ollama models",
+                () -> restClientBuilder
                     .baseUrl(trimTrailingSlashes(baseUrl))
                     .build()
                     .get()
                     .uri("/api/tags")
                     .retrieve()
-                    .body(JsonNode.class);
-        } catch (RestClientResponseException exception) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    "Ollama models request failed: "
-                            + exception.getStatusCode().value()
-                            + " "
-                            + exception.getStatusText()
-            );
-        } catch (RestClientException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Ollama models request failed.");
-        }
+                    .body(JsonNode.class)
+        );
 
-        if (response == null || !response.path("models").isArray()) {
-            return List.of();
-        }
-
-        return StreamSupport.stream(response.path("models").spliterator(), false)
+        return modelLookupSupport.sortedDistinct(modelLookupSupport.elements(response == null ? null : response.path("models"))
                 .map(OllamaModelsService::modelName)
-                .filter(name -> !name.isBlank())
-                .filter(OllamaModelsService::isChatModelId)
-                .distinct()
-                .sorted(Comparator.naturalOrder())
-                .toList();
+                .filter(OllamaModelsService::isChatModelId));
     }
 
     static String modelName(JsonNode model) {

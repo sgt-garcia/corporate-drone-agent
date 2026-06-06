@@ -1,13 +1,9 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.dto.AzureOpenAiDeploymentsRequest;
-import ai.corporatedroneagent.model.ApplicationSettings;
-import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.StreamSupport;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -24,11 +20,11 @@ public class AzureOpenAiDeploymentsService {
             "2023-03-15-preview"
     );
 
-    private final SettingsService settingsService;
+    private final ModelLookupSupport modelLookupSupport;
     private final RestClient.Builder restClientBuilder;
 
-    public AzureOpenAiDeploymentsService(SettingsService settingsService, RestClient.Builder restClientBuilder) {
-        this.settingsService = settingsService;
+    public AzureOpenAiDeploymentsService(ModelLookupSupport modelLookupSupport, RestClient.Builder restClientBuilder) {
+        this.modelLookupSupport = modelLookupSupport;
         this.restClientBuilder = restClientBuilder;
     }
 
@@ -56,13 +52,10 @@ public class AzureOpenAiDeploymentsService {
             return List.of();
         }
 
-        return StreamSupport.stream(deployments.spliterator(), false)
+        return modelLookupSupport.sortedDistinct(modelLookupSupport.elements(deployments)
                 .filter(AzureOpenAiDeploymentsService::isChatDeployment)
                 .map(AzureOpenAiDeploymentsService::deploymentName)
-                .filter(name -> !name.isBlank())
-                .distinct()
-                .sorted(Comparator.naturalOrder())
-                .toList();
+        );
     }
 
     private Optional<JsonNode> loadDeployments(String endpoint, String apiKey) {
@@ -174,19 +167,14 @@ public class AzureOpenAiDeploymentsService {
             return submittedEndpoint.trim();
         }
 
-        ApplicationSettings settings = settingsService.getWithSecrets();
-        return Strings.defaultIfBlank(settings.getAzureOpenAi().getEndpoint(), "");
+        return modelLookupSupport.savedSetting(settings -> settings.getAzureOpenAi().getEndpoint());
     }
 
     private String apiKeyFor(AzureOpenAiDeploymentsRequest request) {
-        if (request != null && request.getApiKey() != null && !request.getApiKey().isBlank()) {
-            return request.getApiKey().trim();
-        }
-        if (request != null && !request.isUseSavedKey()) {
-            return "";
-        }
-
-        ApplicationSettings settings = settingsService.getWithSecrets();
-        return Strings.defaultIfBlank(settings.getAzureOpenAi().getApiKey(), "");
+        return modelLookupSupport.apiKey(
+                request == null ? "" : request.getApiKey(),
+                request == null || request.isUseSavedKey(),
+                settings -> settings.getAzureOpenAi().getApiKey()
+        );
     }
 }

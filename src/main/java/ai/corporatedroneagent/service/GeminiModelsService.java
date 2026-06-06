@@ -1,27 +1,20 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.dto.GeminiModelsRequest;
-import ai.corporatedroneagent.model.ApplicationSettings;
-import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.StreamSupport;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class GeminiModelsService {
 
-    private final SettingsService settingsService;
+    private final ModelLookupSupport modelLookupSupport;
     private final RestClient restClient;
 
-    public GeminiModelsService(SettingsService settingsService, RestClient.Builder restClientBuilder) {
-        this.settingsService = settingsService;
+    public GeminiModelsService(ModelLookupSupport modelLookupSupport, RestClient.Builder restClientBuilder) {
+        this.modelLookupSupport = modelLookupSupport;
         this.restClient = restClientBuilder
                 .baseUrl("https://generativelanguage.googleapis.com")
                 .build();
@@ -33,36 +26,18 @@ public class GeminiModelsService {
             return List.of();
         }
 
-        JsonNode response;
-        try {
-            response = restClient.get()
+        JsonNode response = modelLookupSupport.request(
+                "Gemini models",
+                () -> restClient.get()
                     .uri("/v1beta/models")
                     .header("x-goog-api-key", apiKey)
                     .retrieve()
-                    .body(JsonNode.class);
-        } catch (RestClientResponseException exception) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    "Gemini models request failed: "
-                            + exception.getStatusCode().value()
-                            + " "
-                            + exception.getStatusText()
-            );
-        } catch (RestClientException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini models request failed.");
-        }
+                    .body(JsonNode.class)
+        );
 
-        if (response == null || !response.path("models").isArray()) {
-            return List.of();
-        }
-
-        return StreamSupport.stream(response.path("models").spliterator(), false)
+        return modelLookupSupport.sortedDistinct(modelLookupSupport.elements(response == null ? null : response.path("models"))
                 .filter(GeminiModelsService::isChatModel)
-                .map(model -> normalizeModelId(model.path("name").asText("")))
-                .filter(id -> !id.isBlank())
-                .distinct()
-                .sorted(Comparator.naturalOrder())
-                .toList();
+                .map(model -> normalizeModelId(model.path("name").asText(""))));
     }
 
     static boolean isChatModel(JsonNode model) {
@@ -90,14 +65,10 @@ public class GeminiModelsService {
     }
 
     private String apiKeyFor(GeminiModelsRequest request) {
-        if (request != null && request.getApiKey() != null && !request.getApiKey().isBlank()) {
-            return request.getApiKey().trim();
-        }
-        if (request != null && !request.isUseSavedKey()) {
-            return "";
-        }
-
-        ApplicationSettings settings = settingsService.getWithSecrets();
-        return Strings.defaultIfBlank(settings.getGemini().getApiKey(), "");
+        return modelLookupSupport.apiKey(
+                request == null ? "" : request.getApiKey(),
+                request == null || request.isUseSavedKey(),
+                settings -> settings.getGemini().getApiKey()
+        );
     }
 }
