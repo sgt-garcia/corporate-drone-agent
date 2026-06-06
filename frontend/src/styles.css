@@ -781,7 +781,12 @@ select.input {
   font-size: 14px;
   line-height: 22px;
   color: var(--gray-800);
+}
+.turn-text--plain {
   white-space: pre-wrap;
+}
+.turn-text--markdown {
+  white-space: normal;
 }
 .turn-text > :first-child {
   margin-top: 0;

@@ -66,7 +66,7 @@ function Turn({ message }) {
         </span>
         <div className="turn-body">
           <div className="turn-author">You</div>
-          <div className="turn-text">{message.content}</div>
+          <div className="turn-text turn-text--plain">{message.content}</div>
           {timestamp && <div className="turn-time">{timestamp}</div>}
         </div>
       </article>
@@ -92,7 +92,7 @@ function Turn({ message }) {
           </div>
         ) : (
           <>
-            <div className="turn-text">
+            <div className="turn-text turn-text--markdown">
               <ReactMarkdown>{message.content}</ReactMarkdown>
             </div>
             {timestamp && <div className="turn-time">{timestamp}</div>}
