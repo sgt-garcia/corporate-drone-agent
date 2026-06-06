@@ -10,6 +10,7 @@ import ai.corporatedroneagent.model.knowledge.KnowledgeRootScan;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
 import ai.corporatedroneagent.model.knowledge.WorkStatus;
 import ai.corporatedroneagent.repository.KnowledgeResourceRepository;
+import ai.corporatedroneagent.repository.KnowledgeResourcePipelineRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootScanRepository;
 import java.io.IOException;
@@ -37,6 +38,7 @@ public class LocalFolderKnowledgeScanService {
     private final KnowledgeRootRepository rootRepository;
     private final KnowledgeRootScanRepository scanRepository;
     private final KnowledgeResourceRepository resourceRepository;
+    private final KnowledgeResourcePipelineRepository pipelineRepository;
     private final LocalFolderKnowledgeReadService readService;
     private final LocalFolderKnowledgeConversionService conversionService;
     private final KnowledgeChunkingService chunkingService;
@@ -46,6 +48,7 @@ public class LocalFolderKnowledgeScanService {
             KnowledgeRootRepository rootRepository,
             KnowledgeRootScanRepository scanRepository,
             KnowledgeResourceRepository resourceRepository,
+            KnowledgeResourcePipelineRepository pipelineRepository,
             LocalFolderKnowledgeReadService readService,
             LocalFolderKnowledgeConversionService conversionService,
             KnowledgeChunkingService chunkingService,
@@ -54,6 +57,7 @@ public class LocalFolderKnowledgeScanService {
         this.rootRepository = rootRepository;
         this.scanRepository = scanRepository;
         this.resourceRepository = resourceRepository;
+        this.pipelineRepository = pipelineRepository;
         this.readService = readService;
         this.conversionService = conversionService;
         this.chunkingService = chunkingService;
@@ -174,6 +178,61 @@ public class LocalFolderKnowledgeScanService {
         return fileName.substring(extensionStart + 1).toLowerCase(Locale.ROOT);
     }
 
+    private boolean canReusePipeline(KnowledgeResource resource, BasicFileAttributes attrs) {
+        return !resource.isDeleted()
+                && resource.getSizeBytes() == attrs.size()
+                && sameTimestamp(resource.getLastModifiedAt(), attrs.lastModifiedTime().toInstant())
+                && hasReusablePipelineResult(resource);
+    }
+
+    private boolean sameTimestamp(Instant first, Instant second) {
+        if (first == null || second == null) {
+            return first == second;
+        }
+        return first.toEpochMilli() == second.toEpochMilli();
+    }
+
+    private boolean hasReusablePipelineResult(KnowledgeResource resource) {
+        return pipelineTerminalReadFailure(resource)
+                || pipelineTerminalConversionFailure(resource)
+                || pipelineIndexedSuccessfully(resource);
+    }
+
+    private boolean pipelineTerminalReadFailure(KnowledgeResource resource) {
+        return pipelineRepository.findReadByResourceId(resource.getId())
+                .filter(read -> WorkStatus.DONE.equals(read.getStatus()))
+                .filter(read -> Boolean.FALSE.equals(read.getSuccess()))
+                .map(KnowledgeResourceRead::getMessage)
+                .filter(message -> "Unsupported file format".equals(message) || "File is larger than 1 MB".equals(message))
+                .isPresent();
+    }
+
+    private boolean pipelineTerminalConversionFailure(KnowledgeResource resource) {
+        return pipelineRepository.findConversionByResourceId(resource.getId())
+                .filter(conversion -> WorkStatus.DONE.equals(conversion.getStatus()))
+                .filter(conversion -> Boolean.FALSE.equals(conversion.getSuccess()))
+                .map(KnowledgeResourceConversion::getMessage)
+                .filter("Could not decode resource as UTF-8"::equals)
+                .isPresent();
+    }
+
+    private boolean pipelineIndexedSuccessfully(KnowledgeResource resource) {
+        return pipelineRepository.findConversionByResourceId(resource.getId())
+                .filter(conversion -> WorkStatus.DONE.equals(conversion.getStatus()))
+                .filter(conversion -> Boolean.TRUE.equals(conversion.getSuccess()))
+                .map(conversion -> conversion.getValue().isEmpty() || chunksIndexedSuccessfully(resource))
+                .orElse(false);
+    }
+
+    private boolean chunksIndexedSuccessfully(KnowledgeResource resource) {
+        List<KnowledgeResourceChunk> chunks = pipelineRepository.findChunksByResourceId(resource.getId());
+        return !chunks.isEmpty() && chunks.stream()
+                .allMatch(chunk -> pipelineRepository.findIndexByChunkId(chunk.getId())
+                        .filter(index -> WorkStatus.DONE.equals(index.getStatus()))
+                        .filter(index -> Boolean.TRUE.equals(index.getSuccess()))
+                        .isPresent());
+    }
+
     private void removeDeletedResourceIndexes(java.util.UUID rootId, List<String> currentReferences) {
         Set<String> activeReferences = new HashSet<>(currentReferences);
         resourceRepository.findByRootId(rootId).stream()
@@ -249,9 +308,11 @@ public class LocalFolderKnowledgeScanService {
         }
 
         private void saveResource(Path file, BasicFileAttributes attrs) {
+            String reference = resourceReference(rootPath, file);
+            java.util.Optional<KnowledgeResource> existingResource =
+                    resourceRepository.findByRootIdAndReference(rootId, reference);
             KnowledgeResource resource = new KnowledgeResource();
             resource.setRootId(rootId);
-            String reference = resourceReference(rootPath, file);
             references.add(reference);
             resource.setReference(reference);
             resource.setDisplayName(file.getFileName().toString());
@@ -261,6 +322,13 @@ public class LocalFolderKnowledgeScanService {
             resource.setDeleted(false);
             resource.setScannedAt(scannedAt);
             KnowledgeResource savedResource = resourceRepository.save(resource);
+            if (existingResource
+                    .filter(existing -> savedResource.getId().equals(existing.getId()))
+                    .filter(existing -> canReusePipeline(existing, attrs))
+                    .isPresent()) {
+                log.debug("Skipping unchanged local knowledge resource {}.", reference);
+                return;
+            }
             indexingService.deleteResource(savedResource);
             KnowledgeResourceRead read = readService.read(savedResource, file);
             KnowledgeResourceConversion conversion = conversionService.convert(savedResource, read);

@@ -28,6 +28,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -109,6 +111,7 @@ class KnowledgeFolderScanServiceTests {
                 knowledgeRootRepository,
                 knowledgeRootScanRepository,
                 knowledgeResourceRepository,
+                pipelineRepository,
                 readService,
                 conversionService,
                 chunkingService,
@@ -303,6 +306,7 @@ class KnowledgeFolderScanServiceTests {
                 knowledgeRootRepository,
                 knowledgeRootScanRepository,
                 knowledgeResourceRepository,
+                pipelineRepository,
                 blockingReadService,
                 new LocalFolderKnowledgeConversionService(pipelineRepository),
                 new KnowledgeChunkingService(pipelineRepository),
@@ -354,6 +358,7 @@ class KnowledgeFolderScanServiceTests {
                 knowledgeRootRepository,
                 knowledgeRootScanRepository,
                 knowledgeResourceRepository,
+                pipelineRepository,
                 failingReadService,
                 new LocalFolderKnowledgeConversionService(pipelineRepository),
                 new KnowledgeChunkingService(pipelineRepository),
@@ -463,6 +468,59 @@ class KnowledgeFolderScanServiceTests {
                 .hasSize(1)
                 .first()
                 .satisfies(snippet -> assertThat(snippet.content()).isEqualTo("new"));
+    }
+
+    @Test
+    void scanFolderDoesNotReprocessUnchangedFiles() throws IOException {
+        Path folder = Files.createDirectory(root.resolve("skip-unchanged"));
+        Path file = folder.resolve("notes.md");
+        Files.writeString(file, "oldtoken", StandardCharsets.UTF_8);
+        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        AtomicInteger reads = new AtomicInteger();
+        LocalFolderKnowledgeReadService countingReadService = new LocalFolderKnowledgeReadService(pipelineRepository) {
+            @Override
+            public KnowledgeResourceRead read(KnowledgeResource resource, Path file) {
+                reads.incrementAndGet();
+                return super.read(resource, file);
+            }
+        };
+        LocalFolderKnowledgeScanService countingLocalScanService = new LocalFolderKnowledgeScanService(
+                knowledgeRootRepository,
+                knowledgeRootScanRepository,
+                knowledgeResourceRepository,
+                pipelineRepository,
+                countingReadService,
+                new LocalFolderKnowledgeConversionService(pipelineRepository),
+                new KnowledgeChunkingService(pipelineRepository),
+                indexingService
+        );
+        KnowledgeFolderScanService countingScanService = new KnowledgeFolderScanService(
+                settingsRepository,
+                new SettingsSecretsService(new InMemorySecretStore()),
+                mock(EventService.class),
+                countingLocalScanService,
+                scanCoordinator
+        );
+
+        countingScanService.scanFolder(configured.getId());
+        countingScanService.scanFolder(configured.getId());
+
+        assertThat(reads.get()).isEqualTo(1);
+        assertThat(searchService.search("oldtoken", 10)).hasSize(1);
+
+        Files.writeString(file, "newtoken", StandardCharsets.UTF_8);
+        Files.setLastModifiedTime(file, FileTime.from(Instant.now().plusSeconds(5)));
+        countingScanService.scanFolder(configured.getId());
+
+        KnowledgeRoot knowledgeRoot = knowledgeRootRepository
+                .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
+                .orElseThrow();
+        KnowledgeResource resource = knowledgeResourceRepository
+                .findByRootIdAndReference(knowledgeRoot.getId(), "notes.md")
+                .orElseThrow();
+        assertThat(reads.get()).isEqualTo(2);
+        assertThat(indexingService.searchTerm("oldtoken", 10)).isEmpty();
+        assertThat(indexingService.searchTerm("newtoken", 10)).containsExactly(resource.getId() + ":0");
     }
 
     @Test
