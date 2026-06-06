@@ -1,12 +1,11 @@
 package ai.corporatedroneagent.service;
 
+import ai.corporatedroneagent.model.ApiKeySettings;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.security.SecretStore;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.BiConsumer;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -21,78 +20,14 @@ public class SettingsSecretsService {
     private static final String GROQ_API_KEY = "settings.groq.apiKey";
     private static final String DEEPSEEK_API_KEY = "settings.deepSeek.apiKey";
     private static final List<SecretBinding> SECRET_BINDINGS = List.of(
-            new SecretBinding(
-                    OPENAI_API_KEY,
-                    settings -> settings.getOpenAi().getApiKey(),
-                    (settings, value) -> settings.getOpenAi().setApiKey(value),
-                    settings -> settings.getOpenAi().isClearApiKey(),
-                    (settings, clear) -> settings.getOpenAi().setClearApiKey(clear),
-                    (settings, configured) -> settings.getOpenAi().setApiKeyConfigured(configured),
-                    (settings, lastFour) -> settings.getOpenAi().setApiKeyLastFour(lastFour)
-            ),
-            new SecretBinding(
-                    OPENAI_SDK_API_KEY,
-                    settings -> settings.getOpenAiSdk().getApiKey(),
-                    (settings, value) -> settings.getOpenAiSdk().setApiKey(value),
-                    settings -> settings.getOpenAiSdk().isClearApiKey(),
-                    (settings, clear) -> settings.getOpenAiSdk().setClearApiKey(clear),
-                    (settings, configured) -> settings.getOpenAiSdk().setApiKeyConfigured(configured),
-                    (settings, lastFour) -> settings.getOpenAiSdk().setApiKeyLastFour(lastFour)
-            ),
-            new SecretBinding(
-                    AZURE_OPENAI_API_KEY,
-                    settings -> settings.getAzureOpenAi().getApiKey(),
-                    (settings, value) -> settings.getAzureOpenAi().setApiKey(value),
-                    settings -> settings.getAzureOpenAi().isClearApiKey(),
-                    (settings, clear) -> settings.getAzureOpenAi().setClearApiKey(clear),
-                    (settings, configured) -> settings.getAzureOpenAi().setApiKeyConfigured(configured),
-                    (settings, lastFour) -> settings.getAzureOpenAi().setApiKeyLastFour(lastFour)
-            ),
-            new SecretBinding(
-                    MISTRAL_API_KEY,
-                    settings -> settings.getMistral().getApiKey(),
-                    (settings, value) -> settings.getMistral().setApiKey(value),
-                    settings -> settings.getMistral().isClearApiKey(),
-                    (settings, clear) -> settings.getMistral().setClearApiKey(clear),
-                    (settings, configured) -> settings.getMistral().setApiKeyConfigured(configured),
-                    (settings, lastFour) -> settings.getMistral().setApiKeyLastFour(lastFour)
-            ),
-            new SecretBinding(
-                    GEMINI_API_KEY,
-                    settings -> settings.getGemini().getApiKey(),
-                    (settings, value) -> settings.getGemini().setApiKey(value),
-                    settings -> settings.getGemini().isClearApiKey(),
-                    (settings, clear) -> settings.getGemini().setClearApiKey(clear),
-                    (settings, configured) -> settings.getGemini().setApiKeyConfigured(configured),
-                    (settings, lastFour) -> settings.getGemini().setApiKeyLastFour(lastFour)
-            ),
-            new SecretBinding(
-                    ANTHROPIC_API_KEY,
-                    settings -> settings.getAnthropic().getApiKey(),
-                    (settings, value) -> settings.getAnthropic().setApiKey(value),
-                    settings -> settings.getAnthropic().isClearApiKey(),
-                    (settings, clear) -> settings.getAnthropic().setClearApiKey(clear),
-                    (settings, configured) -> settings.getAnthropic().setApiKeyConfigured(configured),
-                    (settings, lastFour) -> settings.getAnthropic().setApiKeyLastFour(lastFour)
-            ),
-            new SecretBinding(
-                    GROQ_API_KEY,
-                    settings -> settings.getGroq().getApiKey(),
-                    (settings, value) -> settings.getGroq().setApiKey(value),
-                    settings -> settings.getGroq().isClearApiKey(),
-                    (settings, clear) -> settings.getGroq().setClearApiKey(clear),
-                    (settings, configured) -> settings.getGroq().setApiKeyConfigured(configured),
-                    (settings, lastFour) -> settings.getGroq().setApiKeyLastFour(lastFour)
-            ),
-            new SecretBinding(
-                    DEEPSEEK_API_KEY,
-                    settings -> settings.getDeepSeek().getApiKey(),
-                    (settings, value) -> settings.getDeepSeek().setApiKey(value),
-                    settings -> settings.getDeepSeek().isClearApiKey(),
-                    (settings, clear) -> settings.getDeepSeek().setClearApiKey(clear),
-                    (settings, configured) -> settings.getDeepSeek().setApiKeyConfigured(configured),
-                    (settings, lastFour) -> settings.getDeepSeek().setApiKeyLastFour(lastFour)
-            )
+            new SecretBinding(OPENAI_API_KEY, ApplicationSettings::getOpenAi),
+            new SecretBinding(OPENAI_SDK_API_KEY, ApplicationSettings::getOpenAiSdk),
+            new SecretBinding(AZURE_OPENAI_API_KEY, ApplicationSettings::getAzureOpenAi),
+            new SecretBinding(MISTRAL_API_KEY, ApplicationSettings::getMistral),
+            new SecretBinding(GEMINI_API_KEY, ApplicationSettings::getGemini),
+            new SecretBinding(ANTHROPIC_API_KEY, ApplicationSettings::getAnthropic),
+            new SecretBinding(GROQ_API_KEY, ApplicationSettings::getGroq),
+            new SecretBinding(DEEPSEEK_API_KEY, ApplicationSettings::getDeepSeek)
     );
 
     private final SecretStore secretStore;
@@ -116,7 +51,7 @@ public class SettingsSecretsService {
     public void applySecretValues(ApplicationSettings settings) {
         SECRET_BINDINGS.forEach(binding -> {
             String apiKey = secretStore.get(binding.secretKey()).orElse("");
-            binding.setApiKey(settings, apiKey);
+            binding.providerSettings(settings).setApiKey(apiKey);
         });
     }
 
@@ -126,24 +61,27 @@ public class SettingsSecretsService {
 
     public void clearSecretValues(ApplicationSettings settings) {
         SECRET_BINDINGS.forEach(binding -> {
-            binding.setApiKey(settings, "");
-            binding.setClearApiKey(settings, false);
+            ApiKeySettings providerSettings = binding.providerSettings(settings);
+            providerSettings.setApiKey("");
+            providerSettings.setClearApiKey(false);
         });
     }
 
     private boolean migrateSecret(ApplicationSettings settings, SecretBinding binding) {
-        String value = binding.apiKey(settings);
+        ApiKeySettings providerSettings = binding.providerSettings(settings);
+        String value = providerSettings.getApiKey();
         if (!hasText(value)) {
             return false;
         }
         secretStore.put(binding.secretKey(), value);
-        binding.setApiKey(settings, "");
+        providerSettings.setApiKey("");
         return true;
     }
 
     private void saveSubmittedSecret(ApplicationSettings settings, SecretBinding binding) {
-        String apiKey = binding.apiKey(settings);
-        if (binding.clearApiKey(settings)) {
+        ApiKeySettings providerSettings = binding.providerSettings(settings);
+        String apiKey = providerSettings.getApiKey();
+        if (providerSettings.isClearApiKey()) {
             secretStore.delete(binding.secretKey());
         } else if (hasText(apiKey)) {
             secretStore.put(binding.secretKey(), apiKey);
@@ -152,8 +90,9 @@ public class SettingsSecretsService {
 
     private void applyStatus(ApplicationSettings settings, SecretBinding binding) {
         Optional<String> secret = secretStore.get(binding.secretKey());
-        binding.setApiKeyConfigured(settings, secret.isPresent());
-        binding.setApiKeyLastFour(settings, secret.map(this::lastFour).orElse(""));
+        ApiKeySettings providerSettings = binding.providerSettings(settings);
+        providerSettings.setApiKeyConfigured(secret.isPresent());
+        providerSettings.setApiKeyLastFour(secret.map(this::lastFour).orElse(""));
     }
 
     private String lastFour(String value) {
@@ -166,36 +105,11 @@ public class SettingsSecretsService {
 
     private record SecretBinding(
             String secretKey,
-            Function<ApplicationSettings, String> apiKeyGetter,
-            BiConsumer<ApplicationSettings, String> apiKeySetter,
-            Predicate<ApplicationSettings> clearApiKeyGetter,
-            BiConsumer<ApplicationSettings, Boolean> clearApiKeySetter,
-            BiConsumer<ApplicationSettings, Boolean> apiKeyConfiguredSetter,
-            BiConsumer<ApplicationSettings, String> apiKeyLastFourSetter
+            Function<ApplicationSettings, ApiKeySettings> settingsAccessor
     ) {
 
-        String apiKey(ApplicationSettings settings) {
-            return apiKeyGetter.apply(settings);
-        }
-
-        void setApiKey(ApplicationSettings settings, String apiKey) {
-            apiKeySetter.accept(settings, apiKey);
-        }
-
-        boolean clearApiKey(ApplicationSettings settings) {
-            return clearApiKeyGetter.test(settings);
-        }
-
-        void setClearApiKey(ApplicationSettings settings, boolean clearApiKey) {
-            clearApiKeySetter.accept(settings, clearApiKey);
-        }
-
-        void setApiKeyConfigured(ApplicationSettings settings, boolean configured) {
-            apiKeyConfiguredSetter.accept(settings, configured);
-        }
-
-        void setApiKeyLastFour(ApplicationSettings settings, String lastFour) {
-            apiKeyLastFourSetter.accept(settings, lastFour);
+        ApiKeySettings providerSettings(ApplicationSettings settings) {
+            return settingsAccessor.apply(settings);
         }
     }
 
