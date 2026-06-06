@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.repository;
 
+import ai.corporatedroneagent.dto.ConversationSummaryDto;
 import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Message;
 import java.sql.ResultSet;
@@ -41,6 +42,15 @@ public class ConversationRepository {
         } catch (EmptyResultDataAccessException exception) {
             return Optional.empty();
         }
+    }
+
+    public List<ConversationSummaryDto> findSummariesByProjectId(UUID projectId) {
+        return jdbcTemplate.query("""
+                SELECT id, project_id, name
+                FROM conversations
+                WHERE project_id = ?
+                ORDER BY sort_order, created_at, name
+                """, this::mapSummary, projectId);
     }
 
     @Transactional
@@ -128,6 +138,14 @@ public class ConversationRepository {
         conversation.setName(resultSet.getString("name"));
         conversation.setMessages(messages(conversationId));
         return conversation;
+    }
+
+    private ConversationSummaryDto mapSummary(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new ConversationSummaryDto(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("project_id", UUID.class),
+                resultSet.getString("name")
+        );
     }
 
     private List<Message> messages(UUID conversationId) {

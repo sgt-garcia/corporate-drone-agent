@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import ai.corporatedroneagent.TestDatabaseSupport;
+import ai.corporatedroneagent.dto.ConversationSummaryDto;
 import ai.corporatedroneagent.dto.ProjectDto;
 import ai.corporatedroneagent.dto.ProjectRequest;
+import ai.corporatedroneagent.model.Conversation;
+import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.model.Project;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.repository.ProjectRepository;
@@ -19,6 +22,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class ProjectListingServiceTests {
 
     private ProjectRepository projectRepository;
+    private ConversationRepository conversationRepository;
     private ProjectService projectService;
 
     @BeforeEach
@@ -26,7 +30,7 @@ class ProjectListingServiceTests {
         JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
 
         projectRepository = new ProjectRepository(jdbcTemplate);
-        ConversationRepository conversationRepository = new ConversationRepository(jdbcTemplate);
+        conversationRepository = new ConversationRepository(jdbcTemplate);
         projectService = new ProjectService(
                 projectRepository, conversationRepository, mock(EventService.class));
     }
@@ -61,6 +65,29 @@ class ProjectListingServiceTests {
         assertThat(projectService.listProjects())
                 .extracting(ProjectDto::id)
                 .containsExactly(timestamped, legacyA, legacyB);
+    }
+
+    @Test
+    void projectDtosUseConversationSummariesWithoutMessageHistory() {
+        UUID projectId = saveProjectAt("Launch", Instant.parse("2026-01-01T00:00:00Z"));
+        Conversation conversation = new Conversation();
+        conversation.setId(UUID.randomUUID());
+        conversation.setProjectId(projectId);
+        conversation.setName("Kickoff");
+        conversationRepository.save(conversation);
+        conversationRepository.appendMessage(
+                conversation.getId(),
+                new Message(UUID.randomUUID(), "user", "large history stays out of summaries", Instant.now())
+        );
+
+        Project project = projectRepository.findById(projectId).orElseThrow();
+        project.getConversationIds().add(conversation.getId());
+        projectRepository.save(project);
+
+        assertThat(projectService.listProjects())
+                .first()
+                .satisfies(projectDto -> assertThat(projectDto.conversations())
+                        .containsExactly(new ConversationSummaryDto(conversation.getId(), projectId, "Kickoff")));
     }
 
     private UUID saveProjectAt(String name, Instant createdAt) {

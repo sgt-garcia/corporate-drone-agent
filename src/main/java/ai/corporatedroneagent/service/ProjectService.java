@@ -85,12 +85,8 @@ public class ProjectService {
     }
 
     public synchronized List<ConversationSummaryDto> listConversations(UUID projectId) {
-        Project project = getProject(projectId);
-        return project.getConversationIds().stream()
-                .map(conversationRepository::findById)
-                .flatMap(optional -> optional.stream())
-                .map(this::toSummary)
-                .toList();
+        getProject(projectId);
+        return conversationRepository.findSummariesByProjectId(projectId);
     }
 
     public synchronized Project getProject(UUID projectId) {
@@ -99,11 +95,7 @@ public class ProjectService {
     }
 
     private ProjectDto toDto(Project project) {
-        List<ConversationSummaryDto> conversations = project.getConversationIds().stream()
-                .map(conversationRepository::findById)
-                .flatMap(optional -> optional.stream())
-                .map(this::toSummary)
-                .toList();
+        List<ConversationSummaryDto> conversations = conversationRepository.findSummariesByProjectId(project.getId());
         return new ProjectDto(
                 project.getId(),
                 project.getName(),
@@ -112,10 +104,6 @@ public class ProjectService {
                 project.getCreatedAt(),
                 conversations
         );
-    }
-
-    private ConversationSummaryDto toSummary(Conversation conversation) {
-        return new ConversationSummaryDto(conversation.getId(), conversation.getProjectId(), conversation.getName());
     }
 
     private void ensureDefaultData() {
