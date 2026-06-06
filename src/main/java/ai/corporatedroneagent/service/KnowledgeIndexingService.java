@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.config.StorageProperties;
+import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
@@ -160,12 +161,14 @@ public class KnowledgeIndexingService {
             );
             index.setStatus(WorkStatus.DONE);
             index.setSuccess(true);
+            index.setReason(null);
             index.setMessage("");
             index.setIndexedAt(Instant.now());
             pipelineRepository.saveIndex(index);
         } catch (IOException | RuntimeException exception) {
             index.setStatus(WorkStatus.DONE);
             index.setSuccess(false);
+            index.setReason(KnowledgePipelineReason.INDEX_FAILED);
             index.setMessage("Could not index chunk");
             index.setIndexedAt(Instant.now());
             pipelineRepository.saveIndex(index);
@@ -179,6 +182,7 @@ public class KnowledgeIndexingService {
         index.setChunkId(chunk.getId());
         index.setStatus(WorkStatus.IN_PROGRESS);
         index.setSuccess(null);
+        index.setReason(null);
         index.setMessage("");
         index.setIndexReference(documentId);
         index.setIndexedAt(null);
@@ -191,6 +195,7 @@ public class KnowledgeIndexingService {
         index.setChunkId(chunk.getId());
         index.setStatus(WorkStatus.DONE);
         index.setSuccess(false);
+        index.setReason(KnowledgePipelineReason.INDEX_FAILED);
         index.setMessage(message);
         index.setIndexedAt(Instant.now());
         pipelineRepository.saveIndex(index);

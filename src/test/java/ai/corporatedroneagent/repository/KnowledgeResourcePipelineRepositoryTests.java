@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import ai.corporatedroneagent.config.KnowledgeDatabaseConfig;
 import ai.corporatedroneagent.config.StorageProperties;
+import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
@@ -92,7 +93,10 @@ class KnowledgeResourcePipelineRepositoryTests {
         pipelineRepository.saveRead(read);
 
         assertThat(pipelineRepository.findReadByResourceId(savedResource.getId()))
-                .hasValueSatisfying(loaded -> assertThat(loaded.getValue()).containsExactly(104, 101, 108, 108, 111));
+                .hasValueSatisfying(loaded -> {
+                    assertThat(loaded.getReason()).isNull();
+                    assertThat(loaded.getValue()).containsExactly(104, 101, 108, 108, 111);
+                });
 
         KnowledgeResourceConversion conversion = new KnowledgeResourceConversion();
         conversion.setResourceId(savedResource.getId());
@@ -103,7 +107,10 @@ class KnowledgeResourcePipelineRepositoryTests {
         pipelineRepository.saveConversion(conversion);
 
         assertThat(pipelineRepository.findConversionByResourceId(savedResource.getId()))
-                .hasValueSatisfying(loaded -> assertThat(loaded.getValue()).isEqualTo("# hello"));
+                .hasValueSatisfying(loaded -> {
+                    assertThat(loaded.getReason()).isNull();
+                    assertThat(loaded.getValue()).isEqualTo("# hello");
+                });
 
         KnowledgeResourceChunk chunk = new KnowledgeResourceChunk();
         chunk.setResourceId(savedResource.getId());
@@ -140,12 +147,14 @@ class KnowledgeResourcePipelineRepositoryTests {
 
         read.setStatus(WorkStatus.DONE);
         read.setSuccess(false);
+        read.setReason(KnowledgePipelineReason.READ_FAILED);
         read.setMessage("Could not read");
         pipelineRepository.saveRead(read);
 
         assertThat(pipelineRepository.findReadByResourceId(resource.getId())).hasValueSatisfying(loaded -> {
             assertThat(loaded.getStatus()).isEqualTo(WorkStatus.DONE);
             assertThat(loaded.getSuccess()).isFalse();
+            assertThat(loaded.getReason()).isEqualTo(KnowledgePipelineReason.READ_FAILED);
             assertThat(loaded.getMessage()).isEqualTo("Could not read");
         });
 
@@ -161,6 +170,41 @@ class KnowledgeResourcePipelineRepositoryTests {
                 .hasValueSatisfying(loaded -> assertThat(loaded.getValue()).isEqualTo("new"));
     }
 
+    @Test
+    void reusableResourceLookupUsesStableReasonsInsteadOfMessages() {
+        KnowledgeRoot root = root();
+        KnowledgeResource unsupportedResource = resource(root, "unsupported.bin");
+        KnowledgeResource undecodableResource = resource(root, "undecodable.txt");
+        KnowledgeResource legacyMessageOnlyResource = resource(root, "legacy.bin");
+
+        KnowledgeResourceRead unsupportedRead = new KnowledgeResourceRead();
+        unsupportedRead.setResourceId(unsupportedResource.getId());
+        unsupportedRead.setStatus(WorkStatus.DONE);
+        unsupportedRead.setSuccess(false);
+        unsupportedRead.setReason(KnowledgePipelineReason.UNSUPPORTED_FILE_FORMAT);
+        unsupportedRead.setMessage("Localized unsupported-format text");
+        pipelineRepository.saveRead(unsupportedRead);
+
+        KnowledgeResourceConversion undecodableConversion = new KnowledgeResourceConversion();
+        undecodableConversion.setResourceId(undecodableResource.getId());
+        undecodableConversion.setStatus(WorkStatus.DONE);
+        undecodableConversion.setSuccess(false);
+        undecodableConversion.setReason(KnowledgePipelineReason.UTF8_DECODE_FAILED);
+        undecodableConversion.setMessage("Could not decode resource bytes");
+        pipelineRepository.saveConversion(undecodableConversion);
+
+        KnowledgeResourceRead legacyRead = new KnowledgeResourceRead();
+        legacyRead.setResourceId(legacyMessageOnlyResource.getId());
+        legacyRead.setStatus(WorkStatus.DONE);
+        legacyRead.setSuccess(false);
+        legacyRead.setMessage("Unsupported file format");
+        pipelineRepository.saveRead(legacyRead);
+
+        assertThat(pipelineRepository.findReusablePipelineResourceIdsByRootId(root.getId()))
+                .contains(unsupportedResource.getId(), undecodableResource.getId())
+                .doesNotContain(legacyMessageOnlyResource.getId());
+    }
+
     private KnowledgeRoot root() {
         KnowledgeRoot root = new KnowledgeRoot();
         root.setSource(KnowledgeSource.LOCAL_FOLDER);
@@ -170,10 +214,14 @@ class KnowledgeResourcePipelineRepositoryTests {
     }
 
     private KnowledgeResource resource(KnowledgeRoot root) {
+        return resource(root, "file.txt");
+    }
+
+    private KnowledgeResource resource(KnowledgeRoot root, String reference) {
         KnowledgeResource resource = new KnowledgeResource();
         resource.setRootId(root.getId());
-        resource.setReference("file.txt");
-        resource.setDisplayName("file.txt");
+        resource.setReference(reference);
+        resource.setDisplayName(reference);
         return resourceRepository.save(resource);
     }
 

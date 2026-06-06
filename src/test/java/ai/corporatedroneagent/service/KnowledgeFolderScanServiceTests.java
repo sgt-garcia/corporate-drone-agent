@@ -8,6 +8,7 @@ import ai.corporatedroneagent.config.KnowledgeDatabaseConfig;
 import ai.corporatedroneagent.config.StorageProperties;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.KnowledgeFolder;
+import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
@@ -204,12 +205,14 @@ class KnowledgeFolderScanServiceTests {
                 .hasValueSatisfying(read -> {
                     assertThat(read.getStatus()).isEqualTo(WorkStatus.DONE);
                     assertThat(read.getSuccess()).isFalse();
+                    assertThat(read.getReason()).isEqualTo(KnowledgePipelineReason.UNSUPPORTED_FILE_FORMAT);
                     assertThat(read.getMessage()).isEqualTo("Unsupported file format");
                 });
         assertThat(pipelineRepository.findConversionByResourceId(unsupportedResource.getId()))
                 .hasValueSatisfying(conversion -> {
                     assertThat(conversion.getStatus()).isEqualTo(WorkStatus.DONE);
                     assertThat(conversion.getSuccess()).isFalse();
+                    assertThat(conversion.getReason()).isEqualTo(KnowledgePipelineReason.READ_DID_NOT_SUCCEED);
                     assertThat(conversion.getMessage()).isEqualTo("Read did not succeed");
                     assertThat(conversion.getValue()).isEmpty();
                 });
@@ -413,6 +416,7 @@ class KnowledgeFolderScanServiceTests {
                 .hasValueSatisfying(read -> {
                     assertThat(read.getStatus()).isEqualTo(WorkStatus.DONE);
                     assertThat(read.getSuccess()).isFalse();
+                    assertThat(read.getReason()).isEqualTo(KnowledgePipelineReason.FILE_TOO_LARGE);
                     assertThat(read.getMessage()).isEqualTo("File is larger than 1 MB");
                     assertThat(read.getValue()).isNull();
                 });
@@ -420,6 +424,7 @@ class KnowledgeFolderScanServiceTests {
                 .hasValueSatisfying(conversion -> {
                     assertThat(conversion.getStatus()).isEqualTo(WorkStatus.DONE);
                     assertThat(conversion.getSuccess()).isFalse();
+                    assertThat(conversion.getReason()).isEqualTo(KnowledgePipelineReason.READ_DID_NOT_SUCCEED);
                     assertThat(conversion.getMessage()).isEqualTo("Read did not succeed");
                 });
         assertThat(pipelineRepository.findChunksByResourceId(resource.getId())).isEmpty();

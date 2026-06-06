@@ -4,6 +4,7 @@ import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.insta
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.nullableBoolean;
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.timestamp;
 
+import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceIndex;
@@ -36,6 +37,7 @@ public class KnowledgeResourcePipelineRepository {
             KnowledgeResourceRead::getResourceId,
             KnowledgeResourceRead::getStatus,
             KnowledgeResourceRead::getSuccess,
+            KnowledgeResourceRead::getReason,
             KnowledgeResourceRead::getMessage,
             KnowledgeResourceRead::getValue,
             KnowledgeResourceRead::getReadAt,
@@ -52,6 +54,7 @@ public class KnowledgeResourcePipelineRepository {
             KnowledgeResourceConversion::getResourceId,
             KnowledgeResourceConversion::getStatus,
             KnowledgeResourceConversion::getSuccess,
+            KnowledgeResourceConversion::getReason,
             KnowledgeResourceConversion::getMessage,
             KnowledgeResourceConversion::getValue,
             KnowledgeResourceConversion::getConvertedAt,
@@ -68,6 +71,7 @@ public class KnowledgeResourcePipelineRepository {
             KnowledgeResourceIndex::getChunkId,
             KnowledgeResourceIndex::getStatus,
             KnowledgeResourceIndex::getSuccess,
+            KnowledgeResourceIndex::getReason,
             KnowledgeResourceIndex::getMessage,
             KnowledgeResourceIndex::getIndexReference,
             KnowledgeResourceIndex::getIndexedAt,
@@ -108,8 +112,13 @@ public class KnowledgeResourcePipelineRepository {
                 WHERE resource.root_id = ?
                   AND read_state.status = 'DONE'
                   AND read_state.success = FALSE
-                  AND read_state.message IN ('Unsupported file format', 'File is larger than 1 MB')
-                """, UUID.class, rootId));
+                  AND read_state.reason IN (?, ?)
+                """,
+                UUID.class,
+                rootId,
+                KnowledgePipelineReason.UNSUPPORTED_FILE_FORMAT.name(),
+                KnowledgePipelineReason.FILE_TOO_LARGE.name()
+        ));
 
         reusableResourceIds.addAll(jdbcTemplate.queryForList("""
                 SELECT conversion.resource_id
@@ -119,8 +128,12 @@ public class KnowledgeResourcePipelineRepository {
                 WHERE resource.root_id = ?
                   AND conversion.status = 'DONE'
                   AND conversion.success = FALSE
-                  AND conversion.message = 'Could not decode resource as UTF-8'
-                """, UUID.class, rootId));
+                  AND conversion.reason = ?
+                """,
+                UUID.class,
+                rootId,
+                KnowledgePipelineReason.UTF8_DECODE_FAILED.name()
+        ));
 
         reusableResourceIds.addAll(jdbcTemplate.queryForList("""
                 SELECT conversion.resource_id
@@ -290,6 +303,7 @@ public class KnowledgeResourcePipelineRepository {
                     key,
                     table.status().apply(state).name(),
                     table.success().apply(state),
+                    reasonName(table.reason().apply(state)),
                     table.message().apply(state),
                     table.value().apply(state),
                     timestamp(table.processedAt().apply(state)),
@@ -303,6 +317,7 @@ public class KnowledgeResourcePipelineRepository {
                 table.updateSql(),
                 table.status().apply(state).name(),
                 table.success().apply(state),
+                reasonName(table.reason().apply(state)),
                 table.message().apply(state),
                 table.value().apply(state),
                 timestamp(table.processedAt().apply(state)),
@@ -318,6 +333,7 @@ public class KnowledgeResourcePipelineRepository {
         read.setResourceId(resultSet.getObject("resource_id", UUID.class));
         read.setStatus(WorkStatus.valueOf(resultSet.getString("status")));
         read.setSuccess(nullableBoolean(resultSet, "success"));
+        read.setReason(reason(resultSet, "reason"));
         read.setMessage(resultSet.getString("message"));
         read.setValue(resultSet.getBytes("read_value"));
         read.setReadAt(instant(resultSet, "read_at"));
@@ -332,6 +348,7 @@ public class KnowledgeResourcePipelineRepository {
         conversion.setResourceId(resultSet.getObject("resource_id", UUID.class));
         conversion.setStatus(WorkStatus.valueOf(resultSet.getString("status")));
         conversion.setSuccess(nullableBoolean(resultSet, "success"));
+        conversion.setReason(reason(resultSet, "reason"));
         conversion.setMessage(resultSet.getString("message"));
         conversion.setValue(resultSet.getString("conversion_value"));
         conversion.setConvertedAt(instant(resultSet, "converted_at"));
@@ -359,6 +376,7 @@ public class KnowledgeResourcePipelineRepository {
         index.setChunkId(resultSet.getObject("chunk_id", UUID.class));
         index.setStatus(WorkStatus.valueOf(resultSet.getString("status")));
         index.setSuccess(nullableBoolean(resultSet, "success"));
+        index.setReason(reason(resultSet, "reason"));
         index.setMessage(resultSet.getString("message"));
         index.setIndexReference(resultSet.getString("index_reference"));
         index.setIndexedAt(instant(resultSet, "indexed_at"));
@@ -377,6 +395,7 @@ public class KnowledgeResourcePipelineRepository {
             Function<T, UUID> key,
             Function<T, WorkStatus> status,
             Function<T, Boolean> success,
+            Function<T, KnowledgePipelineReason> reason,
             Function<T, String> message,
             Function<T, Object> value,
             Function<T, Instant> processedAt,
@@ -387,9 +406,9 @@ public class KnowledgeResourcePipelineRepository {
         String insertSql() {
             return """
                     INSERT INTO %s (
-                        id, %s, status, success, message, %s, %s, created_at, updated_at
+                        id, %s, status, success, reason, message, %s, %s, created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """.formatted(tableName, keyColumn, valueColumn, processedAtColumn);
         }
 
@@ -398,6 +417,7 @@ public class KnowledgeResourcePipelineRepository {
                     UPDATE %s
                     SET status = ?,
                         success = ?,
+                        reason = ?,
                         message = ?,
                         %s = ?,
                         %s = ?,
@@ -405,6 +425,18 @@ public class KnowledgeResourcePipelineRepository {
                     WHERE %s = ?
                     """.formatted(tableName, valueColumn, processedAtColumn, keyColumn);
         }
+    }
+
+    private String reasonName(KnowledgePipelineReason reason) {
+        return reason == null ? null : reason.name();
+    }
+
+    private KnowledgePipelineReason reason(ResultSet resultSet, String columnName) throws SQLException {
+        String value = resultSet.getString(columnName);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return KnowledgePipelineReason.valueOf(value);
     }
 
 }

@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
+import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
 import ai.corporatedroneagent.model.knowledge.WorkStatus;
@@ -24,13 +25,25 @@ public class LocalFolderKnowledgeConversionService {
     public KnowledgeResourceConversion convert(KnowledgeResource resource, KnowledgeResourceRead read) {
         KnowledgeResourceConversion conversion = startConversion(resource);
         if (!Boolean.TRUE.equals(read.getSuccess())) {
-            return finishConversion(conversion, false, "Read did not succeed", "");
+            return finishConversion(
+                    conversion,
+                    false,
+                    KnowledgePipelineReason.READ_DID_NOT_SUCCEED,
+                    "Read did not succeed",
+                    ""
+            );
         }
 
         try {
-            return finishConversion(conversion, true, "", decodeUtf8(read.getValue()));
+            return finishConversion(conversion, true, null, "", decodeUtf8(read.getValue()));
         } catch (CharacterCodingException exception) {
-            return finishConversion(conversion, false, "Could not decode resource as UTF-8", "");
+            return finishConversion(
+                    conversion,
+                    false,
+                    KnowledgePipelineReason.UTF8_DECODE_FAILED,
+                    "Could not decode resource as UTF-8",
+                    ""
+            );
         }
     }
 
@@ -40,6 +53,7 @@ public class LocalFolderKnowledgeConversionService {
         conversion.setResourceId(resource.getId());
         conversion.setStatus(WorkStatus.IN_PROGRESS);
         conversion.setSuccess(null);
+        conversion.setReason(null);
         conversion.setMessage("");
         conversion.setValue("");
         return pipelineRepository.saveConversion(conversion);
@@ -48,11 +62,13 @@ public class LocalFolderKnowledgeConversionService {
     private KnowledgeResourceConversion finishConversion(
             KnowledgeResourceConversion conversion,
             boolean success,
+            KnowledgePipelineReason reason,
             String message,
             String value
     ) {
         conversion.setStatus(WorkStatus.DONE);
         conversion.setSuccess(success);
+        conversion.setReason(reason);
         conversion.setMessage(message);
         conversion.setValue(value);
         conversion.setConvertedAt(Instant.now());

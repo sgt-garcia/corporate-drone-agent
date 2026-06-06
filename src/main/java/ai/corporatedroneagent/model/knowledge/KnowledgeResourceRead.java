@@ -9,6 +9,7 @@ public class KnowledgeResourceRead {
     private UUID resourceId;
     private WorkStatus status = WorkStatus.TO_DO;
     private Boolean success;
+    private KnowledgePipelineReason reason;
     private String message = "";
     private byte[] value;
     private Instant readAt;
@@ -45,6 +46,14 @@ public class KnowledgeResourceRead {
 
     public void setSuccess(Boolean success) {
         this.success = success;
+    }
+
+    public KnowledgePipelineReason getReason() {
+        return reason;
+    }
+
+    public void setReason(KnowledgePipelineReason reason) {
+        this.reason = reason;
     }
 
     public String getMessage() {

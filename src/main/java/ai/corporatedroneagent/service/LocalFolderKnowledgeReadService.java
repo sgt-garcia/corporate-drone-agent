@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.service;
 
+import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
 import ai.corporatedroneagent.model.knowledge.WorkStatus;
@@ -62,7 +63,13 @@ public class LocalFolderKnowledgeReadService {
                     resource.getReference(),
                     resource.getFormat()
             );
-            return finishRead(read, false, "Unsupported file format", null);
+            return finishRead(
+                    read,
+                    false,
+                    KnowledgePipelineReason.UNSUPPORTED_FILE_FORMAT,
+                    "Unsupported file format",
+                    null
+            );
         }
         if (resource.getSizeBytes() > MAX_READ_BYTES) {
             log.debug(
@@ -70,14 +77,14 @@ public class LocalFolderKnowledgeReadService {
                     resource.getReference(),
                     resource.getSizeBytes()
             );
-            return finishRead(read, false, "File is larger than 1 MB", null);
+            return finishRead(read, false, KnowledgePipelineReason.FILE_TOO_LARGE, "File is larger than 1 MB", null);
         }
 
         try {
-            return finishRead(read, true, "", Files.readAllBytes(file));
+            return finishRead(read, true, null, "", Files.readAllBytes(file));
         } catch (IOException exception) {
             log.warn("Could not read local knowledge resource {}.", resource.getReference(), exception);
-            return finishRead(read, false, "Could not read resource", null);
+            return finishRead(read, false, KnowledgePipelineReason.READ_FAILED, "Could not read resource", null);
         }
     }
 
@@ -87,6 +94,7 @@ public class LocalFolderKnowledgeReadService {
         read.setResourceId(resource.getId());
         read.setStatus(WorkStatus.IN_PROGRESS);
         read.setSuccess(null);
+        read.setReason(null);
         read.setMessage("");
         read.setValue(null);
         return pipelineRepository.saveRead(read);
@@ -95,11 +103,13 @@ public class LocalFolderKnowledgeReadService {
     private KnowledgeResourceRead finishRead(
             KnowledgeResourceRead read,
             boolean success,
+            KnowledgePipelineReason reason,
             String message,
             byte[] value
     ) {
         read.setStatus(WorkStatus.DONE);
         read.setSuccess(success);
+        read.setReason(reason);
         read.setMessage(message);
         read.setValue(value);
         read.setReadAt(Instant.now());
