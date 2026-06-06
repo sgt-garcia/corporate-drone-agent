@@ -79,7 +79,7 @@ public class AiChatService {
         this.chatProviders = defaultChatProviders();
     }
 
-    public String reply(UUID conversationId, String userContent) {
+    public ChatReply reply(UUID conversationId, String userContent) {
         ApplicationSettings settings = settingsService.getWithSecrets();
         Conversation conversation = getConversation(conversationId);
         Project project = getProject(conversation.getProjectId());
@@ -206,24 +206,24 @@ public class AiChatService {
         }
 
         @Override
-        public String reply(ChatRequest request) {
+        public ChatReply reply(ChatRequest request) {
             S providerSettings = settingsAccessor.apply(request.settings());
             String message = validationMessage.apply(providerSettings);
             if (!isBlank(message)) {
-                return message;
+                return ChatReply.error(message);
             }
 
             ChatModel chatModel = chatModelBuilder.apply(providerSettings);
             try {
-                return chatModelReply(
+                return ChatReply.assistant(chatModelReply(
                         request.settings(),
                         chatModel,
                         request.conversation(),
                         request.project(),
                         request.knowledgeContext()
-                );
+                ));
             } catch (RuntimeException exception) {
-                return displayName + " request failed: " + exception.getMessage();
+                return ChatReply.error(displayName + " request failed: " + exception.getMessage());
             } finally {
                 chatModelCleanup.accept(chatModel);
             }
@@ -505,8 +505,8 @@ public class AiChatService {
                 .build();
     }
 
-    private String echoReply(String userContent) {
-        return "You said:\n\n" + userContent;
+    private ChatReply echoReply(String userContent) {
+        return ChatReply.assistant("You said:\n\n" + userContent);
     }
 
     private Conversation getConversation(UUID conversationId) {

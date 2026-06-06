@@ -74,6 +74,7 @@ function Turn({ message }) {
   }
 
   const isStatus = message.role === "status";
+  const isError = message.role === "error";
 
   return (
     <article className="turn">
@@ -92,7 +93,7 @@ function Turn({ message }) {
           </div>
         ) : (
           <>
-            <div className="turn-text turn-text--markdown">
+            <div className={isError ? "turn-text turn-text--error" : "turn-text turn-text--markdown"}>
               <ReactMarkdown>{message.content}</ReactMarkdown>
             </div>
             {timestamp && <div className="turn-time">{timestamp}</div>}

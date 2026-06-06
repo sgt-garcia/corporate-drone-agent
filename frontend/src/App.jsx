@@ -500,8 +500,9 @@ export default function App() {
         return currentConversations;
       }
 
+      const completesPendingReply = message.role === "assistant" || message.role === "error";
       const messages =
-        message.role === "assistant"
+        completesPendingReply
           ? conversation.messages.filter((item) => item.role !== "status")
           : conversation.messages;
 

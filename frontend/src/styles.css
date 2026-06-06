@@ -788,6 +788,10 @@ select.input {
 .turn-text--markdown {
   white-space: normal;
 }
+.turn-text--error {
+  color: var(--danger-700);
+  white-space: normal;
+}
 .turn-text > :first-child {
   margin-top: 0;
 }

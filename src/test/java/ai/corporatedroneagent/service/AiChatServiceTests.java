@@ -37,7 +37,7 @@ class AiChatServiceTests {
         Conversation conversation = new Conversation();
         conversation.getMessages().add(message("assistant", "Ready for work."));
         conversation.getMessages().add(message("user", "Remember alpha."));
-        conversation.getMessages().add(message("assistant", "OpenAI request failed: timeout"));
+        conversation.getMessages().add(message("error", "OpenAI request failed: timeout"));
         conversation.getMessages().add(message("status", "..."));
         conversation.getMessages().add(message("user", "What should you remember?"));
 
@@ -50,7 +50,6 @@ class AiChatServiceTests {
                         SystemMessage.class,
                         AssistantMessage.class,
                         UserMessage.class,
-                        AssistantMessage.class,
                         UserMessage.class
                 );
         assertThat(text(promptMessages.get(0)))
@@ -58,8 +57,7 @@ class AiChatServiceTests {
                 .contains("Project instructions:\nUse the repository's conventions.");
         assertThat(text(promptMessages.get(1))).isEqualTo("Ready for work.");
         assertThat(text(promptMessages.get(2))).isEqualTo("Remember alpha.");
-        assertThat(text(promptMessages.get(3))).isEqualTo("OpenAI request failed: timeout");
-        assertThat(text(promptMessages.get(4))).isEqualTo("What should you remember?");
+        assertThat(text(promptMessages.get(3))).isEqualTo("What should you remember?");
     }
 
     @Test
@@ -121,9 +119,10 @@ class AiChatServiceTests {
                 knowledgeSearchService
         );
 
-        String reply = service.reply(conversationId, "hello");
+        ChatReply reply = service.reply(conversationId, "hello");
 
-        assertThat(reply).isEqualTo("You said:\n\nhello");
+        assertThat(reply.role()).isEqualTo("assistant");
+        assertThat(reply.content()).isEqualTo("You said:\n\nhello");
         assertThat(output)
                 .contains("Knowledge retrieval failed; continuing without local knowledge context.")
                 .contains("index unavailable");
@@ -155,9 +154,10 @@ class AiChatServiceTests {
                 knowledgeSearchService
         );
 
-        String reply = service.reply(conversationId, "hello");
+        ChatReply reply = service.reply(conversationId, "hello");
 
-        assertThat(reply).isEqualTo("OpenAI is selected, but API key and model are required before I can call it.");
+        assertThat(reply.role()).isEqualTo("error");
+        assertThat(reply.content()).isEqualTo("OpenAI is selected, but API key and model are required before I can call it.");
     }
 
     private Message message(String role, String content) {

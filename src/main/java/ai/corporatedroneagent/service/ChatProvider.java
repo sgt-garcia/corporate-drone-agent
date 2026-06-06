@@ -4,5 +4,5 @@ interface ChatProvider {
 
     String providerId();
 
-    String reply(ChatRequest request);
+    ChatReply reply(ChatRequest request);
 }

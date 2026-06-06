@@ -5,6 +5,7 @@ import ai.corporatedroneagent.dto.MessageEventDto;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.service.AiChatService;
+import ai.corporatedroneagent.service.ChatReply;
 import ai.corporatedroneagent.service.EventService;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
@@ -47,9 +48,9 @@ public class MessagePushJob {
 
         CompletableFuture
                 .supplyAsync(() -> aiChatService.reply(conversationId, userContent), llmExecutor)
-                .completeOnTimeout(TIMEOUT_REPLY, LLM_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .exceptionally(error -> "LLM request failed: " + rootMessage(error))
-                .thenAcceptAsync(reply -> appendAssistantMessage(conversationId, reply), replyExecutor);
+                .completeOnTimeout(ChatReply.error(TIMEOUT_REPLY), LLM_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .exceptionally(error -> ChatReply.error("LLM request failed: " + rootMessage(error)))
+                .thenAcceptAsync(reply -> publishReply(conversationId, reply), replyExecutor);
     }
 
     @PreDestroy
@@ -68,6 +69,14 @@ public class MessagePushJob {
         eventService.publish("message-created", new MessageEventDto(conversationId, status));
     }
 
+    private void publishReply(UUID conversationId, ChatReply reply) {
+        if (reply.assistant()) {
+            appendAssistantMessage(conversationId, reply.content());
+            return;
+        }
+        publishTransientMessage(conversationId, reply.role(), reply.content());
+    }
+
     private void appendAssistantMessage(UUID conversationId, String content) {
         Message message = new Message(
                 UUID.randomUUID(),
@@ -81,6 +90,16 @@ public class MessagePushJob {
                         "message-created",
                         new MessageEventDto(conversationId, toDto(message))
                 ));
+    }
+
+    private void publishTransientMessage(UUID conversationId, String role, String content) {
+        MessageDto message = new MessageDto(
+                UUID.randomUUID(),
+                role,
+                content,
+                Instant.now()
+        );
+        eventService.publish("message-created", new MessageEventDto(conversationId, message));
     }
 
     private ThreadFactory namedThreadFactory(String prefix) {
