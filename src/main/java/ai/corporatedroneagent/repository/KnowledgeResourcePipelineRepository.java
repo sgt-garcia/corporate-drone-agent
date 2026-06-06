@@ -216,34 +216,31 @@ public class KnowledgeResourcePipelineRepository {
         }
     }
 
+    public Optional<KnowledgeResourceChunk> findChunkByResourceIdAndIndex(UUID resourceId, int chunkIndex) {
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject("""
+                    SELECT *
+                    FROM knowledge_resource_chunks
+                    WHERE resource_id = ?
+                      AND chunk_index = ?
+                    """,
+                    this::mapChunk,
+                    resourceId,
+                    chunkIndex
+            ));
+        } catch (EmptyResultDataAccessException exception) {
+            return Optional.empty();
+        }
+    }
+
     public KnowledgeResourceChunk saveChunk(KnowledgeResourceChunk chunk) {
         Instant now = Instant.now();
-        Optional<KnowledgeResourceChunk> existing = findChunksByResourceId(chunk.getResourceId()).stream()
-                .filter(candidate -> candidate.getChunkIndex() == chunk.getChunkIndex())
-                .findFirst();
+        Optional<KnowledgeResourceChunk> existing = findChunkByResourceIdAndIndex(
+                chunk.getResourceId(),
+                chunk.getChunkIndex()
+        );
         if (existing.isEmpty()) {
-            if (chunk.getId() == null) {
-                chunk.setId(UUID.randomUUID());
-            }
-            chunk.setCreatedAt(now);
-            chunk.setUpdatedAt(now);
-            jdbcTemplate.update("""
-                    INSERT INTO knowledge_resource_chunks (
-                        id, resource_id, chunk_index, start_offset, end_offset,
-                        content_hash, created_at, updated_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    chunk.getId(),
-                    chunk.getResourceId(),
-                    chunk.getChunkIndex(),
-                    chunk.getStartOffset(),
-                    chunk.getEndOffset(),
-                    chunk.getContentHash(),
-                    timestamp(chunk.getCreatedAt()),
-                    timestamp(chunk.getUpdatedAt())
-            );
-            return chunk;
+            return insertChunk(chunk, now);
         }
         chunk.setId(existing.get().getId());
         chunk.setCreatedAt(existing.get().getCreatedAt());
@@ -261,6 +258,35 @@ public class KnowledgeResourcePipelineRepository {
                 chunk.getContentHash(),
                 timestamp(chunk.getUpdatedAt()),
                 chunk.getId()
+        );
+        return chunk;
+    }
+
+    public KnowledgeResourceChunk insertChunk(KnowledgeResourceChunk chunk) {
+        return insertChunk(chunk, Instant.now());
+    }
+
+    private KnowledgeResourceChunk insertChunk(KnowledgeResourceChunk chunk, Instant now) {
+        if (chunk.getId() == null) {
+            chunk.setId(UUID.randomUUID());
+        }
+        chunk.setCreatedAt(now);
+        chunk.setUpdatedAt(now);
+        jdbcTemplate.update("""
+                INSERT INTO knowledge_resource_chunks (
+                    id, resource_id, chunk_index, start_offset, end_offset,
+                    content_hash, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                chunk.getId(),
+                chunk.getResourceId(),
+                chunk.getChunkIndex(),
+                chunk.getStartOffset(),
+                chunk.getEndOffset(),
+                chunk.getContentHash(),
+                timestamp(chunk.getCreatedAt()),
+                timestamp(chunk.getUpdatedAt())
         );
         return chunk;
     }

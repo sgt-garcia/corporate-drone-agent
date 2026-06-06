@@ -42,7 +42,7 @@ public class KnowledgeChunkingService {
             chunk.setStartOffset(startOffset);
             chunk.setEndOffset(endOffset);
             chunk.setContentHash(contentHash(text.substring(startOffset, endOffset)));
-            chunks.add(pipelineRepository.saveChunk(chunk));
+            chunks.add(pipelineRepository.insertChunk(chunk));
             chunkIndex++;
             if (endOffset == text.length()) {
                 break;

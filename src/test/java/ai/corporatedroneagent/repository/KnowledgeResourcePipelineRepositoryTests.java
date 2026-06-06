@@ -123,6 +123,26 @@ class KnowledgeResourcePipelineRepositoryTests {
         assertThat(pipelineRepository.findChunksByResourceId(savedResource.getId())).hasSize(1);
         assertThat(pipelineRepository.findChunkById(savedChunk.getId()))
                 .hasValueSatisfying(loaded -> assertThat(loaded.getContentHash()).isEqualTo("hash"));
+        assertThat(pipelineRepository.findChunkByResourceIdAndIndex(savedResource.getId(), 0))
+                .hasValueSatisfying(loaded -> assertThat(loaded.getId()).isEqualTo(savedChunk.getId()));
+
+        KnowledgeResourceChunk updatedChunk = new KnowledgeResourceChunk();
+        updatedChunk.setResourceId(savedResource.getId());
+        updatedChunk.setChunkIndex(0);
+        updatedChunk.setStartOffset(1);
+        updatedChunk.setEndOffset(6);
+        updatedChunk.setContentHash("updated-hash");
+        pipelineRepository.saveChunk(updatedChunk);
+
+        assertThat(pipelineRepository.findChunksByResourceId(savedResource.getId()))
+                .hasSize(1)
+                .first()
+                .satisfies(loaded -> {
+                    assertThat(loaded.getId()).isEqualTo(savedChunk.getId());
+                    assertThat(loaded.getStartOffset()).isEqualTo(1);
+                    assertThat(loaded.getEndOffset()).isEqualTo(6);
+                    assertThat(loaded.getContentHash()).isEqualTo("updated-hash");
+                });
 
         KnowledgeResourceIndex index = new KnowledgeResourceIndex();
         index.setChunkId(savedChunk.getId());
