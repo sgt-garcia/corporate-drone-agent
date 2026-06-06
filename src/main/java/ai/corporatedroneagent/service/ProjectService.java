@@ -74,10 +74,7 @@ public class ProjectService {
     }
 
     public synchronized void delete(UUID projectId) {
-        Project project = getProject(projectId);
-        for (UUID conversationId : project.getConversationIds()) {
-            conversationRepository.delete(conversationId);
-        }
+        getProject(projectId);
         projectRepository.delete(projectId);
         eventService.publish("project-deleted", new ProjectDeletedDto(projectId));
         eventService.publish("projects-updated");
