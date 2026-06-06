@@ -123,11 +123,7 @@ public class LocalFolderKnowledgeScanService {
             BooleanSupplier isCancelled
     ) {
         visitor.loadExistingResources(resourceRepository.findByRootId(rootId));
-        Set<java.util.UUID> reusablePipelineResourceIds = pipelineRepository.findReusablePipelineResourceIds(
-                visitor.existingResources().stream()
-                        .map(KnowledgeResource::getId)
-                        .toList()
-        );
+        Set<java.util.UUID> reusablePipelineResourceIds = pipelineRepository.findReusablePipelineResourceIdsByRootId(rootId);
 
         for (ScannedFile scannedFile : visitor.scannedFiles()) {
             if (isCancelled.getAsBoolean()) {

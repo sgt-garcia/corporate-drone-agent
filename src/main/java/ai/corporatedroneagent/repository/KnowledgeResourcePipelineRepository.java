@@ -12,7 +12,6 @@ import ai.corporatedroneagent.model.knowledge.WorkStatus;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -43,54 +42,52 @@ public class KnowledgeResourcePipelineRepository {
         }
     }
 
-    public Set<UUID> findReusablePipelineResourceIds(Collection<UUID> resourceIds) {
-        if (resourceIds == null || resourceIds.isEmpty()) {
+    public Set<UUID> findReusablePipelineResourceIdsByRootId(UUID rootId) {
+        if (rootId == null) {
             return Set.of();
         }
 
-        String placeholders = placeholders(resourceIds.size());
-        Object[] parameters = resourceIds.toArray();
         Set<UUID> reusableResourceIds = new HashSet<>();
 
         reusableResourceIds.addAll(jdbcTemplate.queryForList("""
-                SELECT resource_id
-                FROM knowledge_resource_reads
-                WHERE resource_id IN (
-                """ + placeholders + """
-                )
-                  AND status = 'DONE'
-                  AND success = FALSE
-                  AND message IN ('Unsupported file format', 'File is larger than 1 MB')
-                """, UUID.class, parameters));
-
-        reusableResourceIds.addAll(jdbcTemplate.queryForList("""
-                SELECT resource_id
-                FROM knowledge_resource_conversions
-                WHERE resource_id IN (
-                """ + placeholders + """
-                )
-                  AND status = 'DONE'
-                  AND success = FALSE
-                  AND message = 'Could not decode resource as UTF-8'
-                """, UUID.class, parameters));
-
-        reusableResourceIds.addAll(jdbcTemplate.queryForList("""
-                SELECT resource_id
-                FROM knowledge_resource_conversions
-                WHERE resource_id IN (
-                """ + placeholders + """
-                )
-                  AND status = 'DONE'
-                  AND success = TRUE
-                  AND (conversion_value IS NULL OR CHAR_LENGTH(conversion_value) = 0)
-                """, UUID.class, parameters));
+                SELECT read_state.resource_id
+                FROM knowledge_resources resource
+                JOIN knowledge_resource_reads read_state
+                  ON read_state.resource_id = resource.id
+                WHERE resource.root_id = ?
+                  AND read_state.status = 'DONE'
+                  AND read_state.success = FALSE
+                  AND read_state.message IN ('Unsupported file format', 'File is larger than 1 MB')
+                """, UUID.class, rootId));
 
         reusableResourceIds.addAll(jdbcTemplate.queryForList("""
                 SELECT conversion.resource_id
-                FROM knowledge_resource_conversions conversion
-                WHERE conversion.resource_id IN (
-                """ + placeholders + """
-                )
+                FROM knowledge_resources resource
+                JOIN knowledge_resource_conversions conversion
+                  ON conversion.resource_id = resource.id
+                WHERE resource.root_id = ?
+                  AND conversion.status = 'DONE'
+                  AND conversion.success = FALSE
+                  AND conversion.message = 'Could not decode resource as UTF-8'
+                """, UUID.class, rootId));
+
+        reusableResourceIds.addAll(jdbcTemplate.queryForList("""
+                SELECT conversion.resource_id
+                FROM knowledge_resources resource
+                JOIN knowledge_resource_conversions conversion
+                  ON conversion.resource_id = resource.id
+                WHERE resource.root_id = ?
+                  AND conversion.status = 'DONE'
+                  AND conversion.success = TRUE
+                  AND (conversion.conversion_value IS NULL OR CHAR_LENGTH(conversion.conversion_value) = 0)
+                """, UUID.class, rootId));
+
+        reusableResourceIds.addAll(jdbcTemplate.queryForList("""
+                SELECT conversion.resource_id
+                FROM knowledge_resources resource
+                JOIN knowledge_resource_conversions conversion
+                  ON conversion.resource_id = resource.id
+                WHERE resource.root_id = ?
                   AND conversion.status = 'DONE'
                   AND conversion.success = TRUE
                   AND CHAR_LENGTH(conversion.conversion_value) > 0
@@ -109,7 +106,7 @@ public class KnowledgeResourcePipelineRepository {
                       WHERE chunk.resource_id = conversion.resource_id
                         AND index_state.id IS NULL
                   )
-                """, UUID.class, parameters));
+                """, UUID.class, rootId));
 
         return reusableResourceIds;
     }
@@ -412,7 +409,4 @@ public class KnowledgeResourcePipelineRepository {
         return index;
     }
 
-    private String placeholders(int count) {
-        return String.join(",", java.util.Collections.nCopies(count, "?"));
-    }
 }
