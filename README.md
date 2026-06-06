@@ -18,10 +18,11 @@ Working today:
 - Project creation and editing, including a project name, optional working
   folder, and project-level custom instructions.
 - Conversation creation inside projects.
-- Persistent projects, conversations, message history, settings, and knowledge
-  metadata stored in the local encrypted H2 database.
-- Async assistant replies with status updates pushed to the UI over server-sent
-  events.
+- Persistent projects, conversations, assistant message history, durable
+  settings, knowledge-folder configuration, and scan metadata stored in the
+  local encrypted H2 database.
+- Async assistant replies with transient status/error updates pushed to the UI
+  over server-sent events.
 - Configurable global assistant name, active AI provider, and custom
   instructions.
 - LLM chat support for OpenAI, OpenAI Official SDK, Azure OpenAI, Ollama,
@@ -35,6 +36,9 @@ Working today:
   prevention, a 10-folder limit, and prevention of nested folder roots.
 - Scheduled local-folder scans every 15 minutes, at minute 0, 15, 30, and 45.
 - Recursive local-folder scanning into an encrypted H2 knowledge database.
+- Knowledge-folder scan status and counters are stored separately from durable
+  provider/user settings, so scan progress does not rewrite the settings
+  document.
 - Local read, conversion, character chunking, and Lucene indexing for common
   text formats, with files larger than 1 MB skipped for now.
 - Best-effort local knowledge retrieval for chat prompts using indexed chunks,
@@ -61,7 +65,8 @@ Still planned:
 - Java 21
 - Spring Boot 3.5.14
 - Spring AI 1.1.2
-- H2 for the local encrypted application and knowledge database
+- H2 for the local encrypted application and knowledge database, accessed
+  through HikariCP
 - Flyway for database schema setup
 - Apache Lucene for local full-text indexing
 - Maven
@@ -90,13 +95,26 @@ The backend is organized around a few focused seams:
 - API-key-backed provider settings share `ApiKeySettings` /
   `ApiKeyModelSettings`, and `SettingsSecretsService` drives migration, save,
   status, apply, and clear behavior from a descriptor list.
-- `SettingsRepository`, `ProjectRepository`, and `ConversationRepository` store
-  application settings, projects, conversations, and messages in H2 through
-  JDBC. Settings are stored as a single non-secret JSON document in
-  `app_settings`; projects, conversations, and messages use relational tables.
-  Message sends append one row to `conversation_messages`, while project and
-  conversation list views use lightweight summary queries instead of loading
-  full message history.
+- `KnowledgeDatabaseConfig` creates the encrypted H2 datasource as a HikariCP
+  pool, preserving the custom cipher/key setup while keeping normal pooled JDBC
+  behavior.
+- `SettingsRepository`, `ProjectRepository`, `ConversationRepository`, and
+  `KnowledgeRootRepository` store application state in H2 through JDBC.
+  Settings are stored as a single non-secret JSON document in `app_settings`;
+  local knowledge-folder configuration and volatile scan status live in
+  `knowledge_roots`; projects, conversations, and messages use relational
+  tables. Message sends append one row to `conversation_messages`, while
+  project and conversation list views use lightweight summary queries instead
+  of loading full message history. Deleting a project relies on database
+  cascades to remove its conversations and messages.
+- `MessagePushJob` persists only genuine assistant replies. Status updates,
+  provider validation failures, request failures, and timeouts are published as
+  transient `status` / `error` messages and are not replayed into future prompt
+  history.
+- `EventService` fans out SSE events on a bounded background executor so slow
+  clients do not block scan, settings, or request threads. Broad settings and
+  project changes are sent as lightweight invalidation events that the frontend
+  uses to refetch current state.
 - `KnowledgeResourcePipelineRepository` keeps read, conversion, and index saves
   on a shared table-binding helper so insert/update timestamp behavior stays
   consistent across pipeline stages.
@@ -154,6 +172,11 @@ separate user context message and are explicitly marked as untrusted reference
 content, not instructions. If retrieval fails, chat continues without local
 knowledge context and the failure is logged.
 
+Scan progress, last result, resource counts, and pause state are stored on the
+knowledge-root rows in the database instead of in the durable settings document.
+This keeps scheduled scans from rewriting provider configuration while they
+update runtime status.
+
 ## Local data
 
 By default, application data is written under your user profile in
@@ -161,15 +184,17 @@ By default, application data is written under your user profile in
 `C:\Users\your-user\.corporate-drone-agent`:
 
 - `.corporate-drone-agent/database/knowledge*` stores the encrypted H2 database,
-  including application settings, projects, conversations, message history, and
-  knowledge metadata.
+  including durable application settings, projects, conversations, assistant
+  message history, knowledge-folder configuration, and knowledge metadata.
 - `.corporate-drone-agent/secrets.json` stores protected API keys.
 - `.corporate-drone-agent/lucene/` stores the Lucene full-text index.
 
 The database schema is managed with Flyway migrations in
 `src/main/resources/db/migration`. Application state is intentionally database
-backed: settings, projects, conversations, and messages are no longer stored as
-local JSON files.
+backed: settings, knowledge folders, projects, conversations, and messages are
+no longer stored as local JSON files. Project, conversation, and message rows
+use relational foreign keys; deleting a project cascades through its
+conversations and messages in the database.
 
 The application logs local knowledge lifecycle events such as folder
 add/remove/pause/resume, scheduled scans, scan completion/failure/cancellation,
@@ -186,6 +211,11 @@ The storage root can be changed with:
 API keys are accepted through the settings UI/API, then moved into the secret
 store. They are not written to the database-backed application settings document
 and are not returned by `GET /api/settings`.
+
+Only durable assistant replies are persisted as assistant messages. In-flight
+status, provider validation errors, request failures, and timeouts are delivered
+to the current UI session as transient message roles and are not stored as model
+output.
 
 Secret protection:
 
@@ -292,9 +322,11 @@ The current backend exposes:
 - `GET /api/events`
 
 `/api/events` is an SSE stream used by the frontend for project, conversation
-(including creation and deletion), message, and settings updates. The settings
-model/deployment endpoints are used by the frontend to populate provider model
-selectors.
+(including creation and deletion), message, and settings updates. Event delivery
+is asynchronous on the backend. Settings and project update events are
+lightweight invalidations; the frontend refetches the current settings/projects
+after receiving them. The settings model/deployment endpoints are used by the
+frontend to populate provider model selectors.
 
 ## Tests
 
@@ -305,9 +337,11 @@ mvn test
 ```
 
 The current tests cover Spring context startup, browser/headless mode selection,
-prompt construction, local knowledge prompt context and retrieval failure
-logging, API-key serialization/migration behavior, settings validation, provider
-model/deployment lookup parsing, local-folder scan/read/convert/chunk/index
-behavior, scan cancellation during folder removal, database-backed application
-settings, project/conversation deletion and ordering, append-only message
-storage, conversation summary queries, and knowledge database repositories.
+prompt construction, filtering transient error/status messages out of prompt
+history, local knowledge prompt context and retrieval failure logging, API-key
+serialization/migration behavior, settings validation, provider model/deployment
+lookup parsing, local-folder scan/read/convert/chunk/index behavior, scan
+cancellation during folder removal, database-backed application settings,
+database-backed knowledge folders, project/conversation deletion and ordering,
+append-only message storage, conversation summary queries, SSE fan-out behavior,
+and knowledge database repositories.
