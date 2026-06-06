@@ -92,7 +92,11 @@ The backend is organized around a few focused seams:
   status, apply, and clear behavior from a descriptor list.
 - `SettingsRepository`, `ProjectRepository`, and `ConversationRepository` store
   application settings, projects, conversations, and messages in H2 through
-  JDBC.
+  JDBC. Settings are stored as a single non-secret JSON document in
+  `app_settings`; projects, conversations, and messages use relational tables.
+  Message sends append one row to `conversation_messages`, while project and
+  conversation list views use lightweight summary queries instead of loading
+  full message history.
 - `KnowledgeResourcePipelineRepository` keeps read, conversion, and index saves
   on a shared table-binding helper so insert/update timestamp behavior stays
   consistent across pipeline stages.
@@ -161,6 +165,11 @@ By default, application data is written under your user profile in
   knowledge metadata.
 - `.corporate-drone-agent/secrets.json` stores protected API keys.
 - `.corporate-drone-agent/lucene/` stores the Lucene full-text index.
+
+The database schema is managed with Flyway migrations in
+`src/main/resources/db/migration`. Application state is intentionally database
+backed: settings, projects, conversations, and messages are no longer stored as
+local JSON files.
 
 The application logs local knowledge lifecycle events such as folder
 add/remove/pause/resume, scheduled scans, scan completion/failure/cancellation,
@@ -299,5 +308,6 @@ The current tests cover Spring context startup, browser/headless mode selection,
 prompt construction, local knowledge prompt context and retrieval failure
 logging, API-key serialization/migration behavior, settings validation, provider
 model/deployment lookup parsing, local-folder scan/read/convert/chunk/index
-behavior, scan cancellation during folder removal, and knowledge database
-repositories.
+behavior, scan cancellation during folder removal, database-backed application
+settings, project/conversation deletion and ordering, append-only message
+storage, conversation summary queries, and knowledge database repositories.
