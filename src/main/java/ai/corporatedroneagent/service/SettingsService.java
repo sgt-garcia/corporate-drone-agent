@@ -3,6 +3,10 @@ package ai.corporatedroneagent.service;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.KnowledgeFolder;
+import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
+import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
+import ai.corporatedroneagent.model.knowledge.WorkStatus;
+import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.util.Strings;
 import java.io.IOException;
@@ -26,6 +30,7 @@ public class SettingsService {
     private static final int MAX_KNOWLEDGE_FOLDERS = 10;
 
     private final SettingsRepository settingsRepository;
+    private final KnowledgeRootRepository knowledgeRootRepository;
     private final SettingsSecretsService settingsSecretsService;
     private final EventService eventService;
     private final KnowledgeRootCleanupService knowledgeRootCleanupService;
@@ -33,12 +38,14 @@ public class SettingsService {
 
     public SettingsService(
             SettingsRepository settingsRepository,
+            KnowledgeRootRepository knowledgeRootRepository,
             SettingsSecretsService settingsSecretsService,
             EventService eventService,
             KnowledgeRootCleanupService knowledgeRootCleanupService,
             KnowledgeScanCoordinator knowledgeScanCoordinator
     ) {
         this.settingsRepository = settingsRepository;
+        this.knowledgeRootRepository = knowledgeRootRepository;
         this.settingsSecretsService = settingsSecretsService;
         this.eventService = eventService;
         this.knowledgeRootCleanupService = knowledgeRootCleanupService;
@@ -48,7 +55,7 @@ public class SettingsService {
     public ApplicationSettings get() {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
-        normalizeKnowledgeFolders(settings);
+        attachKnowledgeFolders(settings);
         settingsSecretsService.clearSecretValues(settings);
         settingsSecretsService.applySecretStatus(settings);
         return settings;
@@ -57,7 +64,7 @@ public class SettingsService {
     public ApplicationSettings getWithSecrets() {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
-        normalizeKnowledgeFolders(settings);
+        attachKnowledgeFolders(settings);
         settingsSecretsService.applySecretValues(settings);
         return settings;
     }
@@ -65,7 +72,7 @@ public class SettingsService {
     public ApplicationSettings save(ApplicationSettings settings) {
         ApplicationSettings current = settingsRepository.get();
         migratePlaintextSecrets(current);
-        normalizeKnowledgeFolders(current);
+        migrateLegacyKnowledgeFolders(current);
         settingsSecretsService.saveSubmittedSecrets(settings);
 
         current.setAgentName(Strings.defaultIfBlank(settings.getAgentName(), "Corporate Drone's Agent"));
@@ -83,38 +90,44 @@ public class SettingsService {
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);
-        eventService.publish("settings-updated", current);
-        return current;
+        ApplicationSettings savedSettings = get();
+        eventService.publish("settings-updated", savedSettings);
+        return savedSettings;
     }
 
     public synchronized List<KnowledgeFolder> listKnowledgeFolders() {
-        return get().getKnowledgeFolders();
+        return knowledgeFolders();
     }
 
     public synchronized KnowledgeFolder addKnowledgeFolder(KnowledgeFolderRequest request) {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
-        normalizeKnowledgeFolders(settings);
+        migrateLegacyKnowledgeFolders(settings);
 
         String path = Strings.defaultIfBlank(request == null ? "" : request.path(), "");
         if (path.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path is required");
         }
         Path folderPath = existingFolderPath(path);
-        if (settings.getKnowledgeFolders().size() >= MAX_KNOWLEDGE_FOLDERS) {
+        List<KnowledgeFolder> folders = knowledgeFolders();
+        if (folders.size() >= MAX_KNOWLEDGE_FOLDERS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Local folder limit reached");
         }
-        if (settings.getKnowledgeFolders().stream().anyMatch(folder -> samePath(folder.getPath(), path))) {
+        if (folders.stream().anyMatch(folder -> samePath(folder.getPath(), path))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Folder is already configured");
         }
-        validateNotNestedFolder(folderPath, settings.getKnowledgeFolders());
+        validateNotNestedFolder(folderPath, folders);
 
-        KnowledgeFolder folder = new KnowledgeFolder();
-        folder.setId(UUID.randomUUID());
-        folder.setPath(path);
-        folder.setStatus("scanned");
-        settings.getKnowledgeFolders().add(folder);
-        saveAndPublish(settings);
+        KnowledgeRoot root = new KnowledgeRoot();
+        root.setId(UUID.randomUUID());
+        root.setSource(KnowledgeSource.LOCAL_FOLDER);
+        root.setReference(path);
+        root.setDisplayName(displayName(folderPath));
+        root.setPaused(false);
+        root.setScanStatus(WorkStatus.TO_DO);
+        root = knowledgeRootRepository.save(root);
+        publishSettingsUpdated();
+        KnowledgeFolder folder = knowledgeFolder(root);
         log.info("Added local knowledge folder {} at {}.", folder.getId(), path);
         return folder;
     }
@@ -122,42 +135,41 @@ public class SettingsService {
     public synchronized void removeKnowledgeFolder(UUID folderId) {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
-        normalizeKnowledgeFolders(settings);
+        migrateLegacyKnowledgeFolders(settings);
 
-        KnowledgeFolder removedFolder = findKnowledgeFolder(settings, folderId);
+        KnowledgeRoot removedFolder = findKnowledgeRoot(folderId);
         knowledgeScanCoordinator.cancelFolderScanAndWait(folderId);
-        settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        normalizeKnowledgeFolders(settings);
-        removedFolder = findKnowledgeFolder(settings, folderId);
-        settings.getKnowledgeFolders().removeIf(folder -> folderId.equals(folder.getId()));
+        removedFolder = findKnowledgeRoot(folderId);
 
-        knowledgeRootCleanupService.removeLocalFolderRoot(removedFolder.getPath());
-        saveAndPublish(settings);
-        log.info("Removed local knowledge folder {} at {}.", folderId, removedFolder.getPath());
+        knowledgeRootCleanupService.removeLocalFolderRoot(removedFolder.getReference());
+        knowledgeRootRepository.findByIdAndSource(folderId, KnowledgeSource.LOCAL_FOLDER)
+                .ifPresent(root -> knowledgeRootRepository.delete(root.getId()));
+        publishSettingsUpdated();
+        log.info("Removed local knowledge folder {} at {}.", folderId, removedFolder.getReference());
     }
 
     public synchronized KnowledgeFolder pauseKnowledgeFolder(UUID folderId) {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
-        normalizeKnowledgeFolders(settings);
-        KnowledgeFolder folder = findKnowledgeFolder(settings, folderId);
-        folder.setStatus("paused");
-        folder.setNextScan("");
-        saveAndPublish(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        KnowledgeRoot root = findKnowledgeRoot(folderId);
+        root.setPaused(true);
+        root = knowledgeRootRepository.save(root);
+        publishSettingsUpdated();
         log.info("Paused local knowledge folder {}.", folderId);
-        return folder;
+        return knowledgeFolder(root);
     }
 
     public synchronized KnowledgeFolder resumeKnowledgeFolder(UUID folderId) {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
-        normalizeKnowledgeFolders(settings);
-        KnowledgeFolder folder = findKnowledgeFolder(settings, folderId);
-        folder.setStatus("scanned");
-        saveAndPublish(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        KnowledgeRoot root = findKnowledgeRoot(folderId);
+        root.setPaused(false);
+        root = knowledgeRootRepository.save(root);
+        publishSettingsUpdated();
         log.info("Resumed local knowledge folder {}.", folderId);
-        return folder;
+        return knowledgeFolder(root);
     }
 
     private void migratePlaintextSecrets(ApplicationSettings settings) {
@@ -168,17 +180,12 @@ public class SettingsService {
         }
     }
 
-    private void saveAndPublish(ApplicationSettings settings) {
-        settingsSecretsService.clearSecretValues(settings);
-        settingsSecretsService.applySecretStatus(settings);
-        settingsRepository.save(settings);
-        eventService.publish("settings-updated", settings);
+    private void publishSettingsUpdated() {
+        eventService.publish("settings-updated", get());
     }
 
-    private KnowledgeFolder findKnowledgeFolder(ApplicationSettings settings, UUID folderId) {
-        return settings.getKnowledgeFolders().stream()
-                .filter(folder -> folderId.equals(folder.getId()))
-                .findFirst()
+    private KnowledgeRoot findKnowledgeRoot(UUID folderId) {
+        return knowledgeRootRepository.findByIdAndSource(folderId, KnowledgeSource.LOCAL_FOLDER)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge folder not found"));
     }
 
@@ -232,8 +239,78 @@ public class SettingsService {
         }
     }
 
-    private void normalizeKnowledgeFolders(ApplicationSettings settings) {
-        settings.setKnowledgeFolders(sanitizeKnowledgeFolders(settings.getKnowledgeFolders()));
+    private void attachKnowledgeFolders(ApplicationSettings settings) {
+        migrateLegacyKnowledgeFolders(settings);
+        settings.setKnowledgeFolders(knowledgeFolders());
+    }
+
+    private void migrateLegacyKnowledgeFolders(ApplicationSettings settings) {
+        List<KnowledgeFolder> legacyFolders = sanitizeKnowledgeFolders(settings.getKnowledgeFolders());
+        if (legacyFolders.isEmpty()) {
+            return;
+        }
+
+        for (KnowledgeFolder folder : legacyFolders) {
+            KnowledgeRoot root = knowledgeRootRepository
+                    .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.getPath())
+                    .orElseGet(KnowledgeRoot::new);
+            if (root.getId() == null) {
+                root.setId(folder.getId());
+            }
+            root.setSource(KnowledgeSource.LOCAL_FOLDER);
+            root.setReference(folder.getPath());
+            root.setDisplayName(displayName(Path.of(folder.getPath())));
+            root.setPaused("paused".equals(folder.getStatus()));
+            root.setTotalResources(folder.getFiles());
+            root.setScanStatus("scanning".equals(folder.getStatus()) ? WorkStatus.DONE : root.getScanStatus());
+            knowledgeRootRepository.save(root);
+        }
+
+        settings.setKnowledgeFolders(List.of());
+        settingsRepository.save(settings);
+    }
+
+    private List<KnowledgeFolder> knowledgeFolders() {
+        return knowledgeRootRepository.findBySource(KnowledgeSource.LOCAL_FOLDER).stream()
+                .map(this::knowledgeFolder)
+                .toList();
+    }
+
+    private KnowledgeFolder knowledgeFolder(KnowledgeRoot root) {
+        KnowledgeFolder folder = new KnowledgeFolder();
+        folder.setId(root.getId());
+        folder.setPath(root.getReference());
+        folder.setStatus(folderStatus(root));
+        folder.setFiles(root.getTotalResources());
+        folder.setSize(root.getTotalSizeBytes() == 0
+                ? ""
+                : KnowledgeFolderScanService.formatBytes(root.getTotalSizeBytes()));
+        folder.setNextScan(nextScan(root));
+        return folder;
+    }
+
+    private String folderStatus(KnowledgeRoot root) {
+        if (root.isPaused()) {
+            return "paused";
+        }
+        if (root.getScanStatus() == WorkStatus.IN_PROGRESS) {
+            return "scanning";
+        }
+        return "scanned";
+    }
+
+    private String nextScan(KnowledgeRoot root) {
+        if (!root.isPaused()
+                && root.getScanStatus() == WorkStatus.DONE
+                && Boolean.TRUE.equals(root.getScanSuccess())) {
+            return "~15 min";
+        }
+        return "";
+    }
+
+    private String displayName(Path path) {
+        Path fileName = path.getFileName();
+        return fileName == null ? path.toString() : fileName.toString();
     }
 
     private List<KnowledgeFolder> sanitizeKnowledgeFolders(List<KnowledgeFolder> folders) {

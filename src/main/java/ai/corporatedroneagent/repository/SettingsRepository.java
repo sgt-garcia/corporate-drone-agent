@@ -60,7 +60,9 @@ public class SettingsRepository {
 
     private String writeSettings(ApplicationSettings settings) {
         try {
-            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(settings);
+            com.fasterxml.jackson.databind.node.ObjectNode settingsJson = objectMapper.valueToTree(settings);
+            settingsJson.remove("knowledgeFolders");
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(settingsJson);
         } catch (JsonProcessingException exception) {
             throw new UncheckedIOException("Could not write application settings to database", exception);
         }

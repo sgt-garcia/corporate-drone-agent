@@ -97,6 +97,7 @@ class KnowledgeFolderScanServiceTests {
         settingsRepository = new SettingsRepository(jdbcTemplate, objectMapper);
         settingsService = new SettingsService(
                 settingsRepository,
+                knowledgeRootRepository,
                 secretsService,
                 eventService,
                 new KnowledgeRootCleanupService(
@@ -117,8 +118,8 @@ class KnowledgeFolderScanServiceTests {
                 indexingService
         );
         scanService = new KnowledgeFolderScanService(
-                settingsRepository,
-                secretsService,
+                settingsService,
+                knowledgeRootRepository,
                 eventService,
                 localScanService,
                 scanCoordinator
@@ -139,7 +140,7 @@ class KnowledgeFolderScanServiceTests {
         assertThat(scanned.getFiles()).isEqualTo(2);
         assertThat(scanned.getSize()).isEqualTo("1.0 KB");
         assertThat(scanned.getNextScan()).isEqualTo("~15 min");
-        assertThat(settingsRepository.get().getKnowledgeFolders().getFirst().getFiles()).isEqualTo(2);
+        assertThat(settingsService.listKnowledgeFolders().getFirst().getFiles()).isEqualTo(2);
 
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
@@ -312,8 +313,8 @@ class KnowledgeFolderScanServiceTests {
                 indexingService
         );
         KnowledgeFolderScanService blockingScanService = new KnowledgeFolderScanService(
-                settingsRepository,
-                new SettingsSecretsService(new InMemorySecretStore()),
+                settingsService,
+                knowledgeRootRepository,
                 mock(EventService.class),
                 blockingLocalScanService,
                 scanCoordinator
@@ -335,7 +336,7 @@ class KnowledgeFolderScanServiceTests {
         }
 
         assertThat(reads.get()).isEqualTo(1);
-        assertThat(settingsRepository.get().getKnowledgeFolders()).isEmpty();
+        assertThat(settingsService.listKnowledgeFolders()).isEmpty();
         assertThat(knowledgeRootRepository.findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString()))
                 .isEmpty();
         assertThat(searchService.search("first-token", 10)).isEmpty();
@@ -364,8 +365,8 @@ class KnowledgeFolderScanServiceTests {
                 indexingService
         );
         KnowledgeFolderScanService failingScanService = new KnowledgeFolderScanService(
-                settingsRepository,
-                new SettingsSecretsService(new InMemorySecretStore()),
+                settingsService,
+                knowledgeRootRepository,
                 mock(EventService.class),
                 failingLocalScanService,
                 new KnowledgeScanCoordinator()
@@ -494,8 +495,8 @@ class KnowledgeFolderScanServiceTests {
                 indexingService
         );
         KnowledgeFolderScanService countingScanService = new KnowledgeFolderScanService(
-                settingsRepository,
-                new SettingsSecretsService(new InMemorySecretStore()),
+                settingsService,
+                knowledgeRootRepository,
                 mock(EventService.class),
                 countingLocalScanService,
                 scanCoordinator
@@ -557,7 +558,7 @@ class KnowledgeFolderScanServiceTests {
     }
 
     private KnowledgeFolder folder(java.util.UUID id) {
-        return settingsRepository.get().getKnowledgeFolders().stream()
+        return settingsService.listKnowledgeFolders().stream()
                 .filter(folder -> id.equals(folder.getId()))
                 .findFirst()
                 .orElseThrow();

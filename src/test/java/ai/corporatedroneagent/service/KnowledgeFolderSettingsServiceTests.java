@@ -11,6 +11,7 @@ import ai.corporatedroneagent.TestDatabaseSupport;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.KnowledgeFolder;
+import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.security.SecretStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -43,6 +44,7 @@ class KnowledgeFolderSettingsServiceTests {
         eventService = mock(EventService.class);
         settingsService = new SettingsService(
                 settingsRepository,
+                new KnowledgeRootRepository(jdbcTemplate),
                 new SettingsSecretsService(new InMemorySecretStore()),
                 eventService,
                 mock(KnowledgeRootCleanupService.class),
@@ -59,7 +61,7 @@ class KnowledgeFolderSettingsServiceTests {
         assertThat(folder.getId()).isNotNull();
         assertThat(folder.getPath()).isEqualTo(workFolder.toString());
         assertThat(folder.getStatus()).isEqualTo("scanned");
-        assertThat(settingsRepository.get().getKnowledgeFolders())
+        assertThat(settingsService.listKnowledgeFolders())
                 .extracting(KnowledgeFolder::getPath)
                 .containsExactly(workFolder.toString());
         verify(eventService).publish(eq("settings-updated"), any(ApplicationSettings.class));
@@ -72,7 +74,7 @@ class KnowledgeFolderSettingsServiceTests {
         assertThatThrownBy(() -> settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(missingFolder.toString())))
                 .hasMessageContaining("Folder path must be an existing folder");
 
-        assertThat(settingsRepository.get().getKnowledgeFolders()).isEmpty();
+        assertThat(settingsService.listKnowledgeFolders()).isEmpty();
     }
 
     @Test
@@ -84,7 +86,7 @@ class KnowledgeFolderSettingsServiceTests {
         assertThatThrownBy(() -> settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(child.toString())))
                 .hasMessageContaining("Folders must not be nested inside each other");
 
-        assertThat(settingsRepository.get().getKnowledgeFolders())
+        assertThat(settingsService.listKnowledgeFolders())
                 .extracting(KnowledgeFolder::getPath)
                 .containsExactly(parent.toString());
     }
@@ -98,7 +100,7 @@ class KnowledgeFolderSettingsServiceTests {
         assertThatThrownBy(() -> settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(parent.toString())))
                 .hasMessageContaining("Folders must not be nested inside each other");
 
-        assertThat(settingsRepository.get().getKnowledgeFolders())
+        assertThat(settingsService.listKnowledgeFolders())
                 .extracting(KnowledgeFolder::getPath)
                 .containsExactly(child.toString());
     }
@@ -124,7 +126,7 @@ class KnowledgeFolderSettingsServiceTests {
 
         settingsService.removeKnowledgeFolder(folder.getId());
 
-        assertThat(settingsRepository.get().getKnowledgeFolders()).isEmpty();
+        assertThat(settingsService.listKnowledgeFolders()).isEmpty();
     }
 
     @Test
@@ -133,11 +135,11 @@ class KnowledgeFolderSettingsServiceTests {
 
         KnowledgeFolder paused = settingsService.pauseKnowledgeFolder(folder.getId());
         assertThat(paused.getStatus()).isEqualTo("paused");
-        assertThat(settingsRepository.get().getKnowledgeFolders().getFirst().getStatus()).isEqualTo("paused");
+        assertThat(settingsService.listKnowledgeFolders().getFirst().getStatus()).isEqualTo("paused");
 
         KnowledgeFolder resumed = settingsService.resumeKnowledgeFolder(folder.getId());
         assertThat(resumed.getStatus()).isEqualTo("scanned");
-        assertThat(settingsRepository.get().getKnowledgeFolders().getFirst().getStatus()).isEqualTo("scanned");
+        assertThat(settingsService.listKnowledgeFolders().getFirst().getStatus()).isEqualTo("scanned");
     }
 
     private String existingFolderPath() throws IOException {

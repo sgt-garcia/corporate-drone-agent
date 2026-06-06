@@ -43,6 +43,31 @@ public class KnowledgeRootRepository {
         }
     }
 
+    public Optional<KnowledgeRoot> findByIdAndSource(UUID id, KnowledgeSource source) {
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(
+                    "SELECT * FROM knowledge_roots WHERE id = ? AND source_type = ?",
+                    this::mapRoot,
+                    id,
+                    source.name()
+            ));
+        } catch (EmptyResultDataAccessException exception) {
+            return Optional.empty();
+        }
+    }
+
+    public List<KnowledgeRoot> findBySource(KnowledgeSource source) {
+        return jdbcTemplate.query("""
+                SELECT *
+                FROM knowledge_roots
+                WHERE source_type = ?
+                ORDER BY created_at, display_name
+                """,
+                this::mapRoot,
+                source.name()
+        );
+    }
+
     public Optional<KnowledgeRoot> findBySourceAndReference(KnowledgeSource source, String reference) {
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
