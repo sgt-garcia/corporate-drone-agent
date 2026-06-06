@@ -22,7 +22,11 @@ import com.google.genai.Client;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.anthropic.AnthropicChatModel;
@@ -60,6 +64,7 @@ public class AiChatService {
     private final ConversationRepository conversationRepository;
     private final ProjectRepository projectRepository;
     private final KnowledgeSearchService knowledgeSearchService;
+    private final Map<String, ChatProvider> chatProviders;
 
     public AiChatService(
             SettingsService settingsService,
@@ -71,6 +76,7 @@ public class AiChatService {
         this.conversationRepository = conversationRepository;
         this.projectRepository = projectRepository;
         this.knowledgeSearchService = knowledgeSearchService;
+        this.chatProviders = defaultChatProviders();
     }
 
     public String reply(UUID conversationId, String userContent) {
@@ -79,18 +85,11 @@ public class AiChatService {
         Project project = getProject(conversation.getProjectId());
         List<KnowledgeContextSnippet> knowledgeContext = knowledgeContext(userContent);
 
-        return switch (settings.getAiModel()) {
-            case "azure-openai" -> azureOpenAiReply(settings, conversation, project, knowledgeContext);
-            case "openai" -> openAiReply(settings, conversation, project, knowledgeContext);
-            case "openai-sdk" -> openAiSdkReply(settings, conversation, project, knowledgeContext);
-            case "ollama" -> ollamaReply(settings, conversation, project, knowledgeContext);
-            case "mistral" -> mistralReply(settings, conversation, project, knowledgeContext);
-            case "gemini" -> geminiReply(settings, conversation, project, knowledgeContext);
-            case "anthropic" -> anthropicReply(settings, conversation, project, knowledgeContext);
-            case "groq" -> groqReply(settings, conversation, project, knowledgeContext);
-            case "deepseek" -> deepSeekReply(settings, conversation, project, knowledgeContext);
-            default -> echoReply(userContent);
-        };
+        ChatProvider chatProvider = chatProviders.get(settings.getAiModel());
+        if (chatProvider == null) {
+            return echoReply(userContent);
+        }
+        return chatProvider.reply(new ChatRequest(settings, conversation, project, knowledgeContext));
     }
 
     private List<KnowledgeContextSnippet> knowledgeContext(String userContent) {
@@ -102,228 +101,76 @@ public class AiChatService {
         }
     }
 
-    private String openAiReply(
-            ApplicationSettings settings,
-            Conversation conversation,
-            Project project,
-            List<KnowledgeContextSnippet> knowledgeContext
-    ) {
-        OpenAiSettings openAiSettings = settings.getOpenAi();
-        if (isBlank(openAiSettings.getApiKey()) || isBlank(openAiSettings.getModel())) {
-            return "OpenAI is selected, but API key and model are required before I can call it.";
-        }
-
-        try {
-            return chatModelReply(
-                    settings,
-                    buildOpenAiChatModel(openAiSettings),
-                    conversation,
-                    project,
-                    knowledgeContext
-            );
-        } catch (RuntimeException exception) {
-            return "OpenAI request failed: " + exception.getMessage();
-        }
+    private Map<String, ChatProvider> defaultChatProviders() {
+        return List.<ChatProvider>of(
+                new ChatModelProvider<>(
+                        "openai",
+                        "OpenAI",
+                        ApplicationSettings::getOpenAi,
+                        AiChatService::openAiValidationMessage,
+                        AiChatService::buildOpenAiChatModel
+                ),
+                new ChatModelProvider<>(
+                        "openai-sdk",
+                        "OpenAI (SDK)",
+                        ApplicationSettings::getOpenAiSdk,
+                        AiChatService::openAiSdkValidationMessage,
+                        AiChatService::buildOpenAiSdkChatModel
+                ),
+                new ChatModelProvider<>(
+                        "azure-openai",
+                        "Azure OpenAI",
+                        ApplicationSettings::getAzureOpenAi,
+                        AiChatService::azureOpenAiValidationMessage,
+                        AiChatService::buildAzureChatModel
+                ),
+                new ChatModelProvider<>(
+                        "ollama",
+                        "Ollama",
+                        ApplicationSettings::getOllama,
+                        AiChatService::ollamaValidationMessage,
+                        AiChatService::buildOllamaChatModel
+                ),
+                new ChatModelProvider<>(
+                        "mistral",
+                        "Mistral",
+                        ApplicationSettings::getMistral,
+                        AiChatService::mistralValidationMessage,
+                        AiChatService::buildMistralChatModel
+                ),
+                new ChatModelProvider<>(
+                        "gemini",
+                        "Gemini",
+                        ApplicationSettings::getGemini,
+                        AiChatService::geminiValidationMessage,
+                        AiChatService::buildGeminiChatModel,
+                        chatModel -> destroyGeminiChatModel((GoogleGenAiChatModel) chatModel)
+                ),
+                new ChatModelProvider<>(
+                        "anthropic",
+                        "Anthropic",
+                        ApplicationSettings::getAnthropic,
+                        AiChatService::anthropicValidationMessage,
+                        AiChatService::buildAnthropicChatModel
+                ),
+                new ChatModelProvider<>(
+                        "groq",
+                        "Groq",
+                        ApplicationSettings::getGroq,
+                        AiChatService::groqValidationMessage,
+                        AiChatService::buildGroqChatModel
+                ),
+                new ChatModelProvider<>(
+                        "deepseek",
+                        "DeepSeek",
+                        ApplicationSettings::getDeepSeek,
+                        AiChatService::deepSeekValidationMessage,
+                        AiChatService::buildDeepSeekChatModel
+                )
+        ).stream().collect(Collectors.toUnmodifiableMap(ChatProvider::providerId, Function.identity()));
     }
 
-    private String openAiSdkReply(
-            ApplicationSettings settings,
-            Conversation conversation,
-            Project project,
-            List<KnowledgeContextSnippet> knowledgeContext
-    ) {
-        OpenAiSdkSettings openAiSettings = settings.getOpenAiSdk();
-        if (isBlank(openAiSettings.getApiKey()) || isBlank(openAiSettings.getModel())) {
-            return "OpenAI (SDK) is selected, but API key and model are required before I can call it.";
-        }
-
-        try {
-            return chatModelReply(
-                    settings,
-                    buildOpenAiSdkChatModel(openAiSettings),
-                    conversation,
-                    project,
-                    knowledgeContext
-            );
-        } catch (RuntimeException exception) {
-            return "OpenAI (SDK) request failed: " + exception.getMessage();
-        }
-    }
-
-    private String azureOpenAiReply(
-            ApplicationSettings settings,
-            Conversation conversation,
-            Project project,
-            List<KnowledgeContextSnippet> knowledgeContext
-    ) {
-        AzureOpenAiSettings azureSettings = settings.getAzureOpenAi();
-        if (isBlank(azureSettings.getEndpoint())
-                || isBlank(azureSettings.getApiKey())
-                || isBlank(azureSettings.getDeploymentName())) {
-            return "Azure OpenAI is selected, but endpoint, API key, and deployment name are required before I can call it.";
-        }
-
-        try {
-            return chatModelReply(
-                    settings,
-                    buildAzureChatModel(azureSettings),
-                    conversation,
-                    project,
-                    knowledgeContext
-            );
-        } catch (RuntimeException exception) {
-            return "Azure OpenAI request failed: " + exception.getMessage();
-        }
-    }
-
-    private String ollamaReply(
-            ApplicationSettings settings,
-            Conversation conversation,
-            Project project,
-            List<KnowledgeContextSnippet> knowledgeContext
-    ) {
-        OllamaSettings ollamaSettings = settings.getOllama();
-        if (isBlank(ollamaSettings.getBaseUrl()) || isBlank(ollamaSettings.getModel())) {
-            return "Ollama is selected, but base URL and model are required before I can call it.";
-        }
-
-        try {
-            return chatModelReply(
-                    settings,
-                    buildOllamaChatModel(ollamaSettings),
-                    conversation,
-                    project,
-                    knowledgeContext
-            );
-        } catch (RuntimeException exception) {
-            return "Ollama request failed: " + exception.getMessage();
-        }
-    }
-
-    private String mistralReply(
-            ApplicationSettings settings,
-            Conversation conversation,
-            Project project,
-            List<KnowledgeContextSnippet> knowledgeContext
-    ) {
-        MistralSettings mistralSettings = settings.getMistral();
-        if (isBlank(mistralSettings.getApiKey()) || isBlank(mistralSettings.getModel())) {
-            return "Mistral is selected, but API key and model are required before I can call it.";
-        }
-
-        try {
-            return chatModelReply(
-                    settings,
-                    buildMistralChatModel(mistralSettings),
-                    conversation,
-                    project,
-                    knowledgeContext
-            );
-        } catch (RuntimeException exception) {
-            return "Mistral request failed: " + exception.getMessage();
-        }
-    }
-
-    private String geminiReply(
-            ApplicationSettings settings,
-            Conversation conversation,
-            Project project,
-            List<KnowledgeContextSnippet> knowledgeContext
-    ) {
-        GeminiSettings geminiSettings = settings.getGemini();
-        if (isBlank(geminiSettings.getApiKey()) || isBlank(geminiSettings.getModel())) {
-            return "Gemini is selected, but API key and model are required before I can call it.";
-        }
-
-        GoogleGenAiChatModel chatModel = buildGeminiChatModel(geminiSettings);
-        try {
-            return chatModelReply(
-                    settings,
-                    chatModel,
-                    conversation,
-                    project,
-                    knowledgeContext
-            );
-        } catch (RuntimeException exception) {
-            return "Gemini request failed: " + exception.getMessage();
-        } finally {
-            destroyGeminiChatModel(chatModel);
-        }
-    }
-
-    private String anthropicReply(
-            ApplicationSettings settings,
-            Conversation conversation,
-            Project project,
-            List<KnowledgeContextSnippet> knowledgeContext
-    ) {
-        AnthropicSettings anthropicSettings = settings.getAnthropic();
-        if (isBlank(anthropicSettings.getApiKey()) || isBlank(anthropicSettings.getModel())) {
-            return "Anthropic is selected, but API key and model are required before I can call it.";
-        }
-
-        try {
-            return chatModelReply(
-                    settings,
-                    buildAnthropicChatModel(anthropicSettings),
-                    conversation,
-                    project,
-                    knowledgeContext
-            );
-        } catch (RuntimeException exception) {
-            return "Anthropic request failed: " + exception.getMessage();
-        }
-    }
-
-    private String groqReply(
-            ApplicationSettings settings,
-            Conversation conversation,
-            Project project,
-            List<KnowledgeContextSnippet> knowledgeContext
-    ) {
-        GroqSettings groqSettings = settings.getGroq();
-        if (isBlank(groqSettings.getApiKey()) || isBlank(groqSettings.getModel())) {
-            return "Groq is selected, but API key and model are required before I can call it.";
-        }
-
-        try {
-            return chatModelReply(
-                    settings,
-                    buildGroqChatModel(groqSettings),
-                    conversation,
-                    project,
-                    knowledgeContext
-            );
-        } catch (RuntimeException exception) {
-            return "Groq request failed: " + exception.getMessage();
-        }
-    }
-
-    private String deepSeekReply(
-            ApplicationSettings settings,
-            Conversation conversation,
-            Project project,
-            List<KnowledgeContextSnippet> knowledgeContext
-    ) {
-        DeepSeekSettings deepSeekSettings = settings.getDeepSeek();
-        if (isBlank(deepSeekSettings.getApiKey()) || isBlank(deepSeekSettings.getModel())) {
-            return "DeepSeek is selected, but API key and model are required before I can call it.";
-        }
-
-        try {
-            return chatModelReply(
-                    settings,
-                    buildDeepSeekChatModel(deepSeekSettings),
-                    conversation,
-                    project,
-                    knowledgeContext
-            );
-        } catch (RuntimeException exception) {
-            return "DeepSeek request failed: " + exception.getMessage();
-        }
-    }
-
-    private String chatModelReply(
+    private static String chatModelReply(
             ApplicationSettings settings,
             ChatModel chatModel,
             Conversation conversation,
@@ -336,6 +183,107 @@ public class AiChatService {
                 .messages(buildPromptMessages(settings, project, conversation, knowledgeContext))
                 .call()
                 .content();
+    }
+
+    private record ChatModelProvider<S>(
+            String providerId,
+            String displayName,
+            Function<ApplicationSettings, S> settingsAccessor,
+            Function<S, String> validationMessage,
+            Function<S, ChatModel> chatModelBuilder,
+            Consumer<ChatModel> chatModelCleanup
+    ) implements ChatProvider {
+
+        private ChatModelProvider(
+                String providerId,
+                String displayName,
+                Function<ApplicationSettings, S> settingsAccessor,
+                Function<S, String> validationMessage,
+                Function<S, ChatModel> chatModelBuilder
+        ) {
+            this(providerId, displayName, settingsAccessor, validationMessage, chatModelBuilder, chatModel -> {
+            });
+        }
+
+        @Override
+        public String reply(ChatRequest request) {
+            S providerSettings = settingsAccessor.apply(request.settings());
+            String message = validationMessage.apply(providerSettings);
+            if (!isBlank(message)) {
+                return message;
+            }
+
+            ChatModel chatModel = chatModelBuilder.apply(providerSettings);
+            try {
+                return chatModelReply(
+                        request.settings(),
+                        chatModel,
+                        request.conversation(),
+                        request.project(),
+                        request.knowledgeContext()
+                );
+            } catch (RuntimeException exception) {
+                return displayName + " request failed: " + exception.getMessage();
+            } finally {
+                chatModelCleanup.accept(chatModel);
+            }
+        }
+    }
+
+    private static String openAiValidationMessage(OpenAiSettings settings) {
+        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
+                ? "OpenAI is selected, but API key and model are required before I can call it."
+                : "";
+    }
+
+    private static String openAiSdkValidationMessage(OpenAiSdkSettings settings) {
+        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
+                ? "OpenAI (SDK) is selected, but API key and model are required before I can call it."
+                : "";
+    }
+
+    private static String azureOpenAiValidationMessage(AzureOpenAiSettings settings) {
+        return isBlank(settings.getEndpoint())
+                || isBlank(settings.getApiKey())
+                || isBlank(settings.getDeploymentName())
+                ? "Azure OpenAI is selected, but endpoint, API key, and deployment name are required before I can call it."
+                : "";
+    }
+
+    private static String ollamaValidationMessage(OllamaSettings settings) {
+        return isBlank(settings.getBaseUrl()) || isBlank(settings.getModel())
+                ? "Ollama is selected, but base URL and model are required before I can call it."
+                : "";
+    }
+
+    private static String mistralValidationMessage(MistralSettings settings) {
+        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
+                ? "Mistral is selected, but API key and model are required before I can call it."
+                : "";
+    }
+
+    private static String geminiValidationMessage(GeminiSettings settings) {
+        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
+                ? "Gemini is selected, but API key and model are required before I can call it."
+                : "";
+    }
+
+    private static String anthropicValidationMessage(AnthropicSettings settings) {
+        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
+                ? "Anthropic is selected, but API key and model are required before I can call it."
+                : "";
+    }
+
+    private static String groqValidationMessage(GroqSettings settings) {
+        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
+                ? "Groq is selected, but API key and model are required before I can call it."
+                : "";
+    }
+
+    private static String deepSeekValidationMessage(DeepSeekSettings settings) {
+        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
+                ? "DeepSeek is selected, but API key and model are required before I can call it."
+                : "";
     }
 
     static List<org.springframework.ai.chat.messages.Message> buildPromptMessages(
@@ -419,7 +367,7 @@ public class AiChatService {
         return String.join("\n\n", snippets);
     }
 
-    private OpenAiChatModel buildOpenAiChatModel(OpenAiSettings settings) {
+    private static OpenAiChatModel buildOpenAiChatModel(OpenAiSettings settings) {
         OpenAiApi openAiApi = OpenAiApi.builder()
                 .apiKey(settings.getApiKey())
                 .build();
@@ -433,7 +381,7 @@ public class AiChatService {
                 .build();
     }
 
-    private OpenAiSdkChatModel buildOpenAiSdkChatModel(OpenAiSdkSettings settings) {
+    private static OpenAiSdkChatModel buildOpenAiSdkChatModel(OpenAiSdkSettings settings) {
         OpenAiSdkChatOptions.Builder optionsBuilder = OpenAiSdkChatOptions.builder()
                 .apiKey(settings.getApiKey())
                 .model(settings.getModel());
@@ -441,7 +389,7 @@ public class AiChatService {
         return new OpenAiSdkChatModel(optionsBuilder.build());
     }
 
-    private AzureOpenAiChatModel buildAzureChatModel(AzureOpenAiSettings settings) {
+    private static AzureOpenAiChatModel buildAzureChatModel(AzureOpenAiSettings settings) {
         OpenAIClientBuilder clientBuilder = new OpenAIClientBuilder()
                 .credential(new AzureKeyCredential(settings.getApiKey()))
                 .endpoint(settings.getEndpoint());
@@ -455,7 +403,7 @@ public class AiChatService {
                 .build();
     }
 
-    private OllamaChatModel buildOllamaChatModel(OllamaSettings settings) {
+    private static OllamaChatModel buildOllamaChatModel(OllamaSettings settings) {
         OllamaApi ollamaApi = OllamaApi.builder()
                 .baseUrl(settings.getBaseUrl())
                 .build();
@@ -470,7 +418,7 @@ public class AiChatService {
                 .build();
     }
 
-    private MistralAiChatModel buildMistralChatModel(MistralSettings settings) {
+    private static MistralAiChatModel buildMistralChatModel(MistralSettings settings) {
         MistralAiApi mistralApi = MistralAiApi.builder()
                 .apiKey(settings.getApiKey())
                 .build();
@@ -485,7 +433,7 @@ public class AiChatService {
                 .build();
     }
 
-    private GoogleGenAiChatModel buildGeminiChatModel(GeminiSettings settings) {
+    private static GoogleGenAiChatModel buildGeminiChatModel(GeminiSettings settings) {
         Client genAiClient = Client.builder()
                 .apiKey(settings.getApiKey())
                 .build();
@@ -500,7 +448,7 @@ public class AiChatService {
                 .build();
     }
 
-    private void destroyGeminiChatModel(GoogleGenAiChatModel chatModel) {
+    private static void destroyGeminiChatModel(GoogleGenAiChatModel chatModel) {
         try {
             chatModel.destroy();
         } catch (Exception exception) {
@@ -508,7 +456,7 @@ public class AiChatService {
         }
     }
 
-    private AnthropicChatModel buildAnthropicChatModel(AnthropicSettings settings) {
+    private static AnthropicChatModel buildAnthropicChatModel(AnthropicSettings settings) {
         AnthropicApi anthropicApi = AnthropicApi.builder()
                 .apiKey(settings.getApiKey())
                 .build();
@@ -524,7 +472,7 @@ public class AiChatService {
                 .build();
     }
 
-    private OpenAiChatModel buildGroqChatModel(GroqSettings settings) {
+    private static OpenAiChatModel buildGroqChatModel(GroqSettings settings) {
         OpenAiApi openAiApi = OpenAiApi.builder()
                 .baseUrl("https://api.groq.com/openai")
                 .apiKey(settings.getApiKey())
@@ -540,7 +488,7 @@ public class AiChatService {
                 .build();
     }
 
-    private OpenAiChatModel buildDeepSeekChatModel(DeepSeekSettings settings) {
+    private static OpenAiChatModel buildDeepSeekChatModel(DeepSeekSettings settings) {
         OpenAiApi openAiApi = OpenAiApi.builder()
                 .baseUrl("https://api.deepseek.com")
                 .completionsPath("/chat/completions")
