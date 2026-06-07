@@ -42,6 +42,9 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.ai.mistralai.MistralAiChatModel;
@@ -59,6 +62,9 @@ import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
+import reactor.core.publisher.Flux;
 
 @Service
 public class AiChatService {
@@ -164,7 +170,8 @@ public class AiChatService {
                         "Amazon Bedrock",
                         ApplicationSettings::getBedrock,
                         AiChatService::bedrockValidationMessage,
-                        AiChatService::buildBedrockChatModel
+                        AiChatService::buildBedrockChatModel,
+                        AiChatService::destroyBedrockChatModel
                 ),
                 new ChatModelProvider<>(
                         "groq",
@@ -494,19 +501,81 @@ public class AiChatService {
                 .build();
     }
 
-    private static BedrockProxyChatModel buildBedrockChatModel(BedrockSettings settings) {
+    private static ChatModel buildBedrockChatModel(BedrockSettings settings) {
         BedrockChatOptions chatOptions = BedrockChatOptions.builder()
                 .model(settings.getModel())
                 .build();
+        StaticCredentialsProvider credentialsProvider = StaticCredentialsProvider.create(AwsBasicCredentials.create(
+                settings.getAccessKey(),
+                settings.getSecretKey()
+        ));
+        Region region = Region.of(settings.getRegion());
+        BedrockRuntimeClient bedrockRuntimeClient = BedrockRuntimeClient.builder()
+                .region(region)
+                .credentialsProvider(credentialsProvider)
+                .build();
+        BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient = BedrockRuntimeAsyncClient.builder()
+                .region(region)
+                .credentialsProvider(credentialsProvider)
+                .build();
 
-        return BedrockProxyChatModel.builder()
-                .region(Region.of(settings.getRegion()))
-                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(
-                        settings.getAccessKey(),
-                        settings.getSecretKey()
-                )))
+        BedrockProxyChatModel chatModel = BedrockProxyChatModel.builder()
+                .bedrockRuntimeClient(bedrockRuntimeClient)
+                .bedrockRuntimeAsyncClient(bedrockRuntimeAsyncClient)
                 .defaultOptions(chatOptions)
                 .build();
+        return new ManagedBedrockChatModel(chatModel, bedrockRuntimeClient, bedrockRuntimeAsyncClient);
+    }
+
+    private static void destroyBedrockChatModel(ChatModel chatModel) {
+        if (chatModel instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception exception) {
+                // Keep provider cleanup failures from replacing the chat response or original request error.
+            }
+        }
+    }
+
+    static final class ManagedBedrockChatModel implements ChatModel, AutoCloseable {
+
+        private final BedrockProxyChatModel delegate;
+        private final BedrockRuntimeClient bedrockRuntimeClient;
+        private final BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient;
+
+        ManagedBedrockChatModel(
+                BedrockProxyChatModel delegate,
+                BedrockRuntimeClient bedrockRuntimeClient,
+                BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient
+        ) {
+            this.delegate = delegate;
+            this.bedrockRuntimeClient = bedrockRuntimeClient;
+            this.bedrockRuntimeAsyncClient = bedrockRuntimeAsyncClient;
+        }
+
+        @Override
+        public ChatResponse call(Prompt prompt) {
+            return delegate.call(prompt);
+        }
+
+        @Override
+        public ChatOptions getDefaultOptions() {
+            return delegate.getDefaultOptions();
+        }
+
+        @Override
+        public Flux<ChatResponse> stream(Prompt prompt) {
+            return delegate.stream(prompt);
+        }
+
+        @Override
+        public void close() {
+            try {
+                bedrockRuntimeClient.close();
+            } finally {
+                bedrockRuntimeAsyncClient.close();
+            }
+        }
     }
 
     private static OpenAiChatModel buildGroqChatModel(GroqSettings settings) {

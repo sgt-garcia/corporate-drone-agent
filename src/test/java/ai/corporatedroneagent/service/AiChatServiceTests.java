@@ -2,6 +2,7 @@ package ai.corporatedroneagent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ai.corporatedroneagent.model.ApplicationSettings;
@@ -16,12 +17,15 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.ai.bedrock.converse.BedrockProxyChatModel;
 import org.springframework.ai.chat.messages.AbstractMessage;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 
 @ExtendWith(OutputCaptureExtension.class)
 class AiChatServiceTests {
@@ -192,6 +196,23 @@ class AiChatServiceTests {
         assertThat(reply.content()).isEqualTo(
                 "Amazon Bedrock is selected, but region, access key, secret key, and model are required before I can call it."
         );
+    }
+
+    @Test
+    void managedBedrockChatModelClosesRuntimeClients() throws Exception {
+        BedrockProxyChatModel delegate = mock(BedrockProxyChatModel.class);
+        BedrockRuntimeClient bedrockRuntimeClient = mock(BedrockRuntimeClient.class);
+        BedrockRuntimeAsyncClient bedrockRuntimeAsyncClient = mock(BedrockRuntimeAsyncClient.class);
+        AiChatService.ManagedBedrockChatModel chatModel = new AiChatService.ManagedBedrockChatModel(
+                delegate,
+                bedrockRuntimeClient,
+                bedrockRuntimeAsyncClient
+        );
+
+        chatModel.close();
+
+        verify(bedrockRuntimeClient).close();
+        verify(bedrockRuntimeAsyncClient).close();
     }
 
     private Message message(String role, String content) {
