@@ -873,7 +873,7 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
             }
           />
           <span className="field-hint">
-            Pick a model, or type its model ID if the list can't load.
+            The list shows on-demand text foundation models in this region. Type a model ID manually for inference profiles, Marketplace endpoints, provisioned throughput, or custom/imported models.
           </span>
         </div>
       </>
