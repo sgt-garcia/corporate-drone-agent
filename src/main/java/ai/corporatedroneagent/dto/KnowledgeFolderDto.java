@@ -1,8 +1,8 @@
-package ai.corporatedroneagent.model;
+package ai.corporatedroneagent.dto;
 
 import java.util.UUID;
 
-public class KnowledgeFolder {
+public class KnowledgeFolderDto {
 
     private UUID id;
     private String path = "";

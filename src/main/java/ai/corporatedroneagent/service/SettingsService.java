@@ -1,8 +1,8 @@
 package ai.corporatedroneagent.service;
 
+import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
-import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
 import ai.corporatedroneagent.model.knowledge.WorkStatus;
@@ -96,11 +96,11 @@ public class SettingsService {
         return savedSettings;
     }
 
-    public synchronized List<KnowledgeFolder> listKnowledgeFolders() {
+    public synchronized List<KnowledgeFolderDto> listKnowledgeFolders() {
         return knowledgeFolders();
     }
 
-    public synchronized KnowledgeFolder addKnowledgeFolder(KnowledgeFolderRequest request) {
+    public synchronized KnowledgeFolderDto addKnowledgeFolder(KnowledgeFolderRequest request) {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         migrateLegacyKnowledgeFolders(settings);
@@ -110,7 +110,7 @@ public class SettingsService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path is required");
         }
         Path folderPath = existingFolderPath(path);
-        List<KnowledgeFolder> folders = knowledgeFolders();
+        List<KnowledgeFolderDto> folders = knowledgeFolders();
         if (folders.size() >= MAX_KNOWLEDGE_FOLDERS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Local folder limit reached");
         }
@@ -128,7 +128,7 @@ public class SettingsService {
         root.setScanStatus(WorkStatus.TO_DO);
         root = knowledgeRootRepository.save(root);
         publishSettingsUpdated();
-        KnowledgeFolder folder = knowledgeFolder(root);
+        KnowledgeFolderDto folder = knowledgeFolder(root);
         log.info("Added local knowledge folder {} at {}.", folder.getId(), path);
         return folder;
     }
@@ -149,7 +149,7 @@ public class SettingsService {
         log.info("Removed local knowledge folder {} at {}.", folderId, removedFolder.getReference());
     }
 
-    public synchronized KnowledgeFolder pauseKnowledgeFolder(UUID folderId) {
+    public synchronized KnowledgeFolderDto pauseKnowledgeFolder(UUID folderId) {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         migrateLegacyKnowledgeFolders(settings);
@@ -161,7 +161,7 @@ public class SettingsService {
         return knowledgeFolder(root);
     }
 
-    public synchronized KnowledgeFolder resumeKnowledgeFolder(UUID folderId) {
+    public synchronized KnowledgeFolderDto resumeKnowledgeFolder(UUID folderId) {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         migrateLegacyKnowledgeFolders(settings);
@@ -207,8 +207,8 @@ public class SettingsService {
         }
     }
 
-    private void validateNotNestedFolder(Path folderPath, List<KnowledgeFolder> existingFolders) {
-        for (KnowledgeFolder existingFolder : existingFolders) {
+    private void validateNotNestedFolder(Path folderPath, List<KnowledgeFolderDto> existingFolders) {
+        for (KnowledgeFolderDto existingFolder : existingFolders) {
             Optional<Path> existingPath = comparableExistingFolderPath(existingFolder.getPath());
             if (existingPath.isEmpty()) {
                 continue;
@@ -246,12 +246,12 @@ public class SettingsService {
     }
 
     private void migrateLegacyKnowledgeFolders(ApplicationSettings settings) {
-        List<KnowledgeFolder> legacyFolders = sanitizeKnowledgeFolders(settings.getKnowledgeFolders());
+        List<KnowledgeFolderDto> legacyFolders = sanitizeKnowledgeFolders(settings.getKnowledgeFolders());
         if (legacyFolders.isEmpty()) {
             return;
         }
 
-        for (KnowledgeFolder folder : legacyFolders) {
+        for (KnowledgeFolderDto folder : legacyFolders) {
             KnowledgeRoot root = knowledgeRootRepository
                     .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.getPath())
                     .orElseGet(KnowledgeRoot::new);
@@ -271,14 +271,14 @@ public class SettingsService {
         settingsRepository.save(settings);
     }
 
-    private List<KnowledgeFolder> knowledgeFolders() {
+    private List<KnowledgeFolderDto> knowledgeFolders() {
         return knowledgeRootRepository.findBySource(KnowledgeSource.LOCAL_FOLDER).stream()
                 .map(this::knowledgeFolder)
                 .toList();
     }
 
-    private KnowledgeFolder knowledgeFolder(KnowledgeRoot root) {
-        KnowledgeFolder folder = new KnowledgeFolder();
+    private KnowledgeFolderDto knowledgeFolder(KnowledgeRoot root) {
+        KnowledgeFolderDto folder = new KnowledgeFolderDto();
         folder.setId(root.getId());
         folder.setPath(root.getReference());
         folder.setStatus(folderStatus(root));
@@ -314,17 +314,17 @@ public class SettingsService {
         return fileName == null ? path.toString() : fileName.toString();
     }
 
-    private List<KnowledgeFolder> sanitizeKnowledgeFolders(List<KnowledgeFolder> folders) {
-        List<KnowledgeFolder> sanitized = new ArrayList<>();
+    private List<KnowledgeFolderDto> sanitizeKnowledgeFolders(List<KnowledgeFolderDto> folders) {
+        List<KnowledgeFolderDto> sanitized = new ArrayList<>();
         if (folders == null) {
             return sanitized;
         }
 
-        for (KnowledgeFolder folder : folders) {
+        for (KnowledgeFolderDto folder : folders) {
             if (folder == null || folder.getPath() == null || folder.getPath().isBlank()) {
                 continue;
             }
-            KnowledgeFolder sanitizedFolder = new KnowledgeFolder();
+            KnowledgeFolderDto sanitizedFolder = new KnowledgeFolderDto();
             sanitizedFolder.setId(folder.getId() == null ? UUID.randomUUID() : folder.getId());
             sanitizedFolder.setPath(folder.getPath().trim());
             sanitizedFolder.setStatus(sanitizeFolderStatus(folder.getStatus()));

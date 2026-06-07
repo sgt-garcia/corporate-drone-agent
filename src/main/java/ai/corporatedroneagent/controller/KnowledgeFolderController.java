@@ -1,7 +1,7 @@
 package ai.corporatedroneagent.controller;
 
+import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
-import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.service.KnowledgeFolderScanService;
 import ai.corporatedroneagent.service.SettingsService;
 import java.util.List;
@@ -32,12 +32,12 @@ public class KnowledgeFolderController {
     }
 
     @GetMapping
-    public List<KnowledgeFolder> listKnowledgeFolders() {
+    public List<KnowledgeFolderDto> listKnowledgeFolders() {
         return settingsService.listKnowledgeFolders();
     }
 
     @PostMapping
-    public KnowledgeFolder addKnowledgeFolder(@RequestBody KnowledgeFolderRequest request) {
+    public KnowledgeFolderDto addKnowledgeFolder(@RequestBody KnowledgeFolderRequest request) {
         return settingsService.addKnowledgeFolder(request);
     }
 
@@ -48,17 +48,17 @@ public class KnowledgeFolderController {
     }
 
     @PostMapping("/{folderId}/scan")
-    public KnowledgeFolder scanKnowledgeFolder(@PathVariable UUID folderId) {
+    public KnowledgeFolderDto scanKnowledgeFolder(@PathVariable UUID folderId) {
         return knowledgeFolderScanService.scanFolder(folderId);
     }
 
     @PostMapping("/{folderId}/pause")
-    public KnowledgeFolder pauseKnowledgeFolder(@PathVariable UUID folderId) {
+    public KnowledgeFolderDto pauseKnowledgeFolder(@PathVariable UUID folderId) {
         return settingsService.pauseKnowledgeFolder(folderId);
     }
 
     @PostMapping("/{folderId}/resume")
-    public KnowledgeFolder resumeKnowledgeFolder(@PathVariable UUID folderId) {
+    public KnowledgeFolderDto resumeKnowledgeFolder(@PathVariable UUID folderId) {
         return settingsService.resumeKnowledgeFolder(folderId);
     }
 }

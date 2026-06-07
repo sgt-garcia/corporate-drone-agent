@@ -1,6 +1,6 @@
 package ai.corporatedroneagent.service;
 
-import ai.corporatedroneagent.model.KnowledgeFolder;
+import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
@@ -67,11 +67,11 @@ public class LocalFolderKnowledgeScanService {
         this.indexingService = indexingService;
     }
 
-    public ScanResult scan(KnowledgeFolder folder, Path folderPath) {
+    public ScanResult scan(KnowledgeFolderDto folder, Path folderPath) {
         return scan(folder, folderPath, () -> false);
     }
 
-    public ScanResult scan(KnowledgeFolder folder, Path folderPath, BooleanSupplier isCancelled) {
+    public ScanResult scan(KnowledgeFolderDto folder, Path folderPath, BooleanSupplier isCancelled) {
         Instant startedAt = Instant.now();
         KnowledgeRoot root = startRootScan(knowledgeRoot(folder), startedAt);
         KnowledgeRootScan scan = startScan(root.getId(), startedAt);
@@ -138,7 +138,7 @@ public class LocalFolderKnowledgeScanService {
         }
     }
 
-    private KnowledgeRoot knowledgeRoot(KnowledgeFolder folder) {
+    private KnowledgeRoot knowledgeRoot(KnowledgeFolderDto folder) {
         String reference = folder.getPath().trim();
         KnowledgeRoot root = rootRepository.findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, reference)
                 .orElseGet(KnowledgeRoot::new);

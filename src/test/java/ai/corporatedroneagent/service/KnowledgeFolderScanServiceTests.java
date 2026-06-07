@@ -6,8 +6,8 @@ import static org.mockito.Mockito.mock;
 
 import ai.corporatedroneagent.config.KnowledgeDatabaseConfig;
 import ai.corporatedroneagent.config.StorageProperties;
+import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
-import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
@@ -133,9 +133,9 @@ class KnowledgeFolderScanServiceTests {
         Files.writeString(folder.resolve("one.txt"), "hello", StandardCharsets.UTF_8);
         Path nested = Files.createDirectory(folder.resolve("nested"));
         Files.write(nested.resolve("two.bin"), new byte[1024]);
-        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
 
-        KnowledgeFolder scanned = scanService.scanFolder(configured.getId());
+        KnowledgeFolderDto scanned = scanService.scanFolder(configured.getId());
 
         assertThat(scanned.getStatus()).isEqualTo("scanned");
         assertThat(scanned.getFiles()).isEqualTo(2);
@@ -225,8 +225,8 @@ class KnowledgeFolderScanServiceTests {
         Files.write(activeFolder.resolve("active.txt"), new byte[12]);
         Path pausedFolder = Files.createDirectory(root.resolve("paused"));
         Files.write(pausedFolder.resolve("paused.txt"), new byte[12]);
-        KnowledgeFolder active = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(activeFolder.toString()));
-        KnowledgeFolder paused = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(pausedFolder.toString()));
+        KnowledgeFolderDto active = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(activeFolder.toString()));
+        KnowledgeFolderDto paused = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(pausedFolder.toString()));
         settingsService.pauseKnowledgeFolder(paused.getId());
 
         scanService.scanAllFolders();
@@ -242,7 +242,7 @@ class KnowledgeFolderScanServiceTests {
         Path folder = Files.createDirectory(root.resolve("refresh-me"));
         Path staleFile = Files.writeString(folder.resolve("stale.txt"), "stale", StandardCharsets.UTF_8);
         Files.writeString(folder.resolve("kept.txt"), "kept", StandardCharsets.UTF_8);
-        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
         scanService.scanFolder(configured.getId());
 
         Files.delete(staleFile);
@@ -266,7 +266,7 @@ class KnowledgeFolderScanServiceTests {
     void removingFolderDeletesKnowledgeRootAndIndexedContent() throws IOException {
         Path folder = Files.createDirectory(root.resolve("remove-me"));
         Files.writeString(folder.resolve("removed.txt"), "remove-token", StandardCharsets.UTF_8);
-        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
         scanService.scanFolder(configured.getId());
 
         assertThat(searchService.search("remove-token", 10)).hasSize(1);
@@ -284,7 +284,7 @@ class KnowledgeFolderScanServiceTests {
         Path folder = Files.createDirectory(root.resolve("remove-while-scanning"));
         Files.writeString(folder.resolve("first.txt"), "first-token", StandardCharsets.UTF_8);
         Files.writeString(folder.resolve("second.txt"), "second-token", StandardCharsets.UTF_8);
-        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
         CountDownLatch firstReadStarted = new CountDownLatch(1);
         CountDownLatch allowFirstReadToFinish = new CountDownLatch(1);
         AtomicBoolean blockedFirstRead = new AtomicBoolean();
@@ -350,7 +350,7 @@ class KnowledgeFolderScanServiceTests {
     void scanFolderRecordsFailureWhenPipelineThrows() throws IOException {
         Path folder = Files.createDirectory(root.resolve("fail-me"));
         Files.writeString(folder.resolve("broken.txt"), "broken", StandardCharsets.UTF_8);
-        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
         LocalFolderKnowledgeReadService failingReadService = new LocalFolderKnowledgeReadService(pipelineRepository) {
             @Override
             public KnowledgeResourceRead read(KnowledgeResource resource, Path file) {
@@ -399,9 +399,9 @@ class KnowledgeFolderScanServiceTests {
         byte[] content = new byte[(int) LocalFolderKnowledgeReadService.MAX_READ_BYTES + 1];
         java.util.Arrays.fill(content, (byte) 'x');
         Files.write(folder.resolve("large.txt"), content);
-        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
 
-        KnowledgeFolder scanned = scanService.scanFolder(configured.getId());
+        KnowledgeFolderDto scanned = scanService.scanFolder(configured.getId());
 
         assertThat(scanned.getFiles()).isEqualTo(1);
         assertThat(scanned.getSize()).isEqualTo("1.0 MB");
@@ -436,7 +436,7 @@ class KnowledgeFolderScanServiceTests {
         Path folder = Files.createDirectory(root.resolve("read-refresh"));
         Path file = folder.resolve("notes.md");
         Files.writeString(file, "old", StandardCharsets.UTF_8);
-        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
         scanService.scanFolder(configured.getId());
 
         Files.writeString(file, "new", StandardCharsets.UTF_8);
@@ -480,7 +480,7 @@ class KnowledgeFolderScanServiceTests {
         Path folder = Files.createDirectory(root.resolve("skip-unchanged"));
         Path file = folder.resolve("notes.md");
         Files.writeString(file, "oldtoken", StandardCharsets.UTF_8);
-        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
         AtomicInteger reads = new AtomicInteger();
         LocalFolderKnowledgeReadService countingReadService = new LocalFolderKnowledgeReadService(pipelineRepository) {
             @Override
@@ -533,7 +533,7 @@ class KnowledgeFolderScanServiceTests {
         Path folder = Files.createDirectory(root.resolve("chunk-me"));
         String text = "a".repeat(3500);
         Files.writeString(folder.resolve("large.txt"), text, StandardCharsets.UTF_8);
-        KnowledgeFolder configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
 
         scanService.scanFolder(configured.getId());
 
@@ -562,7 +562,7 @@ class KnowledgeFolderScanServiceTests {
                 );
     }
 
-    private KnowledgeFolder folder(java.util.UUID id) {
+    private KnowledgeFolderDto folder(java.util.UUID id) {
         return settingsService.listKnowledgeFolders().stream()
                 .filter(folder -> id.equals(folder.getId()))
                 .findFirst()

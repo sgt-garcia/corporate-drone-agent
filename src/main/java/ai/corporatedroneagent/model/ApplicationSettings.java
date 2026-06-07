@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.model;
 
+import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,7 +9,7 @@ public class ApplicationSettings {
     private String agentName = "Corporate Drone's Agent";
     private String aiModel = "none";
     private String customInstructions = "Answer with concise, practical guidance using available local project context first.";
-    private List<KnowledgeFolder> knowledgeFolders = new ArrayList<>();
+    private List<KnowledgeFolderDto> knowledgeFolders = new ArrayList<>();
     private OpenAiSettings openAi = new OpenAiSettings();
     private OpenAiSdkSettings openAiSdk = new OpenAiSdkSettings();
     private AzureOpenAiSettings azureOpenAi = new AzureOpenAiSettings();
@@ -44,11 +45,11 @@ public class ApplicationSettings {
         this.customInstructions = customInstructions;
     }
 
-    public List<KnowledgeFolder> getKnowledgeFolders() {
+    public List<KnowledgeFolderDto> getKnowledgeFolders() {
         return knowledgeFolders;
     }
 
-    public void setKnowledgeFolders(List<KnowledgeFolder> knowledgeFolders) {
+    public void setKnowledgeFolders(List<KnowledgeFolderDto> knowledgeFolders) {
         this.knowledgeFolders = knowledgeFolders == null ? new ArrayList<>() : knowledgeFolders;
     }
 

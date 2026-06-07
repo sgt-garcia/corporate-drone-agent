@@ -1,6 +1,6 @@
 package ai.corporatedroneagent.service;
 
-import ai.corporatedroneagent.model.KnowledgeFolder;
+import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
 import ai.corporatedroneagent.model.knowledge.WorkStatus;
@@ -50,7 +50,7 @@ public class KnowledgeFolderScanService {
     public synchronized void scanAllFolders() {
         List<UUID> folderIds = settingsService.listKnowledgeFolders().stream()
                 .filter(folder -> !STATUS_PAUSED.equals(folder.getStatus()))
-                .map(KnowledgeFolder::getId)
+                .map(KnowledgeFolderDto::getId)
                 .toList();
         log.info("Starting scheduled knowledge scan for {} local folders.", folderIds.size());
 
@@ -64,14 +64,14 @@ public class KnowledgeFolderScanService {
         log.info("Finished scheduled knowledge scan for {} local folders.", folderIds.size());
     }
 
-    public synchronized KnowledgeFolder scanFolder(UUID folderId) {
+    public synchronized KnowledgeFolderDto scanFolder(UUID folderId) {
         if (!knowledgeScanCoordinator.tryStartFolderScan(folderId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge folder not found");
         }
 
         try {
             KnowledgeRoot root = findRoot(folderId);
-            KnowledgeFolder folder = knowledgeFolder(root);
+            KnowledgeFolderDto folder = knowledgeFolder(root);
             if (STATUS_PAUSED.equals(folder.getStatus())) {
                 log.debug("Skipping paused local knowledge folder {}.", folderId);
                 return folder;
@@ -136,7 +136,7 @@ public class KnowledgeFolderScanService {
     }
 
     private LocalFolderKnowledgeScanService.ScanResult scanKnowledgeFolder(
-            KnowledgeFolder folder,
+            KnowledgeFolderDto folder,
             Path folderPath,
             UUID folderId
     ) {
@@ -155,8 +155,8 @@ public class KnowledgeFolderScanService {
         eventService.publish("settings-updated");
     }
 
-    private KnowledgeFolder knowledgeFolder(KnowledgeRoot root) {
-        KnowledgeFolder folder = new KnowledgeFolder();
+    private KnowledgeFolderDto knowledgeFolder(KnowledgeRoot root) {
+        KnowledgeFolderDto folder = new KnowledgeFolderDto();
         folder.setId(root.getId());
         folder.setPath(root.getReference());
         folder.setStatus(folderStatus(root));

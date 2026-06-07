@@ -7,9 +7,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import ai.corporatedroneagent.TestDatabaseSupport;
+import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
-import ai.corporatedroneagent.model.KnowledgeFolder;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.security.SecretStore;
@@ -55,13 +55,13 @@ class KnowledgeFolderSettingsServiceTests {
     void addingLocalFolderPersistsItInApplicationSettings() throws IOException {
         Path workFolder = Files.createDirectory(root.resolve("Work"));
 
-        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(workFolder.toString()));
+        KnowledgeFolderDto folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(workFolder.toString()));
 
         assertThat(folder.getId()).isNotNull();
         assertThat(folder.getPath()).isEqualTo(workFolder.toString());
         assertThat(folder.getStatus()).isEqualTo("scanned");
         assertThat(settingsService.listKnowledgeFolders())
-                .extracting(KnowledgeFolder::getPath)
+                .extracting(KnowledgeFolderDto::getPath)
                 .containsExactly(workFolder.toString());
         verify(eventService).publish(eq("settings-updated"));
     }
@@ -86,7 +86,7 @@ class KnowledgeFolderSettingsServiceTests {
                 .hasMessageContaining("Folders must not be nested inside each other");
 
         assertThat(settingsService.listKnowledgeFolders())
-                .extracting(KnowledgeFolder::getPath)
+                .extracting(KnowledgeFolderDto::getPath)
                 .containsExactly(parent.toString());
     }
 
@@ -100,13 +100,13 @@ class KnowledgeFolderSettingsServiceTests {
                 .hasMessageContaining("Folders must not be nested inside each other");
 
         assertThat(settingsService.listKnowledgeFolders())
-                .extracting(KnowledgeFolder::getPath)
+                .extracting(KnowledgeFolderDto::getPath)
                 .containsExactly(child.toString());
     }
 
     @Test
     void genericSettingsSaveDoesNotReplaceKnowledgeFolders() throws IOException {
-        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
+        KnowledgeFolderDto folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
         ApplicationSettings submittedSettings = settingsService.get();
         submittedSettings.setKnowledgeFolders(List.of());
         submittedSettings.setAgentName("Renamed Agent");
@@ -115,13 +115,13 @@ class KnowledgeFolderSettingsServiceTests {
 
         assertThat(savedSettings.getAgentName()).isEqualTo("Renamed Agent");
         assertThat(savedSettings.getKnowledgeFolders())
-                .extracting(KnowledgeFolder::getId)
+                .extracting(KnowledgeFolderDto::getId)
                 .containsExactly(folder.getId());
     }
 
     @Test
     void removingLocalFolderPersistsTheRemoval() throws IOException {
-        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
+        KnowledgeFolderDto folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
 
         settingsService.removeKnowledgeFolder(folder.getId());
 
@@ -130,13 +130,13 @@ class KnowledgeFolderSettingsServiceTests {
 
     @Test
     void pauseAndResumeScanningPersistStatus() throws IOException {
-        KnowledgeFolder folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
+        KnowledgeFolderDto folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
 
-        KnowledgeFolder paused = settingsService.pauseKnowledgeFolder(folder.getId());
+        KnowledgeFolderDto paused = settingsService.pauseKnowledgeFolder(folder.getId());
         assertThat(paused.getStatus()).isEqualTo("paused");
         assertThat(settingsService.listKnowledgeFolders().getFirst().getStatus()).isEqualTo("paused");
 
-        KnowledgeFolder resumed = settingsService.resumeKnowledgeFolder(folder.getId());
+        KnowledgeFolderDto resumed = settingsService.resumeKnowledgeFolder(folder.getId());
         assertThat(resumed.getStatus()).isEqualTo("scanned");
         assertThat(settingsService.listKnowledgeFolders().getFirst().getStatus()).isEqualTo("scanned");
     }
