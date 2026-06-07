@@ -67,7 +67,7 @@ public class BedrockModelsService {
         } catch (AwsServiceException exception) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY,
-                    "Bedrock models request failed: " + exception.statusCode() + " " + exception.awsErrorDetails().errorMessage()
+                    "Bedrock models request failed: " + awsServiceFailureMessage(exception)
             );
         } catch (SdkClientException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Bedrock models request failed.");
@@ -106,5 +106,14 @@ public class BedrockModelsService {
 
     static AwsCredentialsProvider credentialsProvider(String accessKey, String secretKey) {
         return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey));
+    }
+
+    static String awsServiceFailureMessage(AwsServiceException exception) {
+        String errorMessage = exception.awsErrorDetails() == null ? "" : exception.awsErrorDetails().errorMessage();
+        String message = Strings.defaultIfBlank(
+                errorMessage,
+                Strings.defaultIfBlank(exception.getMessage(), "unknown AWS service error")
+        );
+        return exception.statusCode() + " " + message;
     }
 }
