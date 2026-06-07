@@ -890,7 +890,7 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
               updateProviderConfig(settingsKey, { region: event.target.value })
             }
           >
-            {AWS_REGIONS.map((region) => (
+            {[].map((region) => (
               <option key={region.id} value={region.id}>
                 {region.id} — {region.label}
               </option>
@@ -923,13 +923,13 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
         <Field label="Model">
           <select
             className="input"
-            value={BEDROCK_MODELS.includes(config.model) ? config.model : ""}
+            value={[].includes(config.model) ? config.model : ""}
             onChange={(event) =>
               updateProviderConfig(settingsKey, { model: event.target.value })
             }
           >
             <option value="">—</option>
-            {BEDROCK_MODELS.map((model) => (
+            {[].map((model) => (
               <option key={model} value={model}>
                 {model}
               </option>
