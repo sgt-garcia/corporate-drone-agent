@@ -2,6 +2,7 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.ApiKeySettings;
 import ai.corporatedroneagent.model.ApplicationSettings;
+import ai.corporatedroneagent.model.BedrockSettings;
 import ai.corporatedroneagent.security.SecretStore;
 import java.util.List;
 import java.util.Optional;
@@ -17,6 +18,8 @@ public class SettingsSecretsService {
     private static final String MISTRAL_API_KEY = "settings.mistral.apiKey";
     private static final String GEMINI_API_KEY = "settings.gemini.apiKey";
     private static final String ANTHROPIC_API_KEY = "settings.anthropic.apiKey";
+    private static final String BEDROCK_ACCESS_KEY = "settings.bedrock.accessKey";
+    private static final String BEDROCK_SECRET_KEY = "settings.bedrock.secretKey";
     private static final String GROQ_API_KEY = "settings.groq.apiKey";
     private static final String DEEPSEEK_API_KEY = "settings.deepSeek.apiKey";
     private static final List<SecretBinding> SECRET_BINDINGS = List.of(
@@ -41,11 +44,13 @@ public class SettingsSecretsService {
         for (SecretBinding binding : SECRET_BINDINGS) {
             migrated = migrateSecret(settings, binding) || migrated;
         }
+        migrated = migrateBedrockSecrets(settings) || migrated;
         return migrated;
     }
 
     public void saveSubmittedSecrets(ApplicationSettings settings) {
         SECRET_BINDINGS.forEach(binding -> saveSubmittedSecret(settings, binding));
+        saveSubmittedBedrockSecrets(settings);
     }
 
     public void applySecretValues(ApplicationSettings settings) {
@@ -53,10 +58,12 @@ public class SettingsSecretsService {
             String apiKey = secretStore.get(binding.secretKey()).orElse("");
             binding.providerSettings(settings).setApiKey(apiKey);
         });
+        applyBedrockSecretValues(settings);
     }
 
     public void applySecretStatus(ApplicationSettings settings) {
         SECRET_BINDINGS.forEach(binding -> applyStatus(settings, binding));
+        applyBedrockSecretStatus(settings);
     }
 
     public void clearSecretValues(ApplicationSettings settings) {
@@ -65,6 +72,7 @@ public class SettingsSecretsService {
             providerSettings.setApiKey("");
             providerSettings.setClearApiKey(false);
         });
+        clearBedrockSecretValues(settings);
     }
 
     private boolean migrateSecret(ApplicationSettings settings, SecretBinding binding) {
@@ -93,6 +101,60 @@ public class SettingsSecretsService {
         ApiKeySettings providerSettings = binding.providerSettings(settings);
         providerSettings.setApiKeyConfigured(secret.isPresent());
         providerSettings.setApiKeyLastFour(secret.map(this::lastFour).orElse(""));
+    }
+
+    private boolean migrateBedrockSecrets(ApplicationSettings settings) {
+        BedrockSettings bedrock = settings.getBedrock();
+        boolean migrated = false;
+        if (hasText(bedrock.getAccessKey())) {
+            secretStore.put(BEDROCK_ACCESS_KEY, bedrock.getAccessKey());
+            bedrock.setAccessKey("");
+            migrated = true;
+        }
+        if (hasText(bedrock.getSecretKey())) {
+            secretStore.put(BEDROCK_SECRET_KEY, bedrock.getSecretKey());
+            bedrock.setSecretKey("");
+            migrated = true;
+        }
+        return migrated;
+    }
+
+    private void saveSubmittedBedrockSecrets(ApplicationSettings settings) {
+        BedrockSettings bedrock = settings.getBedrock();
+        if (bedrock.isClearAccessKey()) {
+            secretStore.delete(BEDROCK_ACCESS_KEY);
+        } else if (hasText(bedrock.getAccessKey())) {
+            secretStore.put(BEDROCK_ACCESS_KEY, bedrock.getAccessKey());
+        }
+
+        if (bedrock.isClearSecretKey()) {
+            secretStore.delete(BEDROCK_SECRET_KEY);
+        } else if (hasText(bedrock.getSecretKey())) {
+            secretStore.put(BEDROCK_SECRET_KEY, bedrock.getSecretKey());
+        }
+    }
+
+    private void applyBedrockSecretValues(ApplicationSettings settings) {
+        BedrockSettings bedrock = settings.getBedrock();
+        bedrock.setAccessKey(secretStore.get(BEDROCK_ACCESS_KEY).orElse(""));
+        bedrock.setSecretKey(secretStore.get(BEDROCK_SECRET_KEY).orElse(""));
+    }
+
+    private void applyBedrockSecretStatus(ApplicationSettings settings) {
+        BedrockSettings bedrock = settings.getBedrock();
+        Optional<String> accessKey = secretStore.get(BEDROCK_ACCESS_KEY);
+        Optional<String> secretKey = secretStore.get(BEDROCK_SECRET_KEY);
+        bedrock.setAccessKeyConfigured(accessKey.isPresent());
+        bedrock.setAccessKeyLastFour(accessKey.map(this::lastFour).orElse(""));
+        bedrock.setSecretKeyConfigured(secretKey.isPresent());
+    }
+
+    private void clearBedrockSecretValues(ApplicationSettings settings) {
+        BedrockSettings bedrock = settings.getBedrock();
+        bedrock.setAccessKey("");
+        bedrock.setClearAccessKey(false);
+        bedrock.setSecretKey("");
+        bedrock.setClearSecretKey(false);
     }
 
     private String lastFour(String value) {

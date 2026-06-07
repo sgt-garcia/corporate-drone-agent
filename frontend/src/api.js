@@ -160,6 +160,30 @@ export async function getDeepSeekModels({ apiKey, useSavedKey }) {
   });
 }
 
+export async function getBedrockRegions() {
+  return request("/api/settings/bedrock-regions");
+}
+
+export async function getBedrockModels({
+  region,
+  accessKey,
+  secretKey,
+  useSavedAccessKey,
+  useSavedSecretKey
+}) {
+  return request("/api/settings/bedrock-models", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      region,
+      accessKey,
+      secretKey,
+      useSavedAccessKey,
+      useSavedSecretKey
+    })
+  });
+}
+
 export async function getOllamaModels({ baseUrl }) {
   return request("/api/settings/ollama-models", {
     method: "POST",

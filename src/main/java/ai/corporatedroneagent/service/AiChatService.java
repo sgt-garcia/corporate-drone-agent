@@ -3,6 +3,7 @@ package ai.corporatedroneagent.service;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.AnthropicSettings;
 import ai.corporatedroneagent.model.AzureOpenAiSettings;
+import ai.corporatedroneagent.model.BedrockSettings;
 import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.DeepSeekSettings;
 import ai.corporatedroneagent.model.GeminiSettings;
@@ -34,6 +35,8 @@ import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.azure.openai.AzureOpenAiChatModel;
 import org.springframework.ai.azure.openai.AzureOpenAiChatOptions;
+import org.springframework.ai.bedrock.converse.BedrockChatOptions;
+import org.springframework.ai.bedrock.converse.BedrockProxyChatModel;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -53,6 +56,9 @@ import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 
 @Service
 public class AiChatService {
@@ -152,6 +158,13 @@ public class AiChatService {
                         ApplicationSettings::getAnthropic,
                         AiChatService::anthropicValidationMessage,
                         AiChatService::buildAnthropicChatModel
+                ),
+                new ChatModelProvider<>(
+                        "bedrock",
+                        "Amazon Bedrock",
+                        ApplicationSettings::getBedrock,
+                        AiChatService::bedrockValidationMessage,
+                        AiChatService::buildBedrockChatModel
                 ),
                 new ChatModelProvider<>(
                         "groq",
@@ -271,6 +284,15 @@ public class AiChatService {
     private static String anthropicValidationMessage(AnthropicSettings settings) {
         return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
                 ? "Anthropic is selected, but API key and model are required before I can call it."
+                : "";
+    }
+
+    private static String bedrockValidationMessage(BedrockSettings settings) {
+        return isBlank(settings.getRegion())
+                || isBlank(settings.getAccessKey())
+                || isBlank(settings.getSecretKey())
+                || isBlank(settings.getModel())
+                ? "Amazon Bedrock is selected, but region, access key, secret key, and model are required before I can call it."
                 : "";
     }
 
@@ -468,6 +490,21 @@ public class AiChatService {
 
         return AnthropicChatModel.builder()
                 .anthropicApi(anthropicApi)
+                .defaultOptions(chatOptions)
+                .build();
+    }
+
+    private static BedrockProxyChatModel buildBedrockChatModel(BedrockSettings settings) {
+        BedrockChatOptions chatOptions = BedrockChatOptions.builder()
+                .model(settings.getModel())
+                .build();
+
+        return BedrockProxyChatModel.builder()
+                .region(Region.of(settings.getRegion()))
+                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(
+                        settings.getAccessKey(),
+                        settings.getSecretKey()
+                )))
                 .defaultOptions(chatOptions)
                 .build();
     }

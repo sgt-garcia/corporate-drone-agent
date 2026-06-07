@@ -3,6 +3,8 @@ import { Icon } from "./Icon.jsx";
 import {
   getAnthropicModels,
   getAzureOpenAiDeployments,
+  getBedrockModels,
+  getBedrockRegions,
   getDeepSeekModels,
   getGeminiModels,
   getGroqModels,
@@ -59,10 +61,11 @@ const PROVIDERS = [
     id: "bedrock",
     name: "Bedrock",
     region: "United States",
-    kind: "aws",
+    kind: "bedrock",
     settingsKey: "bedrock",
     aiModelValue: "bedrock",
-    blurb: "Foundation models via the Bedrock Converse API."
+    blurb: "Foundation models via the Bedrock Converse API.",
+    loadModels: loadBedrockModels
   },
   {
     id: "mistral",
@@ -124,31 +127,6 @@ const NAV = [
 // Maximum number of continuously-scanned local folders.
 const KNOWLEDGE_MAX = 10;
 
-// AWS regions where Bedrock model access can be enabled.
-const AWS_REGIONS = [
-  { id: "us-east-1", label: "US East (N. Virginia)" },
-  { id: "us-east-2", label: "US East (Ohio)" },
-  { id: "us-west-2", label: "US West (Oregon)" },
-  { id: "ca-central-1", label: "Canada (Central)" },
-  { id: "eu-central-1", label: "Europe (Frankfurt)" },
-  { id: "eu-west-1", label: "Europe (Ireland)" },
-  { id: "eu-west-3", label: "Europe (Paris)" },
-  { id: "ap-northeast-1", label: "Asia Pacific (Tokyo)" },
-  { id: "ap-southeast-1", label: "Asia Pacific (Singapore)" },
-  { id: "ap-southeast-2", label: "Asia Pacific (Sydney)" }
-];
-
-// Bedrock Converse model IDs offered in the model dropdown.
-const BEDROCK_MODELS = [
-  "anthropic.claude-3-7-sonnet-20250219-v1:0",
-  "anthropic.claude-3-5-sonnet-20241022-v2:0",
-  "anthropic.claude-3-5-haiku-20241022-v1:0",
-  "amazon.nova-pro-v1:0",
-  "amazon.nova-lite-v1:0",
-  "meta.llama3-3-70b-instruct-v1:0",
-  "mistral.mistral-large-2407-v1:0"
-];
-
 const DEFAULT_AWS_REGION = "us-east-1";
 
 // Stable module-level loaders. ProviderModelSelect keeps `loadModels` in its
@@ -167,6 +145,22 @@ function loadAzureDeployments({ lookupValue, provider, useSavedKey }) {
   });
 }
 
+function loadBedrockModels({
+  lookupValue,
+  provider,
+  secretValue,
+  useSavedKey,
+  useSavedSecretKey
+}) {
+  return getBedrockModels({
+    region: provider,
+    accessKey: lookupValue,
+    secretKey: secretValue,
+    useSavedAccessKey: useSavedKey,
+    useSavedSecretKey
+  });
+}
+
 function providerState(provider, settings) {
   const config = settings?.[provider.settingsKey] ?? {};
   if (provider.kind === "local") {
@@ -178,12 +172,12 @@ function providerState(provider, settings) {
       model: config.deploymentName ?? ""
     };
   }
-  if (provider.kind === "aws") {
-    const hasCredentials =
-      Boolean(config.accessKeyConfigured && config.secretKeyConfigured) ||
-      Boolean(config.accessKey && config.secretKey);
+  if (provider.kind === "bedrock") {
     return {
-      connected: hasCredentials && Boolean(config.model),
+      connected:
+        Boolean(config.region) &&
+        Boolean(config.accessKeyConfigured) &&
+        Boolean(config.secretKeyConfigured),
       model: config.model ?? ""
     };
   }
@@ -790,7 +784,99 @@ function ProviderConfig({
 function ProviderFields({ provider, config, updateProviderConfig }) {
   const settingsKey = provider.settingsKey;
 
-  if (provider.kind === "aws") {
+  if (provider.kind === "bedrock") {
+    const useSavedAccessKey = Boolean(
+      config.accessKeyConfigured && !config.clearAccessKey
+    );
+    const useSavedSecretKey = Boolean(
+      config.secretKeyConfigured && !config.clearSecretKey
+    );
+    return (
+      <>
+        <Field
+          label="AWS Region"
+          hint="The region where you've enabled Bedrock model access."
+        >
+          <ProviderRegionSelect
+            value={config.region ?? DEFAULT_AWS_REGION}
+            onChange={(region) => updateProviderConfig(settingsKey, { region })}
+          />
+        </Field>
+        <AwsSecretField
+          label="Access key ID"
+          type="text"
+          placeholder="AKIA..."
+          hint="An IAM key with Bedrock model-list and invoke permissions."
+          value={config.accessKey ?? ""}
+          configured={Boolean(config.accessKeyConfigured)}
+          lastFour={config.accessKeyLastFour ?? ""}
+          clear={Boolean(config.clearAccessKey)}
+          onChange={(accessKey) =>
+            updateProviderConfig(settingsKey, { accessKey, clearAccessKey: false })
+          }
+          onClear={() =>
+            updateProviderConfig(settingsKey, {
+              accessKey: "",
+              accessKeyConfigured: false,
+              accessKeyLastFour: "",
+              clearAccessKey: true
+            })
+          }
+        />
+        <AwsSecretField
+          label="Secret access key"
+          type="password"
+          placeholder="AWS secret access key"
+          hint="Stored encrypted on this device - never synced."
+          value={config.secretKey ?? ""}
+          configured={Boolean(config.secretKeyConfigured)}
+          clear={Boolean(config.clearSecretKey)}
+          onChange={(secretKey) =>
+            updateProviderConfig(settingsKey, { secretKey, clearSecretKey: false })
+          }
+          onClear={() =>
+            updateProviderConfig(settingsKey, {
+              secretKey: "",
+              secretKeyConfigured: false,
+              clearSecretKey: true
+            })
+          }
+        />
+        <div className="field" role="group" aria-label="Bedrock model">
+          <span className="field-label">Model</span>
+          <ProviderModelSelect
+            ariaLabel="Bedrock model"
+            idleHint="Enter AWS credentials to load available Bedrock models."
+            errorLabel="Unable to load Bedrock models."
+            loadingLabel="Loading Bedrock models..."
+            loadModels={provider.loadModels}
+            lookupValue={config.accessKey ?? ""}
+            provider={config.region ?? DEFAULT_AWS_REGION}
+            secretValue={config.secretKey ?? ""}
+            useSavedKey={useSavedAccessKey}
+            useSavedSecretKey={useSavedSecretKey}
+            value={config.model ?? ""}
+            onChange={(model) => updateProviderConfig(settingsKey, { model })}
+          />
+          <input
+            className="input"
+            type="text"
+            aria-label="Bedrock model ID"
+            placeholder="Model ID"
+            value={config.model ?? ""}
+            onChange={(event) =>
+              updateProviderConfig(settingsKey, { model: event.target.value })
+            }
+          />
+          <span className="field-hint">
+            Pick a model, or type its model ID if the list can't load.
+          </span>
+        </div>
+      </>
+    );
+  }
+
+  if (provider.kind === "__unused_aws") {
     return (
       <>
         <Field
@@ -1093,6 +1179,110 @@ function ApiKeyField({ label, placeholder, config, onChange, onClear }) {
   );
 }
 
+function AwsSecretField({
+  label,
+  type,
+  placeholder,
+  hint,
+  value,
+  configured,
+  lastFour,
+  clear,
+  onChange,
+  onClear
+}) {
+  const hasSavedValue = configured && !clear;
+  const ending = lastFour ? ` ending ${lastFour}` : "";
+
+  return (
+    <div className="field">
+      <label className="field">
+        <span className="field-label">{label}</span>
+        <span className="input-icon">
+          <Icon name="key" size={16} />
+          <input
+            className="input"
+            type={type}
+            placeholder={hasSavedValue ? `Saved value${ending}` : placeholder}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+          />
+        </span>
+      </label>
+      {hasSavedValue ? (
+        <span className="saved-key-row">
+          <span className="saved-key-text">
+            <Icon name="circle-check" size={13} color="var(--success-600)" />
+            Saved value{ending}
+          </span>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={onClear}>
+            Clear
+          </button>
+        </span>
+      ) : (
+        <span className="field-hint">{hint}</span>
+      )}
+      {clear && <span className="field-hint">Value will be cleared when you save.</span>}
+    </div>
+  );
+}
+
+function ProviderRegionSelect({ value, onChange }) {
+  const [regions, setRegions] = useState([]);
+  const [status, setStatus] = useState("loading");
+
+  useEffect(() => {
+    let isActive = true;
+    async function loadRegions() {
+      try {
+        const loadedRegions = await getBedrockRegions();
+        if (!isActive) {
+          return;
+        }
+        setRegions(loadedRegions);
+        setStatus("loaded");
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+        console.error("Region lookup failed:", error);
+        setRegions([]);
+        setStatus("error");
+      }
+    }
+    loadRegions();
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const options = regions.includes(value) ? regions : [value, ...regions].filter(Boolean);
+
+  return (
+    <>
+      <select
+        className="input"
+        disabled={options.length === 0}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.length === 0 ? (
+          <option value="">{status === "loading" ? "Loading regions..." : "-"}</option>
+        ) : (
+          options.map((region) => (
+            <option key={region} value={region}>
+              {region}
+            </option>
+          ))
+        )}
+      </select>
+      {status === "error" && (
+        <p className="model-select-status">Unable to load Bedrock regions.</p>
+      )}
+    </>
+  );
+}
+
 function AwsKeyField({
   label,
   type,
@@ -1131,7 +1321,9 @@ function ProviderModelSelect({
   lookupValue,
   onChange,
   provider,
+  secretValue,
   useSavedKey,
+  useSavedSecretKey,
   value
 }) {
   const [models, setModels] = useState([]);
@@ -1158,7 +1350,9 @@ function ProviderModelSelect({
             lookupValue,
             apiKey: lookupValue,
             provider,
-            useSavedKey
+            secretValue,
+            useSavedKey,
+            useSavedSecretKey
           });
           if (!isActive) {
             return;
@@ -1183,7 +1377,15 @@ function ProviderModelSelect({
       isActive = false;
       window.clearTimeout(timeout);
     };
-  }, [errorLabel, loadModels, lookupValue, provider, useSavedKey]);
+  }, [
+    errorLabel,
+    loadModels,
+    lookupValue,
+    provider,
+    secretValue,
+    useSavedKey,
+    useSavedSecretKey
+  ]);
 
   const options = [...models];
   const selectedValue = options.includes(value) ? value : "";

@@ -25,8 +25,8 @@ Working today:
   over server-sent events.
 - Configurable global assistant name, active AI provider, and custom
   instructions.
-- LLM chat support for OpenAI, OpenAI Official SDK, Azure OpenAI, Ollama,
-  Mistral AI, Google Gemini, Anthropic, Groq, and DeepSeek.
+- LLM chat support for OpenAI, OpenAI Official SDK, Azure OpenAI, Amazon
+  Bedrock, Ollama, Mistral AI, Google Gemini, Anthropic, Groq, and DeepSeek.
 - Provider model/deployment lookup from the Settings screen, using saved API
   keys when available.
 - Local API-key storage that avoids returning secrets from the settings API.
@@ -131,6 +131,7 @@ is chosen in **General**.
 | OpenAI | API key, model | Lists OpenAI chat models |
 | OpenAI (SDK) | API key, model | Lists OpenAI chat models |
 | Azure OpenAI | endpoint, API key, deployment name | Lists compatible deployments |
+| Amazon Bedrock | region, access key ID, secret access key, model | Lists Bedrock regions and region-specific foundation models |
 | Ollama | base URL, model | Lists local Ollama chat models |
 | Mistral | API key, model | Lists active Mistral chat models |
 | Gemini | API key, model | Lists Gemini generation models |
@@ -313,6 +314,8 @@ The current backend exposes:
 - `POST /api/settings/knowledge/local-folders/{folderId}/resume`
 - `POST /api/settings/openai-models`
 - `POST /api/settings/azure-openai-deployments`
+- `GET /api/settings/bedrock-regions`
+- `POST /api/settings/bedrock-models`
 - `POST /api/settings/ollama-models`
 - `POST /api/settings/mistral-models`
 - `POST /api/settings/gemini-models`

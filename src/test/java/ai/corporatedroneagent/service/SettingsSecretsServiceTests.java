@@ -35,6 +35,12 @@ class SettingsSecretsServiceTests {
                             "apiKey": "anthropic-secret",
                             "model": "claude-sonnet-4-6"
                           },
+                          "bedrock": {
+                            "region": "eu-central-1",
+                            "accessKey": "bedrock-access",
+                            "secretKey": "bedrock-secret",
+                            "model": "anthropic.claude-sonnet"
+                          },
                           "groq": {
                             "apiKey": "groq-secret",
                             "model": "llama-3.3-70b-versatile"
@@ -52,6 +58,8 @@ class SettingsSecretsServiceTests {
         assertThat(settings.getMistral().getApiKey()).isEqualTo("mistral-secret");
         assertThat(settings.getGemini().getApiKey()).isEqualTo("google-secret");
         assertThat(settings.getAnthropic().getApiKey()).isEqualTo("anthropic-secret");
+        assertThat(settings.getBedrock().getAccessKey()).isEqualTo("bedrock-access");
+        assertThat(settings.getBedrock().getSecretKey()).isEqualTo("bedrock-secret");
         assertThat(settings.getGroq().getApiKey()).isEqualTo("groq-secret");
         assertThat(settings.getDeepSeek().getApiKey()).isEqualTo("deepseek-secret");
 
@@ -61,9 +69,13 @@ class SettingsSecretsServiceTests {
         assertThat(json).doesNotContain("mistral-secret");
         assertThat(json).doesNotContain("google-secret");
         assertThat(json).doesNotContain("anthropic-secret");
+        assertThat(json).doesNotContain("bedrock-access");
+        assertThat(json).doesNotContain("bedrock-secret");
         assertThat(json).doesNotContain("groq-secret");
         assertThat(json).doesNotContain("deepseek-secret");
         assertThat(json).doesNotContain("\"apiKey\"");
+        assertThat(json).doesNotContain("\"accessKey\"");
+        assertThat(json).doesNotContain("\"secretKey\"");
     }
 
     @Test
@@ -75,6 +87,8 @@ class SettingsSecretsServiceTests {
         settings.getMistral().setApiKey("mistral-secret");
         settings.getGemini().setApiKey("google-secret");
         settings.getAnthropic().setApiKey("anthropic-secret");
+        settings.getBedrock().setAccessKey("bedrock-access");
+        settings.getBedrock().setSecretKey("bedrock-secret");
         settings.getGroq().setApiKey("groq-secret");
         settings.getDeepSeek().setApiKey("deepseek-secret");
 
@@ -94,6 +108,11 @@ class SettingsSecretsServiceTests {
         assertThat(settings.getAnthropic().getApiKey()).isEmpty();
         assertThat(settings.getAnthropic().isApiKeyConfigured()).isTrue();
         assertThat(settings.getAnthropic().getApiKeyLastFour()).isEqualTo("cret");
+        assertThat(settings.getBedrock().getAccessKey()).isEmpty();
+        assertThat(settings.getBedrock().isAccessKeyConfigured()).isTrue();
+        assertThat(settings.getBedrock().getAccessKeyLastFour()).isEqualTo("cess");
+        assertThat(settings.getBedrock().getSecretKey()).isEmpty();
+        assertThat(settings.getBedrock().isSecretKeyConfigured()).isTrue();
         assertThat(settings.getGroq().getApiKey()).isEmpty();
         assertThat(settings.getGroq().isApiKeyConfigured()).isTrue();
         assertThat(settings.getGroq().getApiKeyLastFour()).isEqualTo("cret");
@@ -104,6 +123,8 @@ class SettingsSecretsServiceTests {
         assertThat(secretStore.get("settings.mistral.apiKey")).contains("mistral-secret");
         assertThat(secretStore.get("settings.gemini.apiKey")).contains("google-secret");
         assertThat(secretStore.get("settings.anthropic.apiKey")).contains("anthropic-secret");
+        assertThat(secretStore.get("settings.bedrock.accessKey")).contains("bedrock-access");
+        assertThat(secretStore.get("settings.bedrock.secretKey")).contains("bedrock-secret");
         assertThat(secretStore.get("settings.groq.apiKey")).contains("groq-secret");
         assertThat(secretStore.get("settings.deepSeek.apiKey")).contains("deepseek-secret");
     }

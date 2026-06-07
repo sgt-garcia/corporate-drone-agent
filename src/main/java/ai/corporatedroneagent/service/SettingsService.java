@@ -85,6 +85,7 @@ public class SettingsService {
         current.setMistral(settings.getMistral());
         current.setGemini(settings.getGemini());
         current.setAnthropic(settings.getAnthropic());
+        current.setBedrock(settings.getBedrock());
         current.setGroq(settings.getGroq());
         current.setDeepSeek(settings.getDeepSeek());
         settingsSecretsService.clearSecretValues(current);

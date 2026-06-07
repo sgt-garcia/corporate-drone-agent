@@ -160,6 +160,40 @@ class AiChatServiceTests {
         assertThat(reply.content()).isEqualTo("OpenAI is selected, but API key and model are required before I can call it.");
     }
 
+    @Test
+    void replyValidatesBedrockSettings() {
+        UUID conversationId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        ApplicationSettings settings = new ApplicationSettings();
+        settings.setAiModel("bedrock");
+        Conversation conversation = new Conversation();
+        conversation.setId(conversationId);
+        conversation.setProjectId(projectId);
+        Project project = new Project();
+        project.setId(projectId);
+        SettingsService settingsService = mock(SettingsService.class);
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        ProjectRepository projectRepository = mock(ProjectRepository.class);
+        KnowledgeSearchService knowledgeSearchService = mock(KnowledgeSearchService.class);
+        when(settingsService.getWithSecrets()).thenReturn(settings);
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
+        when(knowledgeSearchService.search("hello", 5)).thenReturn(List.of());
+        AiChatService service = new AiChatService(
+                settingsService,
+                conversationRepository,
+                projectRepository,
+                knowledgeSearchService
+        );
+
+        ChatReply reply = service.reply(conversationId, "hello");
+
+        assertThat(reply.role()).isEqualTo("error");
+        assertThat(reply.content()).isEqualTo(
+                "Amazon Bedrock is selected, but region, access key, secret key, and model are required before I can call it."
+        );
+    }
+
     private Message message(String role, String content) {
         return new Message(UUID.randomUUID(), role, content, Instant.now());
     }

@@ -49,8 +49,10 @@ const emptySettings = {
     accessKey: "",
     accessKeyConfigured: false,
     accessKeyLastFour: "",
+    clearAccessKey: false,
     secretKey: "",
     secretKeyConfigured: false,
+    clearSecretKey: false,
     model: ""
   },
   ollama: { baseUrl: "http://localhost:11434", model: "" },

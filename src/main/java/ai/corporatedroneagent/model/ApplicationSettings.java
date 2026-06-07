@@ -16,6 +16,7 @@ public class ApplicationSettings {
     private MistralSettings mistral = new MistralSettings();
     private GeminiSettings gemini = new GeminiSettings();
     private AnthropicSettings anthropic = new AnthropicSettings();
+    private BedrockSettings bedrock = new BedrockSettings();
     private GroqSettings groq = new GroqSettings();
     private DeepSeekSettings deepSeek = new DeepSeekSettings();
 
@@ -105,6 +106,14 @@ public class ApplicationSettings {
 
     public void setAnthropic(AnthropicSettings anthropic) {
         this.anthropic = anthropic == null ? new AnthropicSettings() : anthropic;
+    }
+
+    public BedrockSettings getBedrock() {
+        return bedrock;
+    }
+
+    public void setBedrock(BedrockSettings bedrock) {
+        this.bedrock = bedrock == null ? new BedrockSettings() : bedrock;
     }
 
     public GroqSettings getGroq() {
