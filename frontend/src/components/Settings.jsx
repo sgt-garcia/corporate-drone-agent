@@ -880,69 +880,6 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
     );
   }
 
-  if (provider.kind === "__unused_aws") {
-    return (
-      <>
-        <Field
-          label="AWS Region"
-          hint="The region where you've enabled Bedrock model access."
-        >
-          <select
-            className="input"
-            value={config.region ?? DEFAULT_AWS_REGION}
-            onChange={(event) =>
-              updateProviderConfig(settingsKey, { region: event.target.value })
-            }
-          >
-            {[].map((region) => (
-              <option key={region.id} value={region.id}>
-                {region.id} — {region.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <AwsKeyField
-          label="Access key ID"
-          type="text"
-          placeholder="AKIA…"
-          hint="An IAM key with the bedrock:InvokeModel permission."
-          value={config.accessKey ?? ""}
-          configured={Boolean(config.accessKeyConfigured)}
-          lastFour={config.accessKeyLastFour ?? ""}
-          onChange={(accessKey) =>
-            updateProviderConfig(settingsKey, { accessKey, clearAccessKey: false })
-          }
-        />
-        <AwsKeyField
-          label="Secret access key"
-          type="password"
-          placeholder="••••••••••••"
-          hint="Stored encrypted on this device — never synced."
-          value={config.secretKey ?? ""}
-          configured={Boolean(config.secretKeyConfigured)}
-          onChange={(secretKey) =>
-            updateProviderConfig(settingsKey, { secretKey, clearSecretKey: false })
-          }
-        />
-        <Field label="Model">
-          <select
-            className="input"
-            value={[].includes(config.model) ? config.model : ""}
-            onChange={(event) =>
-              updateProviderConfig(settingsKey, { model: event.target.value })
-            }
-          >
-            <option value="">—</option>
-            {[].map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </>
-    );
-  }
 
   if (provider.kind === "local") {
     return (
@@ -1287,34 +1224,6 @@ function ProviderRegionSelect({ value, onChange }) {
   );
 }
 
-function AwsKeyField({
-  label,
-  type,
-  placeholder,
-  hint,
-  value,
-  configured,
-  lastFour,
-  onChange
-}) {
-  const savedSuffix = configured && lastFour ? ` · ending ${lastFour}` : "";
-  return (
-    <label className="field">
-      <span className="field-label">{label}</span>
-      <span className="input-icon">
-        <Icon name="key" size={16} />
-        <input
-          className="input"
-          type={type}
-          placeholder={configured ? `Saved${savedSuffix}` : placeholder}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </span>
-      <span className="field-hint">{hint}</span>
-    </label>
-  );
-}
 
 function ProviderModelSelect({
   ariaLabel,
