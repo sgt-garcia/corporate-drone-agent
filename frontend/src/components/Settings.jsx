@@ -188,6 +188,7 @@ function providerState(provider, settings) {
 }
 
 export function Settings({
+  initialSection,
   onClose,
   settings,
   onSave,
@@ -198,7 +199,7 @@ export function Settings({
   onToggleKnowledgeFolderPause
 }) {
   const [draft, setDraft] = useState(settings);
-  const [section, setSection] = useState("general");
+  const [section, setSection] = useState(initialSection || "general");
   const [openProviderId, setOpenProviderId] = useState(null);
   const [knowledgeView, setKnowledgeView] = useState(null); // null | "local-folders"
 

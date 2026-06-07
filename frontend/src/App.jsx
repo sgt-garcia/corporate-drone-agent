@@ -70,6 +70,7 @@ export default function App() {
   const [settings, setSettings] = useState(emptySettings);
   const [knowledgeFolders, setKnowledgeFolders] = useState(defaultKnowledgeFolders);
   const [activePage, setActivePage] = useState("work");
+  const [settingsSection, setSettingsSection] = useState(null);
   const [activeWorkItemId, setActiveWorkItemId] = useState(null);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState([]);
   const [statusText, setStatusText] = useState("Loading...");
@@ -425,6 +426,26 @@ export default function App() {
     }
   }
 
+  // Re-run the last reply by re-sending the most recent user message. There's
+  // no dedicated retry endpoint, so this posts the same prompt again.
+  async function retryConversation(conversationId) {
+    const conversation = conversationsById[conversationId];
+    if (!conversation) {
+      return;
+    }
+    const lastUserMessage = [...conversation.messages]
+      .reverse()
+      .find((message) => message.role === "user");
+    if (lastUserMessage) {
+      await sendMessage(conversationId, lastUserMessage.content);
+    }
+  }
+
+  function openProviderSettings() {
+    setSettingsSection("providers");
+    setActivePage("settings");
+  }
+
   async function updateProject(project) {
     const savedProject = await saveProject(project);
     setProjects((currentProjects) => upsertById(currentProjects, savedProject));
@@ -554,12 +575,16 @@ export default function App() {
         onAddConversation={addConversation}
         onSelectWorkItem={selectWorkItem}
         onToggleProject={toggleProject}
-        onOpenSettings={() => setActivePage("settings")}
+        onOpenSettings={() => {
+          setSettingsSection(null);
+          setActivePage("settings");
+        }}
         settingsActive={activePage === "settings"}
       />
 
       {activePage === "settings" ? (
         <Settings
+          initialSection={settingsSection}
           onClose={() => setActivePage("work")}
           settings={settings}
           onSave={updateSettings}
@@ -647,9 +672,13 @@ export default function App() {
             activeItem={activeWorkItem}
             conversationsById={conversationsById}
             draftsByConversationId={draftsByConversationId}
+            echoMode={!settings.aiModel || settings.aiModel === "none"}
+            onCreateProject={addProject}
             onDraftChange={updateDraft}
+            onOpenProviders={openProviderSettings}
             onProjectSave={updateProject}
             onProjectDelete={deleteProject}
+            onRetry={retryConversation}
             onSend={sendMessage}
           />
         </main>

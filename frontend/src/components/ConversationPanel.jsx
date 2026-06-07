@@ -5,9 +5,12 @@ import { Logomark } from "./Logomark.jsx";
 
 export function ConversationPanel({
   conversation,
+  echoMode = false,
   isLoaded = true,
   messages,
   onDraftChange,
+  onOpenProviders,
+  onRetry,
   onSend,
   project,
   value
@@ -25,6 +28,10 @@ export function ConversationPanel({
   // never flashes while messages are still being fetched.
   const isEmpty = isLoaded && !messages.some((message) => message.role === "user");
 
+  // The last agent turn owns the Retry affordance — only the most recent reply
+  // can be re-run, mirroring the design's error card.
+  const lastAgentMessageId = findLastAgentMessageId(messages);
+
   function submitMessage() {
     onSend(value);
   }
@@ -39,11 +46,19 @@ export function ConversationPanel({
         {isEmpty ? (
           <EmptyGreeting projectName={project?.name} />
         ) : (
-          messages.map((message) => <Turn key={message.id} message={message} />)
+          messages.map((message) => (
+            <Turn
+              key={message.id}
+              message={message}
+              echoMode={echoMode}
+              onRetry={message.id === lastAgentMessageId ? onRetry : undefined}
+            />
+          ))
         )}
       </div>
 
       <div className="composer-wrap">
+        {echoMode && <NoProviderBanner onOpenProviders={onOpenProviders} />}
         <Composer
           placeholder={`Message ${project?.name ?? "your agent"}…`}
           value={value}
@@ -55,7 +70,28 @@ export function ConversationPanel({
   );
 }
 
-function Turn({ message }) {
+// No model provider connected: the backend silently echoes the user's message,
+// so surface a recoverable nudge above the composer (matches the design).
+function NoProviderBanner({ onOpenProviders }) {
+  return (
+    <div className="no-provider-banner">
+      <Icon name="alert-triangle" size={17} color="var(--warning-600)" />
+      <span className="no-provider-text">
+        <b>No model provider connected.</b> Replies just echo your message until
+        you connect one.
+      </span>
+      <button
+        className="btn btn-primary btn-sm"
+        type="button"
+        onClick={onOpenProviders}
+      >
+        <Icon name="cpu" size={14} color="#fff" /> Connect a provider
+      </button>
+    </div>
+  );
+}
+
+function Turn({ message, echoMode = false, onRetry }) {
   const timestamp = formatTimestamp(message.createdAt);
 
   if (message.role === "user") {
@@ -91,17 +127,63 @@ function Turn({ message }) {
               />
             ))}
           </div>
+        ) : isError ? (
+          <AgentError errorText={message.content} onRetry={onRetry} />
         ) : (
           <>
-            <div className={isError ? "turn-text turn-text--error" : "turn-text turn-text--markdown"}>
+            <div className="turn-text turn-text--markdown">
               <ReactMarkdown>{message.content}</ReactMarkdown>
             </div>
+            {echoMode && (
+              <div className="echo-note">
+                <span className="badge badge-warning">
+                  <Icon name="alert-triangle" size={12} color="var(--warning-700)" />
+                  Echo mode
+                </span>
+                <span className="echo-note-text">
+                  No model connected — your message was echoed back.
+                </span>
+              </div>
+            )}
             {timestamp && <div className="turn-time">{timestamp}</div>}
           </>
         )}
       </div>
     </article>
   );
+}
+
+function AgentError({ errorText, onRetry }) {
+  return (
+    <div className="agent-error" role="alert">
+      <Icon name="alert-circle" size={18} color="var(--danger-600)" />
+      <div className="agent-error-body">
+        <div className="agent-error-title">Reply failed</div>
+        <div className="agent-error-text">
+          {errorText || "The agent couldn’t complete this reply."}
+        </div>
+        {onRetry && (
+          <button
+            className="btn btn-secondary btn-sm"
+            type="button"
+            onClick={onRetry}
+          >
+            <Icon name="refresh-cw" size={14} color="var(--gray-700)" /> Retry
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function findLastAgentMessageId(messages) {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const role = messages[i].role;
+    if (role === "assistant" || role === "error") {
+      return messages[i].id;
+    }
+  }
+  return null;
 }
 
 // ISO date + 24-hour time (e.g. "2026-05-31 09:00"), per the design's

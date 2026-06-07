@@ -422,6 +422,10 @@ select.input {
   background: var(--blue-50);
   color: var(--blue-700);
 }
+.badge-warning {
+  background: var(--warning-50);
+  color: var(--warning-700);
+}
 
 /* ---- Card ---- */
 .ds-card {
@@ -788,10 +792,6 @@ select.input {
 .turn-text--markdown {
   white-space: normal;
 }
-.turn-text--error {
-  color: var(--danger-700);
-  white-space: normal;
-}
 .turn-text > :first-child {
   margin-top: 0;
 }
@@ -850,6 +850,52 @@ select.input {
   background: var(--blue-400);
 }
 
+/* ---- Agent error turn ---- */
+.agent-error {
+  border: 1px solid var(--danger-500);
+  background: var(--danger-50);
+  border-radius: var(--radius-lg);
+  padding: 13px 15px;
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+}
+.agent-error > svg {
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+.agent-error-body {
+  flex: 1;
+  min-width: 0;
+}
+.agent-error-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger-700);
+  margin-bottom: 3px;
+}
+.agent-error-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--danger-700);
+}
+.agent-error-body .btn {
+  margin-top: 11px;
+}
+
+/* ---- Echo-mode note (no provider connected) ---- */
+.echo-note {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.echo-note-text {
+  font-size: 12px;
+  color: var(--gray-500);
+}
+
 .empty-greeting {
   max-width: 680px;
   margin: 0 auto;
@@ -871,11 +917,70 @@ select.input {
   font-weight: 500;
 }
 
+/* ---- No-projects empty workspace ---- */
+.no-projects {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.no-projects-inner {
+  text-align: center;
+  max-width: 388px;
+}
+.no-projects-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-xl);
+  background: var(--blue-50);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+.no-projects-inner h1 {
+  margin: 0 0 6px;
+}
+.no-projects-inner p {
+  margin: 0 0 22px;
+  color: var(--gray-500);
+}
+
 /* ---- Composer ---- */
 .composer-wrap {
   flex-shrink: 0;
   padding: 12px 24px 18px;
   background: linear-gradient(to top, var(--bg-canvas) 70%, transparent);
+}
+
+/* No-provider banner sits above the composer, aligned to its 760px column. */
+.no-provider-banner {
+  max-width: 760px;
+  margin: 0 auto 10px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 10px 9px 13px;
+  background: var(--warning-50);
+  border: 1px solid color-mix(in srgb, var(--warning-500) 32%, transparent);
+  border-radius: var(--radius-lg);
+}
+.no-provider-banner > svg {
+  flex-shrink: 0;
+}
+.no-provider-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--warning-700);
+}
+.no-provider-text b {
+  font-weight: 600;
+}
+.no-provider-banner .btn {
+  flex-shrink: 0;
 }
 .composer {
   max-width: 760px;
