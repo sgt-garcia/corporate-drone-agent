@@ -791,6 +791,9 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
     const useSavedSecretKey = Boolean(
       config.secretKeyConfigured && !config.clearSecretKey
     );
+    const canLoadBedrockModels = Boolean(config.region ?? DEFAULT_AWS_REGION)
+      && (Boolean((config.accessKey ?? "").trim()) || useSavedAccessKey)
+      && (Boolean((config.secretKey ?? "").trim()) || useSavedSecretKey);
     return (
       <>
         <Field
@@ -846,10 +849,11 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
           <span className="field-label">Model</span>
           <ProviderModelSelect
             ariaLabel="Bedrock model"
-            idleHint="Enter AWS credentials to load available Bedrock models."
+            idleHint="Enter access key ID and secret access key to load available Bedrock models."
             errorLabel="Unable to load Bedrock models."
             loadingLabel="Loading Bedrock models..."
             loadModels={provider.loadModels}
+            lookupReady={canLoadBedrockModels}
             lookupValue={config.accessKey ?? ""}
             provider={config.region ?? DEFAULT_AWS_REGION}
             secretValue={config.secretKey ?? ""}
@@ -1318,6 +1322,7 @@ function ProviderModelSelect({
   errorLabel,
   loadingLabel,
   loadModels,
+  lookupReady,
   lookupValue,
   onChange,
   provider,
@@ -1332,7 +1337,8 @@ function ProviderModelSelect({
 
   useEffect(() => {
     let isActive = true;
-    if (!lookupValue && !useSavedKey) {
+    const canLookup = lookupReady ?? Boolean(lookupValue || useSavedKey);
+    if (!canLookup) {
       setModels([]);
       setStatus("idle");
       setMessage("");
@@ -1370,7 +1376,7 @@ function ProviderModelSelect({
           setMessage(errorLabel);
         }
       },
-      lookupValue ? 500 : 0
+      lookupValue || secretValue ? 500 : 0
     );
 
     return () => {
@@ -1380,6 +1386,7 @@ function ProviderModelSelect({
   }, [
     errorLabel,
     loadModels,
+    lookupReady,
     lookupValue,
     provider,
     secretValue,
