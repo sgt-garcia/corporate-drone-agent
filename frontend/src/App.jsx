@@ -44,6 +44,15 @@ const emptySettings = {
     apiKeyLastFour: "",
     deploymentName: ""
   },
+  bedrock: {
+    region: "us-east-1",
+    accessKey: "",
+    accessKeyConfigured: false,
+    accessKeyLastFour: "",
+    secretKey: "",
+    secretKeyConfigured: false,
+    model: ""
+  },
   ollama: { baseUrl: "http://localhost:11434", model: "" },
   mistral: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
   gemini: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },

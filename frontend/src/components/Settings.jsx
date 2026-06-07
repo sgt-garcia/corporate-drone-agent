@@ -56,6 +56,15 @@ const PROVIDERS = [
     blurb: "OpenAI models hosted on your Azure resource."
   },
   {
+    id: "bedrock",
+    name: "Bedrock",
+    region: "United States",
+    kind: "aws",
+    settingsKey: "bedrock",
+    aiModelValue: "bedrock",
+    blurb: "Foundation models via the Bedrock Converse API."
+  },
+  {
     id: "mistral",
     name: "Mistral",
     region: "European Union · France",
@@ -115,6 +124,33 @@ const NAV = [
 // Maximum number of continuously-scanned local folders.
 const KNOWLEDGE_MAX = 10;
 
+// AWS regions where Bedrock model access can be enabled.
+const AWS_REGIONS = [
+  { id: "us-east-1", label: "US East (N. Virginia)" },
+  { id: "us-east-2", label: "US East (Ohio)" },
+  { id: "us-west-2", label: "US West (Oregon)" },
+  { id: "ca-central-1", label: "Canada (Central)" },
+  { id: "eu-central-1", label: "Europe (Frankfurt)" },
+  { id: "eu-west-1", label: "Europe (Ireland)" },
+  { id: "eu-west-3", label: "Europe (Paris)" },
+  { id: "ap-northeast-1", label: "Asia Pacific (Tokyo)" },
+  { id: "ap-southeast-1", label: "Asia Pacific (Singapore)" },
+  { id: "ap-southeast-2", label: "Asia Pacific (Sydney)" }
+];
+
+// Bedrock Converse model IDs offered in the model dropdown.
+const BEDROCK_MODELS = [
+  "anthropic.claude-3-7-sonnet-20250219-v1:0",
+  "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "anthropic.claude-3-5-haiku-20241022-v1:0",
+  "amazon.nova-pro-v1:0",
+  "amazon.nova-lite-v1:0",
+  "meta.llama3-3-70b-instruct-v1:0",
+  "mistral.mistral-large-2407-v1:0"
+];
+
+const DEFAULT_AWS_REGION = "us-east-1";
+
 // Stable module-level loaders. ProviderModelSelect keeps `loadModels` in its
 // effect deps, so these must NOT be inline closures or the effect re-runs every
 // render and polls the model endpoint in a loop. Varying values (Ollama base
@@ -140,6 +176,15 @@ function providerState(provider, settings) {
     return {
       connected: Boolean(config.apiKeyConfigured) && Boolean(config.endpoint),
       model: config.deploymentName ?? ""
+    };
+  }
+  if (provider.kind === "aws") {
+    const hasCredentials =
+      Boolean(config.accessKeyConfigured && config.secretKeyConfigured) ||
+      Boolean(config.accessKey && config.secretKey);
+    return {
+      connected: hasCredentials && Boolean(config.model),
+      model: config.model ?? ""
     };
   }
   return {
@@ -745,6 +790,70 @@ function ProviderConfig({
 function ProviderFields({ provider, config, updateProviderConfig }) {
   const settingsKey = provider.settingsKey;
 
+  if (provider.kind === "aws") {
+    return (
+      <>
+        <Field
+          label="AWS Region"
+          hint="The region where you've enabled Bedrock model access."
+        >
+          <select
+            className="input"
+            value={config.region ?? DEFAULT_AWS_REGION}
+            onChange={(event) =>
+              updateProviderConfig(settingsKey, { region: event.target.value })
+            }
+          >
+            {AWS_REGIONS.map((region) => (
+              <option key={region.id} value={region.id}>
+                {region.id} — {region.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <AwsKeyField
+          label="Access key ID"
+          type="text"
+          placeholder="AKIA…"
+          hint="An IAM key with the bedrock:InvokeModel permission."
+          value={config.accessKey ?? ""}
+          configured={Boolean(config.accessKeyConfigured)}
+          lastFour={config.accessKeyLastFour ?? ""}
+          onChange={(accessKey) =>
+            updateProviderConfig(settingsKey, { accessKey, clearAccessKey: false })
+          }
+        />
+        <AwsKeyField
+          label="Secret access key"
+          type="password"
+          placeholder="••••••••••••"
+          hint="Stored encrypted on this device — never synced."
+          value={config.secretKey ?? ""}
+          configured={Boolean(config.secretKeyConfigured)}
+          onChange={(secretKey) =>
+            updateProviderConfig(settingsKey, { secretKey, clearSecretKey: false })
+          }
+        />
+        <Field label="Model">
+          <select
+            className="input"
+            value={BEDROCK_MODELS.includes(config.model) ? config.model : ""}
+            onChange={(event) =>
+              updateProviderConfig(settingsKey, { model: event.target.value })
+            }
+          >
+            <option value="">—</option>
+            {BEDROCK_MODELS.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </>
+    );
+  }
+
   if (provider.kind === "local") {
     return (
       <>
@@ -981,6 +1090,35 @@ function ApiKeyField({ label, placeholder, config, onChange, onClear }) {
         <span className="field-hint">Key will be cleared when you save.</span>
       )}
     </div>
+  );
+}
+
+function AwsKeyField({
+  label,
+  type,
+  placeholder,
+  hint,
+  value,
+  configured,
+  lastFour,
+  onChange
+}) {
+  const savedSuffix = configured && lastFour ? ` · ending ${lastFour}` : "";
+  return (
+    <label className="field">
+      <span className="field-label">{label}</span>
+      <span className="input-icon">
+        <Icon name="key" size={16} />
+        <input
+          className="input"
+          type={type}
+          placeholder={configured ? `Saved${savedSuffix}` : placeholder}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </span>
+      <span className="field-hint">{hint}</span>
+    </label>
   );
 }
 
