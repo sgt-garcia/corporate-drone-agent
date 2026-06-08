@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.corporatedroneagent.model.Project;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.FileSystemException;
 import java.nio.file.Path;
@@ -57,6 +59,26 @@ class ProjectFilesystemToolsTests {
         ProjectFilesystemTools.ToolContent content = tools.readTextFile("/notes.txt", null, 2);
 
         assertThat(content.content()).isEqualTo("alpha\nbravo");
+    }
+
+    @Test
+    void readTextFileHandlesUtf16Text() throws Exception {
+        Files.writeString(temporaryDirectory.resolve("utf16.txt"), "alpha\nbravo\n", StandardCharsets.UTF_16);
+        ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
+
+        ProjectFilesystemTools.ToolContent content = tools.readTextFile("/utf16.txt", null, null);
+
+        assertThat(content.content()).isEqualTo("alpha\nbravo\n");
+    }
+
+    @Test
+    void readTextFileFallsBackToWindows1252Text() throws Exception {
+        Files.writeString(temporaryDirectory.resolve("legacy.txt"), "café", Charset.forName("windows-1252"));
+        ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
+
+        ProjectFilesystemTools.ToolContent content = tools.readTextFile("/legacy.txt", null, null);
+
+        assertThat(content.content()).isEqualTo("café");
     }
 
     @Test

@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -546,10 +550,57 @@ class ProjectFilesystemTools {
 
     private String readText(Path file) {
         try {
-            return Files.readString(file, StandardCharsets.UTF_8);
+            return decodeText(Files.readAllBytes(file));
         } catch (IOException exception) {
             throw new UncheckedIOException("Could not read file: " + virtualPath(file), exception);
         }
+    }
+
+    private String decodeText(byte[] bytes) throws CharacterCodingException {
+        if (startsWith(bytes, 0xEF, 0xBB, 0xBF)) {
+            return decode(bytes, 3, StandardCharsets.UTF_8);
+        }
+        if (startsWith(bytes, 0xFE, 0xFF)) {
+            return decode(bytes, 2, StandardCharsets.UTF_16BE);
+        }
+        if (startsWith(bytes, 0xFF, 0xFE)) {
+            return decode(bytes, 2, StandardCharsets.UTF_16LE);
+        }
+
+        List<Charset> charsets = List.of(
+                StandardCharsets.UTF_8,
+                Charset.forName("windows-1252"),
+                StandardCharsets.ISO_8859_1
+        );
+        CharacterCodingException lastException = null;
+        for (Charset charset : charsets) {
+            try {
+                return decode(bytes, 0, charset);
+            } catch (CharacterCodingException exception) {
+                lastException = exception;
+            }
+        }
+        throw lastException == null ? new CharacterCodingException() : lastException;
+    }
+
+    private boolean startsWith(byte[] bytes, int... prefix) {
+        if (bytes.length < prefix.length) {
+            return false;
+        }
+        for (int index = 0; index < prefix.length; index++) {
+            if ((bytes[index] & 0xFF) != prefix[index]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String decode(byte[] bytes, int offset, Charset charset) throws CharacterCodingException {
+        return charset.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes, offset, bytes.length - offset))
+                .toString();
     }
 
     private LineDocument applyLineEdit(LineDocument document, FileEdit edit, String path) {
