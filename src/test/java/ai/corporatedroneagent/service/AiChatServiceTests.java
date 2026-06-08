@@ -98,6 +98,23 @@ class AiChatServiceTests {
     }
 
     @Test
+    void buildPromptMessagesExplainsWorkingFolderAsVirtualRoot() {
+        ApplicationSettings settings = new ApplicationSettings();
+        Project project = new Project();
+        project.setWorkingFolder("C:\\Work\\Launch");
+        Conversation conversation = new Conversation();
+
+        List<org.springframework.ai.chat.messages.Message> promptMessages =
+                AiChatService.buildPromptMessages(settings, project, conversation);
+
+        assertThat(text(promptMessages.get(0)))
+                .contains("Project filesystem:")
+                .contains("Treat that folder as /")
+                .contains("Do not use local absolute paths.")
+                .doesNotContain("C:\\Work\\Launch");
+    }
+
+    @Test
     void replyLogsKnowledgeRetrievalFailuresAndContinues(CapturedOutput output) {
         UUID conversationId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
