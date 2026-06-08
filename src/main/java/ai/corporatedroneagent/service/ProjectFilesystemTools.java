@@ -160,18 +160,15 @@ class ProjectFilesystemTools {
 
         Path file = existingFile(path);
         String original = readText(file);
-        String updated = original;
+        LineDocument document = parseDocument(original);
         for (FileEdit edit : edits) {
             if (edit == null || edit.oldText() == null || edit.newText() == null) {
                 throw new IllegalArgumentException("Each edit requires oldText and newText.");
             }
-            int index = updated.indexOf(edit.oldText());
-            if (index < 0) {
-                throw new IllegalArgumentException("oldText was not found in " + virtualPath(file) + ".");
-            }
-            updated = updated.substring(0, index) + edit.newText() + updated.substring(index + edit.oldText().length());
+            document = applyLineEdit(document, edit, virtualPath(file));
         }
 
+        String updated = renderDocument(document);
         String diff = diff(virtualPath(file), original, updated);
         if (!Boolean.TRUE.equals(dryRun)) {
             try {
@@ -555,6 +552,90 @@ class ProjectFilesystemTools {
         }
     }
 
+    private LineDocument applyLineEdit(LineDocument document, FileEdit edit, String path) {
+        List<String> oldLines = parseLineSequence(edit.oldText());
+        if (oldLines.isEmpty()) {
+            throw new IllegalArgumentException("oldText must contain at least one complete line.");
+        }
+
+        List<Integer> matches = lineSequenceMatches(document.lines(), oldLines);
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("oldText line sequence was not found in " + path + ".");
+        }
+        if (matches.size() > 1) {
+            throw new IllegalArgumentException("oldText line sequence matched more than once in " + path + ".");
+        }
+
+        List<String> updatedLines = new ArrayList<>(document.lines());
+        int start = matches.getFirst();
+        updatedLines.subList(start, start + oldLines.size()).clear();
+        updatedLines.addAll(start, parseLineSequence(edit.newText()));
+        return new LineDocument(updatedLines, document.trailingLineSeparator(), document.lineSeparator());
+    }
+
+    private List<Integer> lineSequenceMatches(List<String> lines, List<String> sequence) {
+        List<Integer> matches = new ArrayList<>();
+        if (sequence.size() > lines.size()) {
+            return matches;
+        }
+
+        for (int start = 0; start <= lines.size() - sequence.size(); start++) {
+            boolean matched = true;
+            for (int index = 0; index < sequence.size(); index++) {
+                if (!lines.get(start + index).equals(sequence.get(index))) {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) {
+                matches.add(start);
+            }
+        }
+        return matches;
+    }
+
+    private LineDocument parseDocument(String content) {
+        String lineSeparator = content.contains("\r\n") ? "\r\n" : "\n";
+        String normalized = normalizeLineSeparators(content);
+        boolean trailingLineSeparator = normalized.endsWith("\n");
+        List<String> lines = splitLines(normalized);
+        return new LineDocument(lines, trailingLineSeparator, lineSeparator);
+    }
+
+    private List<String> parseLineSequence(String content) {
+        return splitLines(normalizeLineSeparators(content));
+    }
+
+    private List<String> splitLines(String normalizedContent) {
+        if (normalizedContent.isEmpty()) {
+            return List.of();
+        }
+
+        String[] parts = normalizedContent.split("\n", -1);
+        int limit = parts.length;
+        if (normalizedContent.endsWith("\n")) {
+            limit--;
+        }
+
+        List<String> lines = new ArrayList<>();
+        for (int index = 0; index < limit; index++) {
+            lines.add(parts[index]);
+        }
+        return lines;
+    }
+
+    private String normalizeLineSeparators(String content) {
+        return content.replace("\r\n", "\n").replace('\r', '\n');
+    }
+
+    private String renderDocument(LineDocument document) {
+        String rendered = String.join(document.lineSeparator(), document.lines());
+        if (document.trailingLineSeparator() && !document.lines().isEmpty()) {
+            rendered += document.lineSeparator();
+        }
+        return rendered;
+    }
+
     private void validateLineWindow(Integer head, Integer tail) {
         if (head != null && tail != null) {
             throw new IllegalArgumentException("Use either head or tail, not both.");
@@ -694,6 +775,9 @@ class ProjectFilesystemTools {
     }
 
     public record FileEdit(String oldText, String newText) {
+    }
+
+    private record LineDocument(List<String> lines, boolean trailingLineSeparator, String lineSeparator) {
     }
 
     private record TreeNode(String name, String type, List<TreeNode> children) {

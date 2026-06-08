@@ -180,6 +180,38 @@ class ProjectFilesystemToolsTests {
     }
 
     @Test
+    void editFileDoesNotMatchInlineSubstrings() throws Exception {
+        Path file = temporaryDirectory.resolve("notes.txt");
+        Files.writeString(file, "alpha bravo\n");
+        ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
+
+        assertThatThrownBy(() -> tools.editFile(
+                "/notes.txt",
+                List.of(new ProjectFilesystemTools.FileEdit("bravo", "charlie")),
+                false
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("oldText line sequence was not found");
+        assertThat(Files.readString(file)).isEqualTo("alpha bravo\n");
+    }
+
+    @Test
+    void editFileRejectsAmbiguousDuplicateLineSequences() throws Exception {
+        Path file = temporaryDirectory.resolve("notes.txt");
+        Files.writeString(file, "target\nmiddle\ntarget\n");
+        ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
+
+        assertThatThrownBy(() -> tools.editFile(
+                "/notes.txt",
+                List.of(new ProjectFilesystemTools.FileEdit("target", "replacement")),
+                false
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("matched more than once");
+        assertThat(Files.readString(file)).isEqualTo("target\nmiddle\ntarget\n");
+    }
+
+    @Test
     void createDirectoryIsIdempotentForNestedDirectories() {
         ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
 
