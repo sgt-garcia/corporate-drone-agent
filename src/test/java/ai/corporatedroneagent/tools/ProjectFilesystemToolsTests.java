@@ -219,6 +219,43 @@ class ProjectFilesystemToolsTests {
     }
 
     @Test
+    void editFilePreservesUtf16ByteOrderMarkAndEncoding() throws Exception {
+        Path file = temporaryDirectory.resolve("utf16.txt");
+        Files.writeString(file, "alpha\nbravo\n", StandardCharsets.UTF_16);
+        byte[] before = Files.readAllBytes(file);
+        ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
+
+        tools.editFile(
+                "/utf16.txt",
+                List.of(new ProjectFilesystemTools.FileEdit("bravo", "charlie")),
+                false
+        );
+
+        byte[] after = Files.readAllBytes(file);
+        assertThat(after[0]).isEqualTo(before[0]);
+        assertThat(after[1]).isEqualTo(before[1]);
+        assertThat(Files.readString(file, StandardCharsets.UTF_16)).isEqualTo("alpha\ncharlie\n");
+    }
+
+    @Test
+    void editFilePreservesWindows1252Encoding() throws Exception {
+        Charset windows1252 = Charset.forName("windows-1252");
+        Path file = temporaryDirectory.resolve("legacy.txt");
+        Files.writeString(file, "alpha\ncaf\u00e9\n", windows1252);
+        ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
+
+        tools.editFile(
+                "/legacy.txt",
+                List.of(new ProjectFilesystemTools.FileEdit("alpha", "bravo")),
+                false
+        );
+
+        byte[] after = Files.readAllBytes(file);
+        assertThat(after).contains((byte) 0xE9);
+        assertThat(Files.readString(file, windows1252)).isEqualTo("bravo\ncaf\u00e9\n");
+    }
+
+    @Test
     void editFileDoesNotMatchInlineSubstrings() throws Exception {
         Path file = temporaryDirectory.resolve("notes.txt");
         Files.writeString(file, "alpha bravo\n");

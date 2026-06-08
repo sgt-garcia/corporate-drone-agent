@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
@@ -163,7 +164,8 @@ public class ProjectFilesystemTools {
         }
 
         Path file = existingFile(path);
-        String original = readText(file);
+        DecodedText decoded = readDecodedText(file);
+        String original = decoded.content();
         LineDocument document = parseDocument(original);
         for (FileEdit edit : edits) {
             if (edit == null || edit.oldText() == null || edit.newText() == null) {
@@ -176,7 +178,7 @@ public class ProjectFilesystemTools {
         String diff = diff(virtualPath(file), original, updated);
         if (!Boolean.TRUE.equals(dryRun)) {
             try {
-                Files.writeString(file, updated, StandardCharsets.UTF_8);
+                Files.write(file, encodeText(updated, decoded), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
             } catch (IOException exception) {
                 throw new UncheckedIOException("Could not edit file: " + virtualPath(file), exception);
             }
@@ -549,6 +551,10 @@ public class ProjectFilesystemTools {
     }
 
     private String readText(Path file) {
+        return readDecodedText(file).content();
+    }
+
+    private DecodedText readDecodedText(Path file) {
         try {
             return decodeText(Files.readAllBytes(file));
         } catch (IOException exception) {
@@ -556,15 +562,25 @@ public class ProjectFilesystemTools {
         }
     }
 
-    private String decodeText(byte[] bytes) throws CharacterCodingException {
+    private DecodedText decodeText(byte[] bytes) throws CharacterCodingException {
         if (startsWith(bytes, 0xEF, 0xBB, 0xBF)) {
-            return decode(bytes, 3, StandardCharsets.UTF_8);
+            return new DecodedText(decode(bytes, 3, StandardCharsets.UTF_8), StandardCharsets.UTF_8, new byte[] {
+                    (byte) 0xEF,
+                    (byte) 0xBB,
+                    (byte) 0xBF
+            });
         }
         if (startsWith(bytes, 0xFE, 0xFF)) {
-            return decode(bytes, 2, StandardCharsets.UTF_16BE);
+            return new DecodedText(decode(bytes, 2, StandardCharsets.UTF_16BE), StandardCharsets.UTF_16BE, new byte[] {
+                    (byte) 0xFE,
+                    (byte) 0xFF
+            });
         }
         if (startsWith(bytes, 0xFF, 0xFE)) {
-            return decode(bytes, 2, StandardCharsets.UTF_16LE);
+            return new DecodedText(decode(bytes, 2, StandardCharsets.UTF_16LE), StandardCharsets.UTF_16LE, new byte[] {
+                    (byte) 0xFF,
+                    (byte) 0xFE
+            });
         }
 
         List<Charset> charsets = List.of(
@@ -575,7 +591,7 @@ public class ProjectFilesystemTools {
         CharacterCodingException lastException = null;
         for (Charset charset : charsets) {
             try {
-                return decode(bytes, 0, charset);
+                return new DecodedText(decode(bytes, 0, charset), charset, new byte[0]);
             } catch (CharacterCodingException exception) {
                 lastException = exception;
             }
@@ -601,6 +617,20 @@ public class ProjectFilesystemTools {
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
                 .decode(ByteBuffer.wrap(bytes, offset, bytes.length - offset))
                 .toString();
+    }
+
+    private byte[] encodeText(String content, DecodedText original) throws CharacterCodingException {
+        ByteBuffer encoded = original.charset().newEncoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .encode(CharBuffer.wrap(content));
+        byte[] body = new byte[encoded.remaining()];
+        encoded.get(body);
+        byte[] bom = original.bom();
+        byte[] bytes = new byte[bom.length + body.length];
+        System.arraycopy(bom, 0, bytes, 0, bom.length);
+        System.arraycopy(body, 0, bytes, bom.length, body.length);
+        return bytes;
     }
 
     private LineDocument applyLineEdit(LineDocument document, FileEdit edit, String path) {
@@ -840,5 +870,8 @@ public class ProjectFilesystemTools {
     }
 
     private record TreeNode(String name, String type, List<TreeNode> children) {
+    }
+
+    private record DecodedText(String content, Charset charset, byte[] bom) {
     }
 }
