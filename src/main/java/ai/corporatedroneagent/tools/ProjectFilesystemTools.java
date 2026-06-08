@@ -1,4 +1,4 @@
-package ai.corporatedroneagent.service;
+package ai.corporatedroneagent.tools;
 
 import ai.corporatedroneagent.model.Project;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -33,7 +33,7 @@ import java.util.stream.Stream;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
-class ProjectFilesystemTools {
+public class ProjectFilesystemTools {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .setSerializationInclusion(JsonInclude.Include.NON_NULL)
@@ -43,7 +43,7 @@ class ProjectFilesystemTools {
 
     private final String workingFolder;
 
-    ProjectFilesystemTools(Project project) {
+    public ProjectFilesystemTools(Project project) {
         this.workingFolder = project == null ? "" : project.getWorkingFolder();
     }
 

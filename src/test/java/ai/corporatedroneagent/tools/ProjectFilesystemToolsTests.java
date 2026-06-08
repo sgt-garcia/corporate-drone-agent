@@ -1,4 +1,4 @@
-package ai.corporatedroneagent.service;
+package ai.corporatedroneagent.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

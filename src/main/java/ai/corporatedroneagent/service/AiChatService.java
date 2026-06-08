@@ -16,6 +16,7 @@ import ai.corporatedroneagent.model.OpenAiSettings;
 import ai.corporatedroneagent.model.Project;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.repository.ProjectRepository;
+import ai.corporatedroneagent.tools.ProjectFilesystemTools;
 import ai.corporatedroneagent.util.Strings;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.core.credential.AzureKeyCredential;
