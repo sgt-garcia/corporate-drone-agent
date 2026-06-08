@@ -1,14 +1,62 @@
 # Corporate Drone's Agent
 
-Corporate Drone's Agent is a local-first AI assistant for corporate work.
+Corporate Drone's Agent is a local-first personal work agent for corporate
+knowledge workers.
 
-It runs on your machine, stores its application data locally, lets you choose
-your chat provider, and can index local folders so conversations can use your
-own files as reference context.
+It is an open-source personal project, not an internal company platform. It
+runs on your machine, stores its application data locally, lets you choose your
+chat provider, and can index local folders so conversations can use your own
+files as reference context.
 
 The project is currently an early desktop-style web app: a Spring Boot backend
 serves a React/Vite frontend, opens the UI in a Playwright-managed browser
 window, and shuts down with that browser by default.
+
+## Vision
+
+Corporate Drone's Agent is a practical step toward the idea of **Identic AI**:
+an AI that becomes a persistent, personalized, work-aware extension of a
+specific person.
+
+The destination is not just "an AI that answers questions." The long-term idea
+is closer to a digital chief of staff for work: an agent that understands your
+projects, documents, tickets, repositories, conversations, settings, routines,
+preferences, and long-running goals well enough to help you navigate corporate
+work with continuity.
+
+CDA starts with a narrower and more realistic first promise:
+
+```text
+Know what I know at work.
+```
+
+That means connecting the assistant to user-owned context first: local folders
+today, then corporate systems such as Jira, Confluence, GitHub, SharePoint,
+OneDrive, ServiceNow, and Salesforce.
+
+## Positioning
+
+CDA is not trying to be a generic enterprise search platform or a company-wide
+chatbot. It is closer to an Identic AI for knowledge workers:
+
+```text
+my agent, my folders, my projects, my conversations, my tools, my local
+knowledge, my routines.
+```
+
+That makes the project different from enterprise-wide assistants such as
+Microsoft Copilot, Glean, Moveworks, Gemini Enterprise, or Sinequa. Those tools
+are usually deployed at the organization level. CDA is designed as a personal,
+self-controlled work operating system for the individual corporate worker.
+
+The guiding principles are:
+
+- Local-first by default.
+- User-owned context and secrets.
+- Simple setup for a single person.
+- API-first connectors to real work systems.
+- Persistent memory and goal management over time.
+- Controlled autonomous action, especially for scheduled or background work.
 
 ## What Works
 
@@ -52,6 +100,7 @@ conversation flow still works.
   non-local sources.
 - Richer document conversion beyond the current text-oriented pipeline.
 - Scheduled jobs tied to projects and conversations.
+- Persistent personal memory, preferences, and long-term goal tracking.
 - Write-back workflows for external systems.
 - End-user packaging beyond the runnable jar.
 
