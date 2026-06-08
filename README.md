@@ -14,6 +14,8 @@ window, and shuts down with that browser by default.
 
 - Projects and conversations, with persisted message history.
 - Project-level working folders and custom instructions.
+- Spring AI filesystem tools for project working folders, exposed to the
+  assistant as `/`.
 - Global assistant name, provider choice, and custom instructions.
 - Async assistant replies with live status/error events over SSE.
 - Local knowledge folders with add, remove, pause, resume, manual scan, and
@@ -177,6 +179,59 @@ separate context message. They are explicitly treated as untrusted reference
 material, not instructions. If retrieval fails, chat continues without local
 knowledge context and the failure is logged.
 
+## Project Filesystem Tools
+
+When a project has a working folder, chat providers receive a filesystem tool
+set implemented with Spring AI `@Tool` annotations. The assistant sees only the
+project working folder, and that folder is presented as the virtual root `/`.
+For example, a local file such as:
+
+```text
+C:\work\my-project\README.md
+```
+
+is addressed by the assistant as:
+
+```text
+/README.md
+```
+
+Local absolute paths and traversal outside `/` are rejected.
+
+Available tools:
+
+- `read_text_file` and deprecated alias `read_file`
+- `read_media_file`
+- `read_multiple_files`
+- `write_file`
+- `edit_file`
+- `create_directory`
+- `list_directory`
+- `list_directory_with_sizes`
+- `directory_tree`
+- `move_file`
+- `search_files`
+- `get_file_info`
+- `list_allowed_directories`
+
+Safety rules:
+
+- Existing paths are resolved with real-path checks before access.
+- Writes reject existing symlink destinations.
+- Directory tree traversal does not descend through symlinked directories.
+- Directory size reporting uses no-follow metadata so symlinks cannot leak
+  target sizes outside the working folder.
+- `edit_file` applies exact line-sequence edits and fails when the requested
+  old text is missing or ambiguous.
+
+Text handling:
+
+- `read_text_file` supports BOM-marked UTF-8, UTF-16BE, and UTF-16LE, then
+  falls back through strict UTF-8, Windows-1252, and ISO-8859-1.
+- `edit_file` preserves the detected charset and byte-order mark when writing
+  edited content back.
+- `write_file` writes new text content as UTF-8.
+
 ## Technology
 
 - Java 21
@@ -198,6 +253,8 @@ knowledge context and the failure is logged.
 - `src/main/java/ai/corporatedroneagent/service` contains chat orchestration,
   provider lookup, settings/secrets behavior, project workflows, and local
   knowledge scanning/retrieval.
+- `src/main/java/ai/corporatedroneagent/tools` contains assistant tool
+  implementations, including project-scoped filesystem tools.
 - `src/main/java/ai/corporatedroneagent/repository` stores settings, projects,
   conversations, messages, knowledge roots, and knowledge pipeline state.
 - `src/main/java/ai/corporatedroneagent/security` protects local secrets.
@@ -236,4 +293,5 @@ The suite covers application startup, browser/headless behavior, prompt
 construction, transient message filtering, settings validation, provider model
 lookup, secret migration/serialization behavior, local knowledge scanning and
 retrieval, database-backed settings/projects/conversations/messages, project
-deletion cascades, SSE fan-out, and repository behavior.
+deletion cascades, SSE fan-out, repository behavior, and Spring AI filesystem
+tool invocation.
