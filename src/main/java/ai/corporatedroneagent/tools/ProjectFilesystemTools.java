@@ -746,12 +746,18 @@ public class ProjectFilesystemTools {
     }
 
     private String prefix(Path path) {
-        return Files.isDirectory(path) ? "[DIR]" : "[FILE]";
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            return attributes.isDirectory() ? "[DIR]" : "[FILE]";
+        } catch (IOException exception) {
+            return "[FILE]";
+        }
     }
 
     private long size(Path path) {
         try {
-            return Files.isDirectory(path) ? directorySize(path) : Files.size(path);
+            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            return attributes.isDirectory() ? directorySize(path) : attributes.size();
         } catch (IOException exception) {
             return 0L;
         }
@@ -759,15 +765,17 @@ public class ProjectFilesystemTools {
 
     private long directorySize(Path directory) throws IOException {
         try (Stream<Path> stream = Files.walk(directory)) {
-            return stream.filter(Files::isRegularFile)
-                    .mapToLong(path -> {
-                        try {
-                            return Files.size(path);
-                        } catch (IOException exception) {
-                            return 0L;
-                        }
-                    })
+            return stream.mapToLong(this::regularFileSizeNoFollow)
                     .sum();
+        }
+    }
+
+    private long regularFileSizeNoFollow(Path path) {
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            return attributes.isRegularFile() ? attributes.size() : 0L;
+        } catch (IOException exception) {
+            return 0L;
         }
     }
 

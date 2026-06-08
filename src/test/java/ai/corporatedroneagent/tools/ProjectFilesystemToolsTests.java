@@ -316,6 +316,45 @@ class ProjectFilesystemToolsTests {
     }
 
     @Test
+    void listDirectoryWithSizesDoesNotFollowSymlinkedFilesForSize() throws Exception {
+        Path outside = Files.createTempFile("outside-project", ".txt");
+        Files.writeString(outside, "x".repeat(4096));
+        Path symlink = temporaryDirectory.resolve("linked.txt");
+        try {
+            Files.createSymbolicLink(symlink, outside);
+        } catch (UnsupportedOperationException | FileSystemException | SecurityException exception) {
+            Assumptions.abort("Symbolic links are not available in this test environment.");
+        }
+        ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
+
+        ProjectFilesystemTools.ToolContent content = tools.listDirectoryWithSizes("/", "name");
+
+        assertThat(content.content())
+                .contains("linked.txt")
+                .doesNotContain("4.0 KB");
+    }
+
+    @Test
+    void listDirectoryWithSizesDoesNotIncludeNestedSymlinkTargetsInDirectorySize() throws Exception {
+        Path outside = Files.createTempFile("outside-project", ".txt");
+        Files.writeString(outside, "x".repeat(4096));
+        Path directory = Files.createDirectory(temporaryDirectory.resolve("docs"));
+        Files.writeString(directory.resolve("small.txt"), "a");
+        try {
+            Files.createSymbolicLink(directory.resolve("linked.txt"), outside);
+        } catch (UnsupportedOperationException | FileSystemException | SecurityException exception) {
+            Assumptions.abort("Symbolic links are not available in this test environment.");
+        }
+        ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
+
+        ProjectFilesystemTools.ToolContent content = tools.listDirectoryWithSizes("/", "name");
+
+        assertThat(content.content())
+                .contains("[DIR] docs (1 B)")
+                .doesNotContain("4.0 KB");
+    }
+
+    @Test
     void directoryTreeReturnsJsonAndHonorsExcludes() throws Exception {
         Files.createDirectories(temporaryDirectory.resolve("src"));
         Files.writeString(temporaryDirectory.resolve("src").resolve("App.java"), "class App {}");
