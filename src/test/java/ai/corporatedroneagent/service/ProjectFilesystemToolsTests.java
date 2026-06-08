@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.corporatedroneagent.model.Project;
 import java.nio.file.Files;
+import java.nio.file.FileSystemException;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.tool.annotation.Tool;
@@ -133,6 +135,24 @@ class ProjectFilesystemToolsTests {
     }
 
     @Test
+    void writeFileRejectsExistingSymlinkDestination() throws Exception {
+        Path outside = Files.createTempFile("outside-project", ".txt");
+        Files.writeString(outside, "outside");
+        Path symlink = temporaryDirectory.resolve("linked.txt");
+        try {
+            Files.createSymbolicLink(symlink, outside);
+        } catch (UnsupportedOperationException | FileSystemException | SecurityException exception) {
+            Assumptions.abort("Symbolic links are not available in this test environment.");
+        }
+        ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
+
+        assertThatThrownBy(() -> tools.writeFile("/linked.txt", "escaped"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Refusing to write through symbolic link");
+        assertThat(Files.readString(outside)).isEqualTo("outside");
+    }
+
+    @Test
     void editFileCanDryRunAndThenApplyReplacements() throws Exception {
         Path file = temporaryDirectory.resolve("notes.txt");
         Files.writeString(file, "alpha\nbravo\n");
@@ -208,6 +228,26 @@ class ProjectFilesystemToolsTests {
                 .contains("\"name\" : \"App.java\"")
                 .doesNotContain("App.class")
                 .doesNotContain(temporaryDirectory.getFileName().toString());
+    }
+
+    @Test
+    void directoryTreeDoesNotDescendIntoSymlinkedDirectories() throws Exception {
+        Path outsideDirectory = Files.createTempDirectory("outside-project");
+        Files.writeString(outsideDirectory.resolve("secret.txt"), "outside");
+        Path symlink = temporaryDirectory.resolve("linked");
+        try {
+            Files.createSymbolicLink(symlink, outsideDirectory);
+        } catch (UnsupportedOperationException | FileSystemException | SecurityException exception) {
+            Assumptions.abort("Symbolic links are not available in this test environment.");
+        }
+        ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
+
+        ProjectFilesystemTools.ToolContent content = tools.directoryTree("/", List.of());
+
+        assertThat(content.content())
+                .contains("\"name\" : \"linked\"")
+                .contains("\"type\" : \"file\"")
+                .doesNotContain("secret.txt");
     }
 
     @Test

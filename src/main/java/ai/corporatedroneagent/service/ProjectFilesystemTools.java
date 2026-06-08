@@ -10,8 +10,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.ZoneId;
@@ -122,12 +124,21 @@ class ProjectFilesystemTools {
             @ToolParam(description = "Text content to write using UTF-8") String content
     ) {
         Path file = writablePath(path);
+        rejectExistingSymlink(file, path);
         try {
             Path parent = file.getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Files.writeString(file, content == null ? "" : content, StandardCharsets.UTF_8);
+            Files.writeString(
+                    file,
+                    content == null ? "" : content,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE,
+                    LinkOption.NOFOLLOW_LINKS
+            );
             return new ToolContent("Successfully wrote " + virtualPath(file) + ".");
         } catch (IOException exception) {
             throw new UncheckedIOException("Could not write file: " + virtualPath(file), exception);
@@ -379,6 +390,12 @@ class ProjectFilesystemTools {
         return resolved;
     }
 
+    private void rejectExistingSymlink(Path path, String originalPath) {
+        if (Files.isSymbolicLink(path)) {
+            throw new IllegalArgumentException("Refusing to write through symbolic link: " + displayPath(originalPath));
+        }
+    }
+
     private Path nearestExistingAncestor(Path path) {
         Path current = Files.isDirectory(path) ? path : path.getParent();
         while (current != null && !Files.exists(current)) {
@@ -452,7 +469,7 @@ class ProjectFilesystemTools {
     }
 
     private TreeNode treeNode(Path path, List<String> excludePatterns) throws IOException {
-        if (Files.isDirectory(path)) {
+        if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
             List<TreeNode> children = new ArrayList<>();
             try (Stream<Path> stream = Files.list(path)) {
                 for (Path child : stream.sorted(Comparator.comparing(this::fileNameLower)).toList()) {
