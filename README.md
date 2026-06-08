@@ -24,11 +24,8 @@ projects, documents, tickets, repositories, conversations, settings, routines,
 preferences, and long-running goals well enough to help you navigate corporate
 work with continuity.
 
-CDA starts with a narrower and more realistic first promise:
-
-```text
-Know what I know at work.
-```
+The project starts with a narrower and more realistic first promise: know what
+I know at work.
 
 That means connecting the assistant to user-owned context first: local folders
 today, then corporate systems such as Jira, Confluence, GitHub, SharePoint,
@@ -36,18 +33,16 @@ OneDrive, ServiceNow, and Salesforce.
 
 ## Positioning
 
-CDA is not trying to be a generic enterprise search platform or a company-wide
-chatbot. It is closer to an Identic AI for knowledge workers:
-
-```text
-my agent, my folders, my projects, my conversations, my tools, my local
-knowledge, my routines.
-```
+Corporate Drone's Agent is not trying to be a generic enterprise search
+platform or a company-wide chatbot. It is closer to an Identic AI for knowledge
+workers: my agent, my folders, my projects, my conversations, my tools, my
+local knowledge, my routines.
 
 That makes the project different from enterprise-wide assistants such as
 Microsoft Copilot, Glean, Moveworks, Gemini Enterprise, or Sinequa. Those tools
-are usually deployed at the organization level. CDA is designed as a personal,
-self-controlled work operating system for the individual corporate worker.
+are usually deployed at the organization level. Corporate Drone's Agent is
+designed as a personal, self-controlled work operating system for the
+individual corporate worker.
 
 The guiding principles are:
 
