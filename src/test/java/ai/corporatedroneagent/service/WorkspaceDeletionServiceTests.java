@@ -1,9 +1,11 @@
 package ai.corporatedroneagent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import ai.corporatedroneagent.TestDatabaseSupport;
@@ -13,6 +15,7 @@ import ai.corporatedroneagent.dto.ProjectDeletedDto;
 import ai.corporatedroneagent.job.MessagePushJob;
 import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Project;
+import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.repository.ProjectRepository;
 import java.util.ArrayList;
@@ -20,6 +23,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
 class WorkspaceDeletionServiceTests {
 
@@ -112,6 +116,32 @@ class WorkspaceDeletionServiceTests {
         assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
                 .extracting(message -> message.getContent())
                 .containsExactly("First", "Second");
+    }
+
+    @Test
+    void retryingRegeneratesTheReplyForTheLastUserMessageWithoutAddingATurn() {
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+        conversationService.sendUserMessage(conversation.getId(), "Draft the kickoff note");
+
+        conversationService.retryLastReply(conversation.getId());
+
+        // No duplicate prompt is appended — only the original user turn remains.
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .extracting(Message::getContent)
+                .containsExactly("Draft the kickoff note");
+        // The reply is re-queued for that same message: once on send, once on retry.
+        verify(messagePushJob, times(2))
+                .queueAssistantReply(conversation.getId(), "Draft the kickoff note");
+    }
+
+    @Test
+    void retryingAConversationWithNoUserMessageIsRejected() {
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+
+        assertThatThrownBy(() -> conversationService.retryLastReply(conversation.getId()))
+                .isInstanceOf(ResponseStatusException.class);
     }
 
     @Test

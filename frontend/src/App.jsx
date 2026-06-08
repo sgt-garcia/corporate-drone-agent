@@ -13,6 +13,7 @@ import {
   renameConversation as renameConversationRequest,
   removeKnowledgeFolder as removeKnowledgeFolderRequest,
   resumeKnowledgeFolder as resumeKnowledgeFolderRequest,
+  retryConversationReply,
   saveProject,
   saveSettings,
   scanKnowledgeFolder as scanKnowledgeFolderRequest,
@@ -426,18 +427,30 @@ export default function App() {
     }
   }
 
-  // Re-run the last reply by re-sending the most recent user message. There's
-  // no dedicated retry endpoint, so this posts the same prompt again.
+  // Re-run the last reply in place. The failed turn is transient (never
+  // persisted), so drop it locally, then ask the backend to regenerate the
+  // reply for the existing last user message — no duplicate prompt is added.
   async function retryConversation(conversationId) {
-    const conversation = conversationsById[conversationId];
-    if (!conversation) {
+    if (!conversationsById[conversationId]) {
       return;
     }
-    const lastUserMessage = [...conversation.messages]
-      .reverse()
-      .find((message) => message.role === "user");
-    if (lastUserMessage) {
-      await sendMessage(conversationId, lastUserMessage.content);
+    setConversationsById((current) => {
+      const conversation = current[conversationId];
+      if (!conversation) {
+        return current;
+      }
+      return {
+        ...current,
+        [conversationId]: {
+          ...conversation,
+          messages: conversation.messages.filter((message) => message.role !== "error")
+        }
+      };
+    });
+    try {
+      await retryConversationReply(conversationId);
+    } catch (error) {
+      setStatusText(error.message);
     }
   }
 

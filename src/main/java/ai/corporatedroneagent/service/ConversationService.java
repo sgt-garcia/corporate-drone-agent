@@ -13,7 +13,9 @@ import ai.corporatedroneagent.repository.ProjectRepository;
 import ai.corporatedroneagent.util.Strings;
 import ai.corporatedroneagent.job.MessagePushJob;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -108,6 +110,31 @@ public class ConversationService {
         eventService.publish("message-created", new MessageEventDto(conversationId, dto));
         messagePushJob.queueAssistantReply(conversationId, message.getContent());
         return dto;
+    }
+
+    /**
+     * Re-run the reply for the most recent user message. A failed reply is a
+     * transient turn (it is published over SSE but never persisted), so there is
+     * nothing to delete server-side — we simply re-queue the assistant reply and
+     * let it stream back in place of the dropped error turn.
+     */
+    public synchronized void retryLastReply(UUID conversationId) {
+        Conversation conversation = getConversation(conversationId);
+        Message lastUserMessage = lastUserMessage(conversation)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "There is no message to retry yet"));
+        messagePushJob.queueAssistantReply(conversationId, lastUserMessage.getContent());
+    }
+
+    private Optional<Message> lastUserMessage(Conversation conversation) {
+        List<Message> messages = conversation.getMessages();
+        for (int index = messages.size() - 1; index >= 0; index--) {
+            Message message = messages.get(index);
+            if ("user".equals(message.getRole())) {
+                return Optional.of(message);
+            }
+        }
+        return Optional.empty();
     }
 
     private Project getProject(UUID projectId) {

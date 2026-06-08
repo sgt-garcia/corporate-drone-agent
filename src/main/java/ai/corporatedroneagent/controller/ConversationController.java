@@ -53,4 +53,10 @@ public class ConversationController {
     ) {
         return conversationService.sendUserMessage(conversationId, request.content());
     }
+
+    @PostMapping("/{conversationId}/retry")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void retryLastReply(@PathVariable UUID conversationId) {
+        conversationService.retryLastReply(conversationId);
+    }
 }

@@ -64,6 +64,12 @@ export async function sendConversationMessage(conversationId, content) {
   });
 }
 
+export async function retryConversationReply(conversationId) {
+  return requestNoContent(`/api/conversations/${conversationId}/retry`, {
+    method: "POST"
+  });
+}
+
 export async function getSettings() {
   return request("/api/settings");
 }
