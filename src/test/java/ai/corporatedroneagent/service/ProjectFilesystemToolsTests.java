@@ -14,7 +14,9 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 
 class ProjectFilesystemToolsTests {
 
@@ -65,6 +67,21 @@ class ProjectFilesystemToolsTests {
         ProjectFilesystemTools.ToolContent content = tools.readFile("notes.txt", 1, null);
 
         assertThat(content.content()).isEqualTo("charlie");
+    }
+
+    @Test
+    void readTextFileCanBeInvokedThroughSpringAiToolCallback() throws Exception {
+        Files.writeString(temporaryDirectory.resolve("notes.txt"), "alpha\nbravo\n");
+        ToolCallback callback = callback("read_text_file", new ProjectFilesystemTools(project(temporaryDirectory)));
+
+        String result = callback.call("""
+                {"path":"/notes.txt","head":1}
+                """);
+
+        assertThat(result)
+                .contains("content")
+                .contains("alpha")
+                .doesNotContain("bravo");
     }
 
     @Test
@@ -212,6 +229,37 @@ class ProjectFilesystemToolsTests {
     }
 
     @Test
+    void editFileCanBeInvokedThroughSpringAiToolCallbackWithEditArrayBinding() throws Exception {
+        Path file = temporaryDirectory.resolve("notes.txt");
+        Files.writeString(file, "alpha\nbravo\n");
+        ToolCallback callback = callback("edit_file", new ProjectFilesystemTools(project(temporaryDirectory)));
+
+        assertThat(callback.getToolDefinition().inputSchema())
+                .contains("edits")
+                .contains("oldText")
+                .contains("newText");
+
+        String result = callback.call("""
+                {
+                  "path": "/notes.txt",
+                  "edits": [
+                    {
+                      "oldText": "bravo",
+                      "newText": "charlie"
+                    }
+                  ],
+                  "dryRun": false
+                }
+                """);
+
+        assertThat(result)
+                .contains("content")
+                .contains("--- /notes.txt")
+                .contains("+charlie");
+        assertThat(Files.readString(file)).isEqualTo("alpha\ncharlie\n");
+    }
+
+    @Test
     void createDirectoryIsIdempotentForNestedDirectories() {
         ProjectFilesystemTools tools = new ProjectFilesystemTools(project(temporaryDirectory));
 
@@ -345,5 +393,15 @@ class ProjectFilesystemToolsTests {
         Project project = new Project();
         project.setWorkingFolder(workingFolder.toString());
         return project;
+    }
+
+    private ToolCallback callback(String name, ProjectFilesystemTools tools) {
+        return java.util.Arrays.stream(MethodToolCallbackProvider.builder()
+                        .toolObjects(tools)
+                        .build()
+                        .getToolCallbacks())
+                .filter(callback -> callback.getToolDefinition().name().equals(name))
+                .findFirst()
+                .orElseThrow();
     }
 }
