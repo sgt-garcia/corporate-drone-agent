@@ -121,8 +121,27 @@ const PROVIDERS = [
 const NAV = [
   { id: "general", label: "General", icon: "sliders" },
   { id: "providers", label: "Models & providers", icon: "cpu" },
-  { id: "knowledge", label: "Knowledge", icon: "database" }
+  { id: "knowledge", label: "Knowledge", icon: "database" },
+  { id: "tools", label: "Tools", icon: "wrench" }
 ];
+
+// Static catalog of tools the agent can call. `enabledKey` maps each tool onto
+// the boolean it toggles in the live settings object.
+const TOOLS = [
+  {
+    id: "filesystem",
+    name: "Filesystem",
+    icon: "hard-drive",
+    enabledKey: "filesystemToolEnabled",
+    summary: "Read, write, and edit files in a project’s working folder.",
+    description:
+      "Exposes the current project’s working folder to the agent as the virtual root “/” — allowing safe file reads, writes, line-based edits, directory listing and tree views, file search, metadata inspection, media reads, and moves. Local absolute paths, traversal outside the folder, and unsafe symlinks are always rejected."
+  }
+];
+
+function toolEnabled(tool, settings) {
+  return settings?.[tool.enabledKey] !== false;
+}
 
 // Maximum number of continuously-scanned local folders.
 const KNOWLEDGE_MAX = 10;
@@ -202,17 +221,28 @@ export function Settings({
   const [section, setSection] = useState(initialSection || "general");
   const [openProviderId, setOpenProviderId] = useState(null);
   const [knowledgeView, setKnowledgeView] = useState(null); // null | "local-folders"
+  const [openToolId, setOpenToolId] = useState(null); // null | toolId
 
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
 
   const openProvider = PROVIDERS.find((p) => p.id === openProviderId) ?? null;
+  const openTool = TOOLS.find((t) => t.id === openToolId) ?? null;
 
   function selectSection(id) {
     setSection(id);
     setOpenProviderId(null);
     setKnowledgeView(null);
+    setOpenToolId(null);
+  }
+
+  // Tool toggles have no Save button (like the design's drill-in), so persist
+  // immediately rather than waiting on the General/provider Save button.
+  function toggleTool(tool, enabled) {
+    const next = { ...draft, [tool.enabledKey]: enabled };
+    setDraft(next);
+    onSave(next);
   }
 
   function updateProviderConfig(settingsKey, patch) {
@@ -301,6 +331,21 @@ export function Settings({
               <KnowledgeOverview
                 folders={knowledgeFolders}
                 onOpen={() => setKnowledgeView("local-folders")}
+              />
+            ))}
+          {section === "tools" &&
+            (openTool ? (
+              <ToolConfig
+                key={openTool.id}
+                tool={openTool}
+                enabled={toolEnabled(openTool, draft)}
+                onBack={() => setOpenToolId(null)}
+                onToggle={(enabled) => toggleTool(openTool, enabled)}
+              />
+            ) : (
+              <ToolsOverview
+                settings={draft}
+                onOpen={setOpenToolId}
               />
             ))}
         </div>
@@ -1002,6 +1047,123 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
         />
       </Field>
     </>
+  );
+}
+
+function ToolStatus({ enabled }) {
+  return enabled ? (
+    <span className="badge badge-success">
+      <span className="dot" />
+      Active
+    </span>
+  ) : (
+    <span className="badge badge-neutral">Off</span>
+  );
+}
+
+function Switch({ checked, onChange, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={checked ? "switch on" : "switch"}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="switch-knob" />
+    </button>
+  );
+}
+
+function ToolsOverview({ settings, onOpen }) {
+  return (
+    <div className="settings-section wide">
+      <div className="settings-intro">
+        <h2 className="ds-h3">Tools</h2>
+        <p className="ds-body">
+          Capabilities the agent can call while it works. Open a tool to turn it
+          on or off.
+        </p>
+      </div>
+      <div className="providers-grid">
+        {TOOLS.map((tool) => (
+          <button
+            key={tool.id}
+            className="provider-card"
+            type="button"
+            onClick={() => onOpen(tool.id)}
+          >
+            <div className="provider-card-head">
+              <span className="provider-icon local">
+                <Icon name={tool.icon} size={19} color="var(--coffee-700)" />
+              </span>
+              <div className="provider-id">
+                <div className="provider-name">{tool.name}</div>
+                <div className="tool-summary">{tool.summary}</div>
+              </div>
+            </div>
+            <div className="provider-card-foot">
+              <ToolStatus enabled={toolEnabled(tool, settings)} />
+              <span className="provider-configure">
+                Configure
+                <Icon name="chevron-right" size={13} color="var(--blue-600)" />
+              </span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ToolConfig({ tool, enabled, onBack, onToggle }) {
+  return (
+    <div className="settings-section">
+      <button className="config-back" type="button" onClick={onBack}>
+        <Icon name="arrow-left" size={15} color="var(--gray-600)" /> All tools
+      </button>
+
+      <div className="config-head">
+        <span className="provider-icon local lg">
+          <Icon name={tool.icon} size={22} color="var(--coffee-700)" />
+        </span>
+        <div className="provider-id">
+          <h2 className="ds-h3">{tool.name}</h2>
+          <div className="provider-region">{tool.summary}</div>
+        </div>
+        <ToolStatus enabled={enabled} />
+      </div>
+
+      <div className="ds-card tool-config-card">
+        <div className="tool-enable-row">
+          <div className="tool-enable-text">
+            <div className="tool-enable-title">
+              {enabled ? "Tool is active" : "Tool is off"}
+            </div>
+            <div className="tool-enable-desc">
+              {enabled
+                ? `The agent can use ${tool.name} in every conversation.`
+                : `Turn this on to let the agent use ${tool.name}.`}
+            </div>
+          </div>
+          <Switch
+            checked={enabled}
+            onChange={onToggle}
+            label={`${tool.name} tool`}
+          />
+        </div>
+        <div className="tool-about">
+          <div className="ds-overline">What it does</div>
+          <p className="tool-about-text">{tool.description}</p>
+        </div>
+      </div>
+
+      <div className="knowledge-privacy">
+        <Icon name="shield-check" size={14} color="var(--success-600)" />
+        Runs locally on this device, sandboxed to the folders you grant.
+      </div>
+    </div>
   );
 }
 

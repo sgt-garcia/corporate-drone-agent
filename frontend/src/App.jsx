@@ -35,6 +35,7 @@ const emptySettings = {
   aiModel: "none",
   customInstructions:
     "Answer with concise, practical guidance using available local project context first.",
+  filesystemToolEnabled: true,
   knowledgeFolders: [],
   openAi: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
   openAiSdk: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },

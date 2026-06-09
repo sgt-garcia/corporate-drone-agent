@@ -9,6 +9,7 @@ public class ApplicationSettings {
     private String agentName = "Corporate Drone's Agent";
     private String aiModel = "none";
     private String customInstructions = "Answer with concise, practical guidance using available local project context first.";
+    private boolean filesystemToolEnabled = true;
     private List<KnowledgeFolderDto> knowledgeFolders = new ArrayList<>();
     private OpenAiSettings openAi = new OpenAiSettings();
     private OpenAiSdkSettings openAiSdk = new OpenAiSdkSettings();
@@ -43,6 +44,14 @@ public class ApplicationSettings {
 
     public void setCustomInstructions(String customInstructions) {
         this.customInstructions = customInstructions;
+    }
+
+    public boolean isFilesystemToolEnabled() {
+        return filesystemToolEnabled;
+    }
+
+    public void setFilesystemToolEnabled(boolean filesystemToolEnabled) {
+        this.filesystemToolEnabled = filesystemToolEnabled;
     }
 
     public List<KnowledgeFolderDto> getKnowledgeFolders() {

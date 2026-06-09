@@ -78,6 +78,7 @@ public class SettingsService {
         current.setAgentName(Strings.defaultIfBlank(settings.getAgentName(), "Corporate Drone's Agent"));
         current.setAiModel(Strings.defaultIfBlank(settings.getAiModel(), "none"));
         current.setCustomInstructions(Strings.emptyIfNull(settings.getCustomInstructions()));
+        current.setFilesystemToolEnabled(settings.isFilesystemToolEnabled());
         current.setOpenAi(settings.getOpenAi());
         current.setOpenAiSdk(settings.getOpenAiSdk());
         current.setAzureOpenAi(settings.getAzureOpenAi());
