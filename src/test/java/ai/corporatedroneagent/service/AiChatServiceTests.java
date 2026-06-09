@@ -115,6 +115,20 @@ class AiChatServiceTests {
     }
 
     @Test
+    void buildPromptMessagesOmitsFilesystemSectionWhenToolDisabled() {
+        ApplicationSettings settings = new ApplicationSettings();
+        settings.setFilesystemToolEnabled(false);
+        Project project = new Project();
+        project.setWorkingFolder("C:\\Work\\Launch");
+        Conversation conversation = new Conversation();
+
+        List<org.springframework.ai.chat.messages.Message> promptMessages =
+                AiChatService.buildPromptMessages(settings, project, conversation);
+
+        assertThat(text(promptMessages.get(0))).doesNotContain("Project filesystem:");
+    }
+
+    @Test
     void replyLogsKnowledgeRetrievalFailuresAndContinues(CapturedOutput output) {
         UUID conversationId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
