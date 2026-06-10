@@ -1148,7 +1148,7 @@ function JiraConfig({
       {cfg.connected && projects.length > 0 && (
         <SourceStats
           items={[
-            { label: "Demo issues", value: totalIssues.toLocaleString() },
+            { label: "Jira issues", value: totalIssues.toLocaleString() },
             { label: "Projects", value: `${projects.length} / ${JIRA_MAX}` },
             {
               label: "Status",
@@ -1322,10 +1322,10 @@ function JiraConfig({
           renderStatus={(project) => <JiraProjectStatus status={project.status} />}
           tickerItems={() => ["Preview in progress"]}
           metaScanned={(project) =>
-            `${Number(project.issues ?? 0).toLocaleString()} demo issues · saved ${project.checked || "just now"}`
+            `${Number(project.issues ?? 0).toLocaleString()} visible Jira issues · saved ${project.checked || "just now"}`
           }
           metaPaused={(project) =>
-            `Paused · ${Number(project.issues ?? 0).toLocaleString()} demo issues`
+            `Paused · ${Number(project.issues ?? 0).toLocaleString()} visible Jira issues`
           }
           scanActionLabel="Preview scan"
           pauseActionLabel="Pause saved project"
@@ -1366,7 +1366,7 @@ function JiraConfig({
                     className="input"
                     type="text"
                     autoFocus
-                    placeholder="Search prototype projects…"
+                    placeholder="Search Jira projects..."
                     value={pickerSearch}
                     onChange={(event) => setPickerSearch(event.target.value)}
                   />

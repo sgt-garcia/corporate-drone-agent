@@ -1,0 +1,106 @@
+package ai.corporatedroneagent.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.web.server.ResponseStatusException;
+
+class JiraProjectDiscoveryServiceTests {
+
+    private HttpServer server;
+    private JiraProjectDiscoveryService service;
+
+    @BeforeEach
+    void setUp() throws IOException {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.start();
+        service = new JiraProjectDiscoveryService(new ObjectMapper());
+    }
+
+    @AfterEach
+    void tearDown() {
+        server.stop(0);
+    }
+
+    @Test
+    void searchesJiraProjectsWithBasicAuthAndQuery() {
+        AtomicReference<String> authHeader = new AtomicReference<>();
+        AtomicReference<String> queryString = new AtomicReference<>();
+        server.createContext("/rest/api/3/project/search", exchange -> {
+            authHeader.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            queryString.set(exchange.getRequestURI().getQuery());
+            respond(exchange, 200, """
+                    {
+                      "values": [
+                        {
+                          "id": "10001",
+                          "key": "DEV",
+                          "name": "Software Development",
+                          "insight": { "totalIssueCount": 42 }
+                        }
+                      ]
+                    }
+                    """);
+        });
+
+        var projects = service.searchProjects(baseUrl(), "me@example.com", "token-1234", "dev ops", 25);
+
+        assertThat(authHeader.get()).isEqualTo("Basic " + Base64.getEncoder()
+                .encodeToString("me@example.com:token-1234".getBytes(StandardCharsets.UTF_8)));
+        assertThat(queryString.get()).contains("maxResults=25", "query=dev+ops");
+        assertThat(projects).hasSize(1);
+        assertThat(projects.getFirst().getId()).isEqualTo("10001");
+        assertThat(projects.getFirst().getKey()).isEqualTo("DEV");
+        assertThat(projects.getFirst().getName()).isEqualTo("Software Development");
+        assertThat(projects.getFirst().getIssues()).isEqualTo(42);
+    }
+
+    @Test
+    void getsProjectByKey() {
+        server.createContext("/rest/api/3/project/DEV", exchange -> respond(exchange, 200, """
+                {
+                  "id": "10001",
+                  "key": "DEV",
+                  "name": "Software Development",
+                  "insight": { "totalIssueCount": 42 }
+                }
+                """));
+
+        var project = service.getProject(baseUrl(), "me@example.com", "token-1234", "DEV");
+
+        assertThat(project.getId()).isEqualTo("10001");
+        assertThat(project.getKey()).isEqualTo("DEV");
+        assertThat(project.getChecked()).isEqualTo("just now");
+    }
+
+    @Test
+    void surfacesCredentialRejection() {
+        server.createContext("/rest/api/3/project/search", exchange -> respond(exchange, 401, ""));
+
+        assertThatThrownBy(() -> service.searchProjects(baseUrl(), "me@example.com", "wrong", "", 25))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Jira rejected the saved credentials");
+    }
+
+    private String baseUrl() {
+        return "http://127.0.0.1:" + server.getAddress().getPort();
+    }
+
+    private void respond(HttpExchange exchange, int status, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(status, bytes.length);
+        exchange.getResponseBody().write(bytes);
+        exchange.close();
+    }
+}

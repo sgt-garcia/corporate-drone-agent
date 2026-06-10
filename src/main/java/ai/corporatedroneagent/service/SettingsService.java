@@ -14,6 +14,7 @@ import ai.corporatedroneagent.model.knowledge.WorkStatus;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.util.Strings;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,10 +22,8 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -41,7 +40,7 @@ public class SettingsService {
     private static final Logger log = LoggerFactory.getLogger(SettingsService.class);
     private static final int MAX_KNOWLEDGE_FOLDERS = 10;
     private static final int MAX_JIRA_PROJECTS = 10;
-    private static final Map<String, String> PROTOTYPE_JIRA_PROJECTS = prototypeJiraProjects();
+    private static final int JIRA_PROJECT_SEARCH_LIMIT = 25;
 
     private final SettingsRepository settingsRepository;
     private final KnowledgeRootRepository knowledgeRootRepository;
@@ -50,6 +49,7 @@ public class SettingsService {
     private final KnowledgeRootCleanupService knowledgeRootCleanupService;
     private final KnowledgeScanCoordinator knowledgeScanCoordinator;
     private final JiraConnectionValidationService jiraConnectionValidationService;
+    private final JiraProjectDiscoveryService jiraProjectDiscoveryService;
 
     SettingsService(
             SettingsRepository settingsRepository,
@@ -66,7 +66,8 @@ public class SettingsService {
                 eventService,
                 knowledgeRootCleanupService,
                 knowledgeScanCoordinator,
-                new JiraConnectionValidationService()
+                new JiraConnectionValidationService(),
+                new JiraProjectDiscoveryService(new ObjectMapper())
         );
     }
 
@@ -78,7 +79,8 @@ public class SettingsService {
             EventService eventService,
             KnowledgeRootCleanupService knowledgeRootCleanupService,
             KnowledgeScanCoordinator knowledgeScanCoordinator,
-            JiraConnectionValidationService jiraConnectionValidationService
+            JiraConnectionValidationService jiraConnectionValidationService,
+            JiraProjectDiscoveryService jiraProjectDiscoveryService
     ) {
         this.settingsRepository = settingsRepository;
         this.knowledgeRootRepository = knowledgeRootRepository;
@@ -87,6 +89,7 @@ public class SettingsService {
         this.knowledgeRootCleanupService = knowledgeRootCleanupService;
         this.knowledgeScanCoordinator = knowledgeScanCoordinator;
         this.jiraConnectionValidationService = jiraConnectionValidationService;
+        this.jiraProjectDiscoveryService = jiraProjectDiscoveryService;
     }
 
     public ApplicationSettings get() {
@@ -289,13 +292,16 @@ public class SettingsService {
 
     public synchronized List<JiraProjectDto> searchJiraProjects(String query) {
         JiraSettings jira = currentJiraSettings();
-        String normalizedQuery = Strings.defaultIfBlank(query, "").toLowerCase(Locale.ROOT);
-        return PROTOTYPE_JIRA_PROJECTS.entrySet().stream()
-                .filter(entry -> jira.getProjects().stream()
-                        .noneMatch(project -> project.getKey().equalsIgnoreCase(entry.getKey())))
-                .filter(entry -> normalizedQuery.isBlank()
-                        || (entry.getKey() + " " + entry.getValue()).toLowerCase(Locale.ROOT).contains(normalizedQuery))
-                .map(entry -> jiraProject(entry.getKey(), entry.getValue(), 0, ""))
+        requireJiraSetup(jira);
+        return jiraProjectDiscoveryService.searchProjects(
+                        jira.getInstanceUrl(),
+                        jira.getEmail(),
+                        savedJiraToken(),
+                        query,
+                        JIRA_PROJECT_SEARCH_LIMIT
+                ).stream()
+                .filter(project -> jira.getProjects().stream()
+                        .noneMatch(configured -> configured.getKey().equalsIgnoreCase(project.getKey())))
                 .toList();
     }
 
@@ -308,10 +314,6 @@ public class SettingsService {
         requireJiraSetup(jira);
 
         String key = normalizeJiraProjectKey(request == null ? "" : request.key());
-        String name = PROTOTYPE_JIRA_PROJECTS.get(key);
-        if (name == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found");
-        }
         if (jira.getProjects().stream().anyMatch(project -> project.getKey().equalsIgnoreCase(key))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Jira project is already configured");
         }
@@ -320,7 +322,12 @@ public class SettingsService {
         }
 
         List<JiraProjectDto> projects = new ArrayList<>(jira.getProjects());
-        JiraProjectDto project = jiraProject(key, name, demoIssueCount(key), "just now");
+        JiraProjectDto project = jiraProjectDiscoveryService.getProject(
+                jira.getInstanceUrl(),
+                jira.getEmail(),
+                savedJiraToken(),
+                key
+        );
         projects.add(project);
         jira.setProjects(projects);
         persistJiraSettings(settings, jira, null);
@@ -349,7 +356,6 @@ public class SettingsService {
     public synchronized JiraProjectDto scanJiraProject(String projectId) {
         return updateJiraProject(projectId, project -> {
             project.setStatus("scanned");
-            project.setIssues(demoIssueCount(project.getKey()));
             project.setChecked("just now");
         });
     }
@@ -477,21 +483,6 @@ public class SettingsService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira project key is required");
         }
         return normalized;
-    }
-
-    private JiraProjectDto jiraProject(String key, String name, long issues, String checked) {
-        JiraProjectDto project = new JiraProjectDto();
-        project.setId("jira-" + key.toLowerCase(Locale.ROOT));
-        project.setKey(key);
-        project.setName(name);
-        project.setStatus("scanned");
-        project.setIssues(issues);
-        project.setChecked(checked);
-        return project;
-    }
-
-    private long demoIssueCount(String key) {
-        return 40L + Math.floorMod(key.hashCode(), 300);
     }
 
     private void migratePlaintextSecrets(ApplicationSettings settings) {
@@ -693,12 +684,11 @@ public class SettingsService {
         return sanitized;
     }
 
-    // Jira has no real API integration yet — connecting and scanning are
-    // simulated in the UI. Persist only what the Settings screen needs to render
-    // on reload: trimmed connection details, the chosen projects (capped and
-    // deduped by key), and the token expiry. The live "scanning" status is a
-    // client-side animation, so it settles to "scanned" here. The secret token
-    // is handled separately by SettingsSecretsService.
+    // Persist only what the Settings screen needs to render on reload: trimmed
+    // connection details, the chosen projects (capped and deduped by key), and
+    // the token expiry. Issue indexing is not implemented yet, so the live
+    // "scanning" status is a client-side animation and settles to "scanned"
+    // here. The secret token is handled separately by SettingsSecretsService.
     private JiraSettings sanitizeJira(JiraSettings jira) {
         JiraSettings sanitized = new JiraSettings();
         if (jira == null) {
@@ -743,26 +733,6 @@ public class SettingsService {
             }
         }
         return sanitized;
-    }
-
-    private static Map<String, String> prototypeJiraProjects() {
-        Map<String, String> projects = new LinkedHashMap<>();
-        projects.put("PROJ", "Project Management");
-        projects.put("DEV", "Software Development");
-        projects.put("OPS", "Operations");
-        projects.put("HR", "Human Resources");
-        projects.put("MKTG", "Marketing");
-        projects.put("SALES", "Sales Pipeline");
-        projects.put("DESIGN", "Design System");
-        projects.put("INFRA", "Infrastructure");
-        projects.put("DATA", "Data Platform");
-        projects.put("LEGAL", "Legal & Compliance");
-        projects.put("SUPPORT", "Customer Support");
-        projects.put("QA", "Quality Assurance");
-        projects.put("MOBILE", "Mobile Apps");
-        projects.put("API", "API Platform");
-        projects.put("SEC", "Security");
-        return java.util.Collections.unmodifiableMap(projects);
     }
 
     private boolean samePath(String first, String second) {

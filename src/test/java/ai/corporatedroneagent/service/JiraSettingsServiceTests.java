@@ -27,7 +27,7 @@ class JiraSettingsServiceTests {
     @BeforeEach
     void setUp() {
         secretStore = new InMemorySecretStore();
-        settingsService = serviceWithValidator(validValidator());
+        settingsService = serviceWith(validValidator(), fakeDiscovery());
     }
 
     @Test
@@ -76,12 +76,12 @@ class JiraSettingsServiceTests {
 
     @Test
     void saveJiraConnectionDoesNotMarkConnectedWhenValidationFails() {
-        settingsService = serviceWithValidator(new JiraConnectionValidationService() {
+        settingsService = serviceWith(new JiraConnectionValidationService() {
             @Override
             public ValidationResult validate(String instanceUrl, String email, String token) {
                 return new ValidationResult(false, "Jira rejected the email or API token.", true, 401);
             }
-        });
+        }, fakeDiscovery());
 
         assertThatThrownBy(() -> settingsService.saveJiraConnection(
                 connection("https://example.atlassian.net", "me@example.com", "wrong-token")
@@ -108,9 +108,9 @@ class JiraSettingsServiceTests {
         settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
 
         JiraProjectDto added = settingsService.addJiraProject(new JiraProjectRequest("ops"));
-        assertThat(added.getId()).isEqualTo("jira-ops");
+        assertThat(added.getId()).isEqualTo("10002");
         assertThat(added.getStatus()).isEqualTo("scanned");
-        assertThat(added.getIssues()).isPositive();
+        assertThat(added.getIssues()).isEqualTo(17);
 
         JiraProjectDto paused = settingsService.pauseJiraProject(added.getId());
         assertThat(paused.getStatus()).isEqualTo("paused");
@@ -146,7 +146,10 @@ class JiraSettingsServiceTests {
         return new JiraConnectionRequest(instanceUrl, email, token, false);
     }
 
-    private SettingsService serviceWithValidator(JiraConnectionValidationService validator) {
+    private SettingsService serviceWith(
+            JiraConnectionValidationService validator,
+            JiraProjectDiscoveryService discovery
+    ) {
         JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
         return new SettingsService(
                 new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules()),
@@ -155,7 +158,8 @@ class JiraSettingsServiceTests {
                 mock(EventService.class),
                 mock(KnowledgeRootCleanupService.class),
                 new KnowledgeScanCoordinator(),
-                validator
+                validator,
+                discovery
         );
     }
 
@@ -166,6 +170,49 @@ class JiraSettingsServiceTests {
                 return new ValidationResult(true, "ok", true, 200);
             }
         };
+    }
+
+    private JiraProjectDiscoveryService fakeDiscovery() {
+        return new JiraProjectDiscoveryService(new ObjectMapper()) {
+            @Override
+            public java.util.List<JiraProjectDto> searchProjects(
+                    String instanceUrl,
+                    String email,
+                    String token,
+                    String query,
+                    int maxResults
+            ) {
+                String normalizedQuery = query == null ? "" : query.toLowerCase(java.util.Locale.ROOT);
+                return java.util.List.of(
+                                project("10001", "DEV", "Software Development", 42),
+                                project("10002", "OPS", "Operations", 17)
+                        ).stream()
+                        .filter(project -> normalizedQuery.isBlank()
+                                || (project.getKey() + " " + project.getName())
+                                .toLowerCase(java.util.Locale.ROOT)
+                                .contains(normalizedQuery))
+                        .limit(maxResults)
+                        .toList();
+            }
+
+            @Override
+            public JiraProjectDto getProject(String instanceUrl, String email, String token, String key) {
+                return searchProjects(instanceUrl, email, token, key, 10).stream()
+                        .filter(project -> project.getKey().equalsIgnoreCase(key))
+                        .findFirst()
+                        .orElseThrow();
+            }
+        };
+    }
+
+    private JiraProjectDto project(String id, String key, String name, long issues) {
+        JiraProjectDto project = new JiraProjectDto();
+        project.setId(id);
+        project.setKey(key);
+        project.setName(name);
+        project.setIssues(issues);
+        project.setChecked("just now");
+        return project;
     }
 
     private static class InMemorySecretStore implements SecretStore {
