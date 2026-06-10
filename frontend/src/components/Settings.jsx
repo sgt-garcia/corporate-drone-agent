@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon.jsx";
 import {
   getAnthropicModels,
@@ -143,8 +143,42 @@ function toolEnabled(tool, settings) {
   return settings?.[tool.enabledKey] !== false;
 }
 
-// Maximum number of continuously-scanned local folders.
+// Maximum number of continuously-scanned local folders / Jira projects.
 const KNOWLEDGE_MAX = 10;
+const JIRA_MAX = 10;
+
+// Sample items the scanning ticker cycles through so a live scan shows what the
+// agent is currently reading.
+const SAMPLE_SCAN_FILES = [
+  "Invoices/Hoffmann-GmbH-Q2.pdf",
+  "Reports/ops-tracker.xlsx",
+  "Contracts/NDA-2024-renewed.docx",
+  "Planning/Q2-roadmap.pptx",
+  "Vendors/renewal-terms-v3.pdf",
+  "Notes/1on1-prep.md"
+];
+const SAMPLE_TICKET_NUMS = [1423, 1287, 1390, 1402, 1356, 1198];
+const sampleTickets = (key) => SAMPLE_TICKET_NUMS.map((n) => `${key}-${n}`);
+
+// Projects the picker offers. There is no live Jira API yet, so this stands in
+// for "the projects in your instance" once a connection is saved.
+const MOCK_JIRA_PROJECTS = {
+  PROJ: "Project Management",
+  DEV: "Software Development",
+  OPS: "Operations",
+  HR: "Human Resources",
+  MKTG: "Marketing",
+  SALES: "Sales Pipeline",
+  DESIGN: "Design System",
+  INFRA: "Infrastructure",
+  DATA: "Data Platform",
+  LEGAL: "Legal & Compliance",
+  SUPPORT: "Customer Support",
+  QA: "Quality Assurance",
+  MOBILE: "Mobile Apps",
+  API: "API Platform",
+  SEC: "Security"
+};
 
 const DEFAULT_AWS_REGION = "us-east-1";
 
@@ -215,12 +249,14 @@ export function Settings({
   onAddKnowledgeFolder,
   onRemoveKnowledgeFolder,
   onScanKnowledgeFolder,
-  onToggleKnowledgeFolderPause
+  onToggleKnowledgeFolderPause,
+  jiraConfig,
+  onSaveJiraConfig
 }) {
   const [draft, setDraft] = useState(settings);
   const [section, setSection] = useState(initialSection || "general");
   const [openProviderId, setOpenProviderId] = useState(null);
-  const [knowledgeView, setKnowledgeView] = useState(null); // null | "local-folders"
+  const [knowledgeView, setKnowledgeView] = useState(null); // null | "local-folders" | "jira"
   const [openToolId, setOpenToolId] = useState(null); // null | toolId
 
   useEffect(() => {
@@ -327,10 +363,18 @@ export function Settings({
                 onTogglePause={onToggleKnowledgeFolderPause}
                 onBack={() => setKnowledgeView(null)}
               />
+            ) : knowledgeView === "jira" ? (
+              <JiraConfig
+                config={jiraConfig}
+                onSave={onSaveJiraConfig}
+                onBack={() => setKnowledgeView(null)}
+              />
             ) : (
               <KnowledgeOverview
                 folders={knowledgeFolders}
-                onOpen={() => setKnowledgeView("local-folders")}
+                jira={jiraConfig}
+                onOpenFolders={() => setKnowledgeView("local-folders")}
+                onOpenJira={() => setKnowledgeView("jira")}
               />
             ))}
           {section === "tools" &&
@@ -354,7 +398,8 @@ export function Settings({
   );
 }
 
-function FolderStatus({ status }) {
+// Scan-status pill shared by Local Folders and Jira projects.
+function ScanStatus({ status }) {
   if (status === "scanning") {
     return (
       <span className="badge badge-info">
@@ -379,13 +424,195 @@ function FolderStatus({ status }) {
   );
 }
 
-function KnowledgeOverview({ folders, onOpen }) {
+// Inline validation/connection error, shared across folders + Jira so the same
+// screen never teaches the user two different error treatments.
+function InlineError({ children }) {
+  if (!children) {
+    return null;
+  }
+  return (
+    <div className="inline-error">
+      <Icon name="alert-triangle" size={14} color="var(--danger-600)" />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+// Cycles through sample items to show what the agent is reading while a source
+// scans, so "scanning" feels concrete rather than an opaque spinner.
+function ScanningTicker({ items }) {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (!items.length) {
+      return undefined;
+    }
+    const timer = setInterval(
+      () => setIndex((current) => (current + 1) % items.length),
+      850
+    );
+    return () => clearInterval(timer);
+  }, [items.length]);
+  return (
+    <span className="scan-ticker">
+      <Icon name="refresh-cw" size={12} color="var(--blue-600)" className="cda-spin" />
+      <span className="scan-ticker-label">Scanning</span>
+      <span className="scan-ticker-item">{items[index] || "…"}</span>
+    </span>
+  );
+}
+
+// Compact roll-up strip shown under a knowledge source header.
+function SourceStats({ items }) {
+  return (
+    <div className="source-stats">
+      {items.map((stat) => (
+        <div className="source-stat" key={stat.label}>
+          <div className="source-stat-value">{stat.value}</div>
+          <div className="ds-overline">{stat.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A capped, continuously-scanned list of sub-scopes. Local Folders and Jira
+// projects are the same archetype — a limited list of scopes, each with a status
+// pill and scan-now / pause / remove controls under a header add-row. Only the
+// leading visual, titles, meta strings, ticker items and the add control differ;
+// everything else lives here so the two surfaces can't drift apart.
+function KnowledgeSourceList({
+  items,
+  max,
+  noun,
+  emptyText,
+  confirmLabel,
+  removeLabel,
+  addControl,
+  addBelow,
+  addRowRef,
+  renderLeading,
+  renderTitle,
+  tickerItems,
+  metaScanned,
+  metaPaused,
+  onScanNow,
+  onTogglePause,
+  onRemove
+}) {
+  const [confirmId, setConfirmId] = useState(null);
+  return (
+    <div className="ds-card folders-card">
+      <div className="folder-add" ref={addRowRef}>
+        <div className="folder-add-row">
+          <span className="folder-count">
+            {items.length}{" "}
+            <span className="folder-count-max">/ {max} {noun}</span>
+          </span>
+          {addControl}
+        </div>
+        {addBelow}
+      </div>
+
+      {items.length === 0 ? (
+        <div className="folder-empty">{emptyText}</div>
+      ) : (
+        items.map((item) => (
+          <div className="folder-row" key={item.id}>
+            {renderLeading(item)}
+            <div className="folder-row-id">
+              <div className="folder-path">{renderTitle(item)}</div>
+              <div className="folder-meta">
+                {item.status === "scanning" ? (
+                  <ScanningTicker items={tickerItems(item)} />
+                ) : item.status === "paused" ? (
+                  metaPaused(item)
+                ) : (
+                  metaScanned(item)
+                )}
+              </div>
+            </div>
+            {confirmId === item.id ? (
+              <div className="folder-confirm">
+                <span className="folder-confirm-prompt">{confirmLabel}</span>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  type="button"
+                  onClick={() => setConfirmId(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-danger btn-sm"
+                  type="button"
+                  onClick={() => {
+                    onRemove(item.id);
+                    setConfirmId(null);
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="folder-row-controls">
+                <ScanStatus status={item.status} />
+                <button
+                  className="iconbtn"
+                  type="button"
+                  title="Scan now"
+                  aria-label="Scan now"
+                  onClick={() => onScanNow(item.id)}
+                  disabled={item.status !== "scanned"}
+                >
+                  <Icon name="refresh-cw" size={16} color="var(--gray-500)" />
+                </button>
+                <button
+                  className="iconbtn"
+                  type="button"
+                  title={item.status === "paused" ? "Resume scanning" : "Pause scanning"}
+                  aria-label={item.status === "paused" ? "Resume scanning" : "Pause scanning"}
+                  onClick={() => onTogglePause(item.id)}
+                >
+                  <Icon
+                    name={item.status === "paused" ? "play" : "pause"}
+                    size={16}
+                    color="var(--gray-500)"
+                  />
+                </button>
+                <button
+                  className="iconbtn"
+                  type="button"
+                  title={removeLabel}
+                  aria-label={removeLabel}
+                  onClick={() => setConfirmId(item.id)}
+                >
+                  <Icon name="trash" size={16} color="var(--gray-500)" />
+                </button>
+              </div>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
   const scanning = folders.filter((f) => f.status === "scanning").length;
-  const summary = scanning
+  const folderSummary = scanning
     ? `${scanning} scanning now`
     : folders.length
       ? "Auto-scanning · up to date"
       : "No folders yet";
+
+  const jiraProjects = jira?.projects ?? [];
+  const jiraScanning = jiraProjects.filter((p) => p.status === "scanning").length;
+  const jiraSummary = !jira?.connected
+    ? "Not connected"
+    : jiraScanning
+      ? `${jiraScanning} scanning now`
+      : jiraProjects.length
+        ? "Auto-scanning · up to date"
+        : "No projects yet";
 
   return (
     <div className="settings-section wide">
@@ -397,7 +624,8 @@ function KnowledgeOverview({ folders, onOpen }) {
         </p>
       </div>
       <div className="providers-grid">
-        <button className="provider-card" type="button" onClick={onOpen}>
+        {/* Local Folders tile */}
+        <button className="provider-card" type="button" onClick={onOpenFolders}>
           <div className="provider-card-head">
             <span className="provider-icon local">
               <Icon name="folder-open" size={19} color="var(--coffee-700)" />
@@ -409,10 +637,16 @@ function KnowledgeOverview({ folders, onOpen }) {
               </div>
             </div>
           </div>
+          <div className="knowledge-tile-badge">
+            <span className="badge badge-info">
+              <Icon name="shield-check" size={12} color="var(--blue-700)" />
+              On device
+            </span>
+          </div>
           <div className="provider-card-foot">
             <span className="folder-summary">
               <Icon name="circle-dot" size={12} color="var(--gray-400)" />
-              {summary}
+              {folderSummary}
             </span>
             <span className="provider-configure">
               Manage
@@ -420,93 +654,42 @@ function KnowledgeOverview({ folders, onOpen }) {
             </span>
           </div>
         </button>
-      </div>
-    </div>
-  );
-}
 
-function FolderRow({
-  folder,
-  confirming,
-  onScanNow,
-  onTogglePause,
-  onRequestRemove,
-  onCancelRemove,
-  onConfirmRemove
-}) {
-  const files = Number(folder.files ?? 0).toLocaleString();
-  const size = folder.size || "not scanned yet";
-  const nextScan = folder.nextScan ? ` · next scan ${folder.nextScan}` : "";
-  const meta =
-    folder.status === "paused"
-      ? `Paused · ${files} files · ${size}`
-      : folder.status === "scanning"
-        ? `${files} files · ${size} · scanning now`
-        : `${files} files · ${size}${nextScan}`;
-  const paused = folder.status === "paused";
-
-  return (
-    <div className="folder-row">
-      <Icon name="folder" size={18} color="var(--gray-500)" />
-      <div className="folder-row-id">
-        <div className="folder-path">{folder.path}</div>
-        <div className="folder-meta">{meta}</div>
+        {/* Jira tile */}
+        <button className="provider-card" type="button" onClick={onOpenJira}>
+          <div className="provider-card-head">
+            <span className="provider-icon">
+              <Icon name="ticket" size={19} color="var(--blue-600)" />
+            </span>
+            <div className="provider-id">
+              <div className="provider-name">Jira (API)</div>
+              <div className="provider-region">
+                {jiraProjects.length} of {JIRA_MAX} projects · continuously scanned
+              </div>
+            </div>
+          </div>
+          <div className="knowledge-tile-badge">
+            {jira?.connected ? (
+              <span className="badge badge-success">
+                <span className="dot" />
+                Connected
+              </span>
+            ) : (
+              <span className="badge badge-neutral">Not connected</span>
+            )}
+          </div>
+          <div className="provider-card-foot">
+            <span className="folder-summary">
+              <Icon name="circle-dot" size={12} color="var(--gray-400)" />
+              {jiraSummary}
+            </span>
+            <span className="provider-configure">
+              {jira?.connected ? "Manage" : "Configure"}
+              <Icon name="chevron-right" size={13} color="var(--blue-600)" />
+            </span>
+          </div>
+        </button>
       </div>
-      {confirming ? (
-        <div className="folder-confirm">
-          <span className="folder-confirm-prompt">Remove folder?</span>
-          <button
-            className="btn btn-secondary btn-sm"
-            type="button"
-            onClick={onCancelRemove}
-          >
-            Cancel
-          </button>
-          <button
-            className="btn btn-danger btn-sm"
-            type="button"
-            onClick={onConfirmRemove}
-          >
-            Remove
-          </button>
-        </div>
-      ) : (
-        <div className="folder-row-controls">
-          <FolderStatus status={folder.status} />
-          <button
-            className="iconbtn"
-            type="button"
-            title="Scan now"
-            aria-label="Scan now"
-            onClick={onScanNow}
-            disabled={folder.status !== "scanned"}
-          >
-            <Icon name="refresh-cw" size={16} color="var(--gray-500)" />
-          </button>
-          <button
-            className="iconbtn"
-            type="button"
-            title={paused ? "Resume scanning" : "Pause scanning"}
-            aria-label={paused ? "Resume scanning" : "Pause scanning"}
-            onClick={onTogglePause}
-          >
-            <Icon
-              name={paused ? "play" : "pause"}
-              size={16}
-              color="var(--gray-500)"
-            />
-          </button>
-          <button
-            className="iconbtn"
-            type="button"
-            title="Remove folder"
-            aria-label="Remove folder"
-            onClick={onRequestRemove}
-          >
-            <Icon name="trash" size={16} color="var(--gray-500)" />
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -520,13 +703,17 @@ function LocalFoldersConfig({
   onBack
 }) {
   const [draft, setDraft] = useState("");
-  const [confirmId, setConfirmId] = useState(null);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
 
+  const atMax = folders.length >= KNOWLEDGE_MAX;
+  const totalFiles = folders.reduce((total, folder) => total + Number(folder.files ?? 0), 0);
+  const scanningCount = folders.filter((folder) => folder.status === "scanning").length;
+  const pausedCount = folders.filter((folder) => folder.status === "paused").length;
+
   async function addFolder() {
     const path = draft.trim();
-    if (checking) {
+    if (checking || atMax || !path) {
       return;
     }
     setError("");
@@ -534,8 +721,8 @@ function LocalFoldersConfig({
     try {
       await onAddFolder(path);
       setDraft("");
-    } catch (error) {
-      setError(error.message || "Could not add that folder.");
+    } catch (addError) {
+      setError(addError.message || "Could not add that folder.");
     } finally {
       setChecking(false);
     }
@@ -544,17 +731,16 @@ function LocalFoldersConfig({
   async function removeFolder(id) {
     try {
       await onRemoveFolder(id);
-      setConfirmId(null);
-    } catch (error) {
-      setError(error.message || "Could not remove that folder.");
+    } catch (removeError) {
+      setError(removeError.message || "Could not remove that folder.");
     }
   }
 
   async function scanNow(id) {
     try {
       await onScanFolder(id);
-    } catch (error) {
-      setError(error.message || "Could not scan that folder.");
+    } catch (scanError) {
+      setError(scanError.message || "Could not scan that folder.");
     }
   }
 
@@ -565,9 +751,16 @@ function LocalFoldersConfig({
     }
     try {
       await onTogglePause(folder);
-    } catch (error) {
-      setError(error.message || "Could not update that folder.");
+    } catch (pauseError) {
+      setError(pauseError.message || "Could not update that folder.");
     }
+  }
+
+  function folderMeta(folder) {
+    const files = Number(folder.files ?? 0).toLocaleString();
+    const size = folder.size || "not scanned yet";
+    const checked = folder.checked ? ` · checked ${folder.checked}` : "";
+    return `${files} files · ${size}${checked}`;
   }
 
   return (
@@ -588,92 +781,589 @@ function LocalFoldersConfig({
             its context current; files never leave this device. Up to {KNOWLEDGE_MAX}.
           </div>
         </div>
+        <span className="badge badge-info knowledge-head-badge">
+          <Icon name="shield-check" size={12} color="var(--blue-700)" />
+          On device
+        </span>
       </div>
 
-      <div className="ds-card folders-card">
-        <div className="folder-add">
-          <div className="folder-add-row">
-            <span className="folder-count">
-              {folders.length}{" "}
-              <span className="folder-count-max">/ {KNOWLEDGE_MAX} folders</span>
+      {folders.length > 0 && (
+        <SourceStats
+          items={[
+            { label: "Files indexed", value: totalFiles.toLocaleString() },
+            { label: "Folders", value: `${folders.length} / ${KNOWLEDGE_MAX}` },
+            {
+              label: "Status",
+              value: scanningCount
+                ? `${scanningCount} scanning`
+                : pausedCount
+                  ? `${pausedCount} paused`
+                  : "Up to date"
+            }
+          ]}
+        />
+      )}
+
+      <KnowledgeSourceList
+        items={folders}
+        max={KNOWLEDGE_MAX}
+        noun="folders"
+        emptyText="No folders yet. Add one above to start building local context."
+        confirmLabel="Remove folder?"
+        removeLabel="Remove folder"
+        onScanNow={scanNow}
+        onTogglePause={togglePause}
+        onRemove={removeFolder}
+        renderLeading={() => <Icon name="folder" size={18} color="var(--gray-500)" />}
+        renderTitle={(folder) => folder.path}
+        tickerItems={() => SAMPLE_SCAN_FILES}
+        metaScanned={folderMeta}
+        metaPaused={(folder) => `Paused · ${folderMeta(folder)}`}
+        addControl={
+          <div className="folder-add-controls">
+            <span className="input-icon">
+              <Icon name="folder" size={16} />
+              <input
+                className={error ? "input has-error" : "input"}
+                type="text"
+                placeholder={atMax ? "Folder limit reached" : "Add a folder path…"}
+                value={draft}
+                disabled={atMax}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  if (error) {
+                    setError("");
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    addFolder();
+                  }
+                }}
+              />
             </span>
-            <div className="folder-add-controls">
-              <span className="input-icon">
-                <Icon name="folder" size={16} />
-                <input
-                  className={error ? "input has-error" : "input"}
-                  type="text"
-                  placeholder="Add a folder path…"
-                  value={draft}
-                  onChange={(event) => {
-                    setDraft(event.target.value);
-                    if (error) {
-                      setError("");
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      addFolder();
-                    }
-                  }}
-                />
-              </span>
-              <button
-                className="btn btn-primary btn-sm"
-                type="button"
-                onClick={addFolder}
-                disabled={checking}
-              >
-                {checking ? (
-                  <>
-                    <Icon
-                      name="refresh-cw"
-                      size={15}
-                      color="#fff"
-                      className="cda-spin"
-                    />
-                    Checking…
-                  </>
-                ) : (
-                  <>
-                    <Icon name="plus" size={15} color="#fff" /> Add
-                  </>
-                )}
-              </button>
-            </div>
+            <button
+              className="btn btn-primary btn-sm"
+              type="button"
+              onClick={addFolder}
+              disabled={atMax || !draft.trim() || checking}
+            >
+              {checking ? (
+                <>
+                  <Icon name="refresh-cw" size={15} color="#fff" className="cda-spin" />
+                  Checking…
+                </>
+              ) : (
+                <>
+                  <Icon name="plus" size={15} color="#fff" /> Add
+                </>
+              )}
+            </button>
           </div>
-          {error && (
-            <div className="folder-add-error">
-              <Icon name="alert-triangle" size={14} color="var(--danger-600)" />
-              <span>{error}</span>
-            </div>
-          )}
-        </div>
-
-        {folders.length === 0 ? (
-          <div className="folder-empty">
-            No folders yet. Add one above to start building local context.
-          </div>
-        ) : (
-          folders.map((folder) => (
-            <FolderRow
-              key={folder.id}
-              folder={folder}
-              confirming={confirmId === folder.id}
-              onScanNow={() => scanNow(folder.id)}
-              onTogglePause={() => togglePause(folder.id)}
-              onRequestRemove={() => setConfirmId(folder.id)}
-              onCancelRemove={() => setConfirmId(null)}
-              onConfirmRemove={() => removeFolder(folder.id)}
-            />
-          ))
-        )}
-      </div>
+        }
+        addBelow={error ? <InlineError>{error}</InlineError> : null}
+      />
 
       <div className="knowledge-privacy">
         <Icon name="shield-check" size={14} color="var(--success-600)" />
-        Indexing runs on device. Nothing is uploaded — only the agent on this
-        machine can read it.
+        Files are indexed locally on this device.
+      </div>
+    </div>
+  );
+}
+
+function JiraConfig({ config, onSave, onBack }) {
+  const [cfg, setCfg] = useState(() => ({
+    instanceUrl: config.instanceUrl ?? "",
+    email: config.email ?? "",
+    connected: Boolean(config.connected),
+    tokenConfigured: Boolean(config.tokenConfigured),
+    tokenLastFour: config.tokenLastFour ?? "",
+    tokenExpiresDays: config.tokenExpiresDays ?? null,
+    projects: config.projects ?? []
+  }));
+  const [instanceUrl, setInstanceUrl] = useState(config.instanceUrl ?? "");
+  const [email, setEmail] = useState(config.email ?? "");
+  const [token, setToken] = useState("");
+  const [pendingClear, setPendingClear] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState("");
+  const [disconnectConfirm, setDisconnectConfirm] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
+  const pickerRef = useRef(null);
+  // Mirror of the latest cfg, so a delayed scan-settle can persist the current
+  // state without a side effect inside the (must-be-pure) state updater.
+  const cfgRef = useRef(cfg);
+  useEffect(() => {
+    cfgRef.current = cfg;
+  }, [cfg]);
+
+  const hasSaved = cfg.tokenConfigured;
+  const projects = cfg.projects;
+  const atMax = projects.length >= JIRA_MAX;
+  const totalIssues = projects.reduce((total, project) => total + Number(project.issues ?? 0), 0);
+  const scanningCount = projects.filter((project) => project.status === "scanning").length;
+  const pausedCount = projects.filter((project) => project.status === "paused").length;
+  const available = Object.entries(MOCK_JIRA_PROJECTS)
+    .filter(([key]) => !projects.some((project) => project.key === key))
+    .filter(([key, name]) =>
+      `${key} ${name}`.toLowerCase().includes(pickerSearch.trim().toLowerCase())
+    );
+  // Days until the saved API token expires; under 14 we nudge the user to renew.
+  const expiry = cfg.tokenExpiresDays;
+  const expirySoon = typeof expiry === "number" && expiry <= 14;
+
+  // Close the project picker on an outside click or the Escape key.
+  useEffect(() => {
+    if (!pickerOpen) {
+      return undefined;
+    }
+    const close = () => {
+      setPickerOpen(false);
+      setPickerSearch("");
+    };
+    const onDown = (event) => {
+      if (pickerRef.current && !pickerRef.current.contains(event.target)) {
+        close();
+      }
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pickerOpen]);
+
+  // Update local state and persist. `secret` carries the write-only token fields
+  // when they change (connect/disconnect); other actions leave the saved token
+  // untouched by omitting them.
+  function commit(nextCfg, secret) {
+    setCfg(nextCfg);
+    onSave({
+      instanceUrl: nextCfg.instanceUrl,
+      email: nextCfg.email,
+      connected: nextCfg.connected,
+      tokenExpiresDays: nextCfg.tokenExpiresDays ?? null,
+      projects: nextCfg.projects,
+      ...(secret || {})
+    });
+  }
+
+  function saveConnection() {
+    const url = instanceUrl.trim();
+    const mail = email.trim();
+    if (!url) {
+      setConnectError("Enter your Jira instance URL.");
+      return;
+    }
+    if (!/^https?:\/\//.test(url)) {
+      setConnectError("Instance URL must start with https://");
+      return;
+    }
+    if (!mail) {
+      setConnectError("Enter your email address.");
+      return;
+    }
+    if (!mail.includes("@")) {
+      setConnectError("Enter a valid email address.");
+      return;
+    }
+    if (!token.trim() && !hasSaved) {
+      setConnectError("Enter an API token.");
+      return;
+    }
+    setConnecting(true);
+    setConnectError("");
+    // Mock connect: there is no real Jira API call yet.
+    setTimeout(() => {
+      const trimmedToken = token.trim();
+      const nextCfg = {
+        ...cfg,
+        instanceUrl: url,
+        email: mail,
+        connected: true,
+        tokenConfigured: true,
+        tokenLastFour: trimmedToken ? trimmedToken.slice(-4) : cfg.tokenLastFour,
+        tokenExpiresDays: 90
+      };
+      commit(nextCfg, trimmedToken ? { token: trimmedToken } : undefined);
+      setToken("");
+      setPendingClear(false);
+      setConnecting(false);
+    }, 1200);
+  }
+
+  function disconnect() {
+    const nextCfg = {
+      ...cfg,
+      connected: false,
+      tokenConfigured: false,
+      tokenLastFour: "",
+      tokenExpiresDays: null,
+      projects: []
+    };
+    commit(nextCfg, { clearToken: true });
+    setDisconnectConfirm(false);
+    setToken("");
+    setPendingClear(false);
+  }
+
+  function addProjectByKey(key) {
+    if (atMax || projects.some((project) => project.key === key)) {
+      return;
+    }
+    const name = MOCK_JIRA_PROJECTS[key];
+    if (!name) {
+      return;
+    }
+    const id = "j" + Math.random().toString(36).slice(2, 7);
+    setCfg((prev) => ({
+      ...prev,
+      projects: [...prev.projects, { id, key, name, status: "scanning", issues: 0, checked: "" }]
+    }));
+    setPickerSearch("");
+    // Settle the simulated first scan, then persist the final scanned project.
+    // Built from cfgRef (the latest state) so it survives any pause/remove that
+    // happened during the scan, and so persistence stays out of the updater.
+    setTimeout(() => {
+      const issues = Math.floor(40 + Math.random() * 300);
+      const base = cfgRef.current;
+      if (!base.projects.some((project) => project.id === id)) {
+        return; // removed mid-scan — nothing to settle
+      }
+      commit({
+        ...base,
+        projects: base.projects.map((project) =>
+          project.id === id
+            ? { ...project, status: "scanned", issues, checked: "just now" }
+            : project
+        )
+      });
+    }, 2400);
+  }
+
+  function removeProject(id) {
+    commit({ ...cfg, projects: projects.filter((project) => project.id !== id) });
+  }
+
+  function togglePause(id) {
+    commit({
+      ...cfg,
+      projects: projects.map((project) =>
+        project.id === id
+          ? { ...project, status: project.status === "paused" ? "scanned" : "paused" }
+          : project
+      )
+    });
+  }
+
+  function scanNow(id) {
+    // Re-scan is a local animation only — it doesn't change persisted state.
+    setCfg((prev) => ({
+      ...prev,
+      projects: prev.projects.map((project) =>
+        project.id === id && project.status === "scanned"
+          ? { ...project, status: "scanning", checked: "" }
+          : project
+      )
+    }));
+    setTimeout(() => {
+      setCfg((prev) => ({
+        ...prev,
+        projects: prev.projects.map((project) =>
+          project.id === id && project.status === "scanning"
+            ? { ...project, status: "scanned", checked: "just now" }
+            : project
+        )
+      }));
+    }, 2000);
+  }
+
+  return (
+    <div className="settings-section">
+      <button className="config-back" type="button" onClick={onBack}>
+        <Icon name="arrow-left" size={15} color="var(--gray-600)" /> All knowledge
+      </button>
+
+      <div className="config-head">
+        <span className="provider-icon lg">
+          <Icon name="ticket" size={22} color="var(--blue-600)" />
+        </span>
+        <div className="provider-id">
+          <h2 className="ds-h3">Jira (API)</h2>
+          <div className="provider-region">
+            The agent scans issues and project context from Jira so it can reference
+            them. Indexed locally — nothing leaves this device. Up to {JIRA_MAX} projects.
+          </div>
+        </div>
+        {cfg.connected ? (
+          <span className="badge badge-success knowledge-head-badge">
+            <span className="dot" />
+            Connected
+          </span>
+        ) : (
+          <span className="badge badge-neutral knowledge-head-badge">Not connected</span>
+        )}
+      </div>
+
+      {cfg.connected && projects.length > 0 && (
+        <SourceStats
+          items={[
+            { label: "Issues indexed", value: totalIssues.toLocaleString() },
+            { label: "Projects", value: `${projects.length} / ${JIRA_MAX}` },
+            {
+              label: "Status",
+              value: scanningCount
+                ? `${scanningCount} scanning`
+                : pausedCount
+                  ? `${pausedCount} paused`
+                  : "Up to date"
+            }
+          ]}
+        />
+      )}
+
+      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <Field label="Instance URL" hint="Your Atlassian Cloud or Server base URL.">
+          <input
+            className="input"
+            type="text"
+            placeholder="https://your-org.atlassian.net"
+            value={instanceUrl}
+            onChange={(event) => {
+              setInstanceUrl(event.target.value);
+              setConnectError("");
+            }}
+          />
+        </Field>
+        <Field label="Email" hint="The email address tied to your Jira account.">
+          <input
+            className="input"
+            type="email"
+            placeholder="you@company.com"
+            value={email}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setConnectError("");
+            }}
+          />
+        </Field>
+        <div className="field">
+          <label className="field">
+            <span className="field-label">API token</span>
+            <span className="input-icon">
+              <Icon name="key" size={16} />
+              <input
+                className="input"
+                type="password"
+                placeholder={hasSaved ? `Saved token · ending ${cfg.tokenLastFour}` : ""}
+                value={token}
+                onChange={(event) => {
+                  setToken(event.target.value);
+                  setConnectError("");
+                  setPendingClear(false);
+                }}
+              />
+            </span>
+          </label>
+          {hasSaved && !pendingClear ? (
+            <span className="saved-key-row">
+              <span className="saved-key-text">
+                <Icon name="circle-check" size={13} color="var(--success-600)" />
+                Saved token ending {cfg.tokenLastFour}
+              </span>
+              <button
+                className="btn btn-ghost btn-sm"
+                type="button"
+                onClick={() => setPendingClear(true)}
+              >
+                Clear
+              </button>
+            </span>
+          ) : hasSaved && pendingClear ? (
+            <span className="saved-key-row">
+              <span className="token-clear-warning">
+                <Icon name="alert-triangle" size={13} color="var(--warning-700)" />
+                Token will be cleared on save.
+              </span>
+              <button
+                className="btn btn-ghost btn-sm"
+                type="button"
+                onClick={() => setPendingClear(false)}
+              >
+                Undo
+              </button>
+            </span>
+          ) : (
+            <span className="field-hint">
+              Generate one at id.atlassian.com/manage-profile/security/api-tokens.
+              Stored encrypted on this device — never synced.
+            </span>
+          )}
+          {hasSaved && !pendingClear && typeof expiry === "number" && (
+            <span className={expirySoon ? "jira-expiry soon" : "jira-expiry"}>
+              <Icon
+                name={expirySoon ? "alert-triangle" : "calendar"}
+                size={13}
+                color={expirySoon ? "var(--warning-700)" : "var(--gray-400)"}
+              />
+              {expirySoon
+                ? `Token expires in ${expiry} days — generate a new one to avoid interrupted scans.`
+                : `Token expires in ${expiry} days.`}
+            </span>
+          )}
+        </div>
+        {connectError && <InlineError>{connectError}</InlineError>}
+      </div>
+
+      <div className="btn-row">
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={saveConnection}
+          disabled={connecting}
+        >
+          {connecting ? (
+            <>
+              <Icon name="refresh-cw" size={15} color="#fff" className="cda-spin" />
+              Connecting…
+            </>
+          ) : cfg.connected ? (
+            <>
+              <Icon name="check" size={16} color="#fff" /> Save connection
+            </>
+          ) : (
+            <>
+              <Icon name="check" size={16} color="#fff" /> Connect
+            </>
+          )}
+        </button>
+        {cfg.connected && !disconnectConfirm && (
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={() => setDisconnectConfirm(true)}
+          >
+            Disconnect
+          </button>
+        )}
+        {cfg.connected && disconnectConfirm && (
+          <>
+            <span className="disconnect-prompt">
+              Remove all {projects.length} project{projects.length !== 1 ? "s" : ""} too?
+            </span>
+            <button
+              className="btn btn-secondary btn-sm"
+              type="button"
+              onClick={() => setDisconnectConfirm(false)}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-danger btn-sm" type="button" onClick={disconnect}>
+              <Icon name="trash" size={14} color="#fff" /> Disconnect
+            </button>
+          </>
+        )}
+      </div>
+
+      {cfg.connected && (
+        <KnowledgeSourceList
+          items={projects}
+          max={JIRA_MAX}
+          noun="projects"
+          addRowRef={pickerRef}
+          emptyText="No projects yet. Add a Jira project above to start scanning."
+          confirmLabel="Remove project?"
+          removeLabel="Remove project"
+          onScanNow={scanNow}
+          onTogglePause={togglePause}
+          onRemove={removeProject}
+          renderLeading={(project) => <span className="jira-key">{project.key}</span>}
+          renderTitle={(project) => project.name}
+          tickerItems={(project) => sampleTickets(project.key)}
+          metaScanned={(project) =>
+            `${Number(project.issues ?? 0).toLocaleString()} issues · checked ${project.checked || "just now"}`
+          }
+          metaPaused={(project) =>
+            `Paused · ${Number(project.issues ?? 0).toLocaleString()} issues`
+          }
+          addControl={
+            pickerOpen ? (
+              <button
+                className="btn btn-secondary btn-sm"
+                type="button"
+                onClick={() => {
+                  setPickerOpen(false);
+                  setPickerSearch("");
+                }}
+              >
+                <Icon name="check" size={15} color="var(--gray-700)" /> Done
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary btn-sm"
+                type="button"
+                onClick={() => {
+                  setPickerOpen(true);
+                  setPickerSearch("");
+                }}
+                disabled={atMax}
+              >
+                <Icon name="plus" size={15} color="#fff" />{" "}
+                {atMax ? "Project limit reached" : "Add project"}
+              </button>
+            )
+          }
+          addBelow={
+            pickerOpen && !atMax ? (
+              <div className="jira-picker">
+                <span className="input-icon jira-picker-search">
+                  <Icon name="search" size={16} />
+                  <input
+                    className="input"
+                    type="text"
+                    autoFocus
+                    placeholder="Search projects in this instance…"
+                    value={pickerSearch}
+                    onChange={(event) => setPickerSearch(event.target.value)}
+                  />
+                </span>
+                <div className="jira-picker-list">
+                  {available.length === 0 ? (
+                    <div className="jira-picker-empty">
+                      {pickerSearch ? "No matching projects." : "Every project is already added."}
+                    </div>
+                  ) : (
+                    available.map(([key, name]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className="jira-picker-item"
+                        onClick={() => addProjectByKey(key)}
+                      >
+                        <span className="jira-key">{key}</span>
+                        <span className="jira-picker-name">{name}</span>
+                        <Icon name="plus" size={15} color="var(--blue-600)" />
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null
+          }
+        />
+      )}
+
+      <div className="knowledge-privacy">
+        <Icon name="shield-check" size={14} color="var(--success-600)" />
+        Issues are indexed locally on this device.
       </div>
     </div>
   );

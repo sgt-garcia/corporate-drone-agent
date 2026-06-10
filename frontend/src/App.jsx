@@ -62,7 +62,16 @@ const emptySettings = {
   gemini: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
   anthropic: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
   groq: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
-  deepSeek: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" }
+  deepSeek: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
+  jira: {
+    instanceUrl: "",
+    email: "",
+    connected: false,
+    tokenConfigured: false,
+    tokenLastFour: "",
+    tokenExpiresDays: null,
+    projects: []
+  }
 };
 
 export default function App() {
@@ -542,6 +551,19 @@ export default function App() {
     }
   }
 
+  // Persist the Jira knowledge source through the settings object. The component
+  // sends the full intended Jira state (connection, projects, and write-only
+  // token fields when they change); other settings are left untouched.
+  async function saveJiraConfig(jira) {
+    try {
+      const savedSettings = await saveSettings({ ...settings, jira });
+      setSettings(savedSettings);
+      setKnowledgeFolders(savedSettings.knowledgeFolders ?? []);
+    } catch (error) {
+      setStatusText(error.message);
+    }
+  }
+
   async function toggleKnowledgeFolderPause(folder) {
     try {
       const savedFolder =
@@ -607,6 +629,8 @@ export default function App() {
           onRemoveKnowledgeFolder={removeKnowledgeFolder}
           onScanKnowledgeFolder={scanKnowledgeFolder}
           onToggleKnowledgeFolderPause={toggleKnowledgeFolderPause}
+          jiraConfig={settings.jira ?? emptySettings.jira}
+          onSaveJiraConfig={saveJiraConfig}
         />
       ) : (
         <main className="main">

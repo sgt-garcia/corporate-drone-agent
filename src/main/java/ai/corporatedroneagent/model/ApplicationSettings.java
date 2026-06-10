@@ -21,6 +21,7 @@ public class ApplicationSettings {
     private BedrockSettings bedrock = new BedrockSettings();
     private GroqSettings groq = new GroqSettings();
     private DeepSeekSettings deepSeek = new DeepSeekSettings();
+    private JiraSettings jira = new JiraSettings();
 
     public String getAgentName() {
         return agentName;
@@ -140,5 +141,13 @@ public class ApplicationSettings {
 
     public void setDeepSeek(DeepSeekSettings deepSeek) {
         this.deepSeek = deepSeek == null ? new DeepSeekSettings() : deepSeek;
+    }
+
+    public JiraSettings getJira() {
+        return jira;
+    }
+
+    public void setJira(JiraSettings jira) {
+        this.jira = jira == null ? new JiraSettings() : jira;
     }
 }

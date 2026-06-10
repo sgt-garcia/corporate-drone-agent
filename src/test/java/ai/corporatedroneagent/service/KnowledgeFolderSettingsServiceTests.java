@@ -15,6 +15,8 @@ import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.security.SecretStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -139,6 +141,18 @@ class KnowledgeFolderSettingsServiceTests {
         KnowledgeFolderDto resumed = settingsService.resumeKnowledgeFolder(folder.getId());
         assertThat(resumed.getStatus()).isEqualTo("scanned");
         assertThat(settingsService.listKnowledgeFolders().getFirst().getStatus()).isEqualTo("scanned");
+    }
+
+    @Test
+    void formatsRelativeScanFreshness() {
+        Instant now = Instant.parse("2026-06-10T12:00:00Z");
+
+        assertThat(SettingsService.relativeTime(now.minusSeconds(10), now)).isEqualTo("just now");
+        assertThat(SettingsService.relativeTime(now.minusSeconds(120), now)).isEqualTo("2 min ago");
+        assertThat(SettingsService.relativeTime(now.minus(Duration.ofHours(1)), now)).isEqualTo("1 hour ago");
+        assertThat(SettingsService.relativeTime(now.minus(Duration.ofHours(5)), now)).isEqualTo("5 hours ago");
+        assertThat(SettingsService.relativeTime(now.minus(Duration.ofDays(3)), now)).isEqualTo("3 days ago");
+        assertThat(SettingsService.relativeTime(now.plusSeconds(30), now)).isEqualTo("just now");
     }
 
     private String existingFolderPath() throws IOException {

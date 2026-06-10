@@ -10,6 +10,7 @@ public class KnowledgeFolderDto {
     private long files;
     private String size = "";
     private String nextScan = "";
+    private String checked = "";
 
     public UUID getId() {
         return id;
@@ -57,5 +58,13 @@ public class KnowledgeFolderDto {
 
     public void setNextScan(String nextScan) {
         this.nextScan = nextScan == null ? "" : nextScan;
+    }
+
+    public String getChecked() {
+        return checked;
+    }
+
+    public void setChecked(String checked) {
+        this.checked = checked == null ? "" : checked;
     }
 }

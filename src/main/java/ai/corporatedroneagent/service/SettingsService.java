@@ -1,8 +1,10 @@
 package ai.corporatedroneagent.service;
 
+import ai.corporatedroneagent.dto.JiraProjectDto;
 import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
+import ai.corporatedroneagent.model.JiraSettings;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
 import ai.corporatedroneagent.model.knowledge.WorkStatus;
@@ -10,6 +12,8 @@ import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.util.Strings;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -28,6 +32,7 @@ public class SettingsService {
 
     private static final Logger log = LoggerFactory.getLogger(SettingsService.class);
     private static final int MAX_KNOWLEDGE_FOLDERS = 10;
+    private static final int MAX_JIRA_PROJECTS = 10;
 
     private final SettingsRepository settingsRepository;
     private final KnowledgeRootRepository knowledgeRootRepository;
@@ -89,6 +94,7 @@ public class SettingsService {
         current.setBedrock(settings.getBedrock());
         current.setGroq(settings.getGroq());
         current.setDeepSeek(settings.getDeepSeek());
+        current.setJira(sanitizeJira(settings.getJira()));
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);
@@ -288,7 +294,38 @@ public class SettingsService {
                 ? ""
                 : KnowledgeFolderScanService.formatBytes(root.getTotalSizeBytes()));
         folder.setNextScan(nextScan(root));
+        folder.setChecked(checkedLabel(root));
         return folder;
+    }
+
+    // Human-readable "checked …" freshness for a scanned folder, derived from the
+    // last successful scan's finish time. Empty while scanning/paused or before a
+    // first successful scan, so the UI only shows it on a settled "scanned" row.
+    private String checkedLabel(KnowledgeRoot root) {
+        if (root.isPaused()
+                || root.getScanStatus() != WorkStatus.DONE
+                || !Boolean.TRUE.equals(root.getScanSuccess())
+                || root.getScanFinishedAt() == null) {
+            return "";
+        }
+        return relativeTime(root.getScanFinishedAt(), Instant.now());
+    }
+
+    static String relativeTime(Instant then, Instant now) {
+        long seconds = Math.max(0, Duration.between(then, now).getSeconds());
+        if (seconds < 45) {
+            return "just now";
+        }
+        long minutes = Math.round(seconds / 60.0);
+        if (minutes < 60) {
+            return minutes + " min ago";
+        }
+        long hours = Math.round(minutes / 60.0);
+        if (hours < 24) {
+            return hours + (hours == 1 ? " hour ago" : " hours ago");
+        }
+        long days = Math.round(hours / 24.0);
+        return days + (days == 1 ? " day ago" : " days ago");
     }
 
     private String folderStatus(KnowledgeRoot root) {
@@ -336,6 +373,58 @@ public class SettingsService {
                 sanitized.add(sanitizedFolder);
             }
             if (sanitized.size() == MAX_KNOWLEDGE_FOLDERS) {
+                break;
+            }
+        }
+        return sanitized;
+    }
+
+    // Jira has no real API integration yet — connecting and scanning are
+    // simulated in the UI. Persist only what the Settings screen needs to render
+    // on reload: trimmed connection details, the chosen projects (capped and
+    // deduped by key), and the token expiry. The live "scanning" status is a
+    // client-side animation, so it settles to "scanned" here. The secret token
+    // is handled separately by SettingsSecretsService.
+    private JiraSettings sanitizeJira(JiraSettings jira) {
+        JiraSettings sanitized = new JiraSettings();
+        if (jira == null) {
+            return sanitized;
+        }
+        sanitized.setInstanceUrl(Strings.emptyIfNull(jira.getInstanceUrl()).trim());
+        sanitized.setEmail(Strings.emptyIfNull(jira.getEmail()).trim());
+        sanitized.setConnected(jira.isConnected());
+        sanitized.setTokenExpiresDays(jira.getTokenExpiresDays());
+        if (!jira.isConnected()) {
+            return sanitized;
+        }
+        sanitized.setProjects(sanitizeJiraProjects(jira.getProjects()));
+        return sanitized;
+    }
+
+    private List<JiraProjectDto> sanitizeJiraProjects(List<JiraProjectDto> projects) {
+        List<JiraProjectDto> sanitized = new ArrayList<>();
+        if (projects == null) {
+            return sanitized;
+        }
+        for (JiraProjectDto project : projects) {
+            if (project == null || project.getKey() == null || project.getKey().isBlank()) {
+                continue;
+            }
+            String key = project.getKey().trim();
+            if (sanitized.stream().anyMatch(existing -> existing.getKey().equalsIgnoreCase(key))) {
+                continue;
+            }
+            JiraProjectDto sanitizedProject = new JiraProjectDto();
+            sanitizedProject.setId(project.getId() == null || project.getId().isBlank()
+                    ? UUID.randomUUID().toString()
+                    : project.getId());
+            sanitizedProject.setKey(key);
+            sanitizedProject.setName(project.getName());
+            sanitizedProject.setStatus("paused".equals(project.getStatus()) ? "paused" : "scanned");
+            sanitizedProject.setIssues(project.getIssues());
+            sanitizedProject.setChecked(project.getChecked());
+            sanitized.add(sanitizedProject);
+            if (sanitized.size() == MAX_JIRA_PROJECTS) {
                 break;
             }
         }

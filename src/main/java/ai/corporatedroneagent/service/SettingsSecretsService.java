@@ -22,6 +22,7 @@ public class SettingsSecretsService {
     private static final String BEDROCK_SECRET_KEY = "settings.bedrock.secretKey";
     private static final String GROQ_API_KEY = "settings.groq.apiKey";
     private static final String DEEPSEEK_API_KEY = "settings.deepSeek.apiKey";
+    private static final String JIRA_API_TOKEN = "settings.jira.token";
     private static final List<SecretBinding> SECRET_BINDINGS = List.of(
             new SecretBinding(OPENAI_API_KEY, ApplicationSettings::getOpenAi),
             new SecretBinding(OPENAI_SDK_API_KEY, ApplicationSettings::getOpenAiSdk),
@@ -45,12 +46,14 @@ public class SettingsSecretsService {
             migrated = migrateSecret(settings, binding) || migrated;
         }
         migrated = migrateBedrockSecrets(settings) || migrated;
+        migrated = migrateJiraToken(settings) || migrated;
         return migrated;
     }
 
     public void saveSubmittedSecrets(ApplicationSettings settings) {
         SECRET_BINDINGS.forEach(binding -> saveSubmittedSecret(settings, binding));
         saveSubmittedBedrockSecrets(settings);
+        saveSubmittedJiraToken(settings);
     }
 
     public void applySecretValues(ApplicationSettings settings) {
@@ -59,11 +62,13 @@ public class SettingsSecretsService {
             binding.providerSettings(settings).setApiKey(apiKey);
         });
         applyBedrockSecretValues(settings);
+        settings.getJira().setToken(secretStore.get(JIRA_API_TOKEN).orElse(""));
     }
 
     public void applySecretStatus(ApplicationSettings settings) {
         SECRET_BINDINGS.forEach(binding -> applyStatus(settings, binding));
         applyBedrockSecretStatus(settings);
+        applyJiraTokenStatus(settings);
     }
 
     public void clearSecretValues(ApplicationSettings settings) {
@@ -73,6 +78,8 @@ public class SettingsSecretsService {
             providerSettings.setClearApiKey(false);
         });
         clearBedrockSecretValues(settings);
+        settings.getJira().setToken("");
+        settings.getJira().setClearToken(false);
     }
 
     private boolean migrateSecret(ApplicationSettings settings, SecretBinding binding) {
@@ -155,6 +162,32 @@ public class SettingsSecretsService {
         bedrock.setClearAccessKey(false);
         bedrock.setSecretKey("");
         bedrock.setClearSecretKey(false);
+    }
+
+    private boolean migrateJiraToken(ApplicationSettings settings) {
+        String token = settings.getJira().getToken();
+        if (!hasText(token)) {
+            return false;
+        }
+        secretStore.put(JIRA_API_TOKEN, token);
+        settings.getJira().setToken("");
+        return true;
+    }
+
+    private void saveSubmittedJiraToken(ApplicationSettings settings) {
+        var jira = settings.getJira();
+        if (jira.isClearToken()) {
+            secretStore.delete(JIRA_API_TOKEN);
+        } else if (hasText(jira.getToken())) {
+            secretStore.put(JIRA_API_TOKEN, jira.getToken());
+        }
+    }
+
+    private void applyJiraTokenStatus(ApplicationSettings settings) {
+        Optional<String> token = secretStore.get(JIRA_API_TOKEN);
+        var jira = settings.getJira();
+        jira.setTokenConfigured(token.isPresent());
+        jira.setTokenLastFour(token.map(this::lastFour).orElse(""));
     }
 
     private String lastFour(String value) {

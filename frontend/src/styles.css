@@ -1291,7 +1291,7 @@ select.input {
 .folder-add {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border-divider);
   background: var(--gray-50);
@@ -1316,8 +1316,8 @@ select.input {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
-  max-width: 420px;
+  flex: 1 1 300px;
+  min-width: 0;
 }
 .folder-add-controls .input-icon {
   flex: 1;
@@ -1405,6 +1405,167 @@ select.input {
 }
 .knowledge-privacy svg {
   flex-shrink: 0;
+}
+
+/* Badge slot between a knowledge tile's head and footer (On device / Connected). */
+.knowledge-tile-badge {
+  display: flex;
+}
+/* Badge that rhymes the two drill-in headers (On device / Connected). */
+.knowledge-head-badge {
+  flex-shrink: 0;
+}
+
+/* Shared inline error — one error treatment across folders + Jira. */
+.inline-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--danger-700);
+}
+.inline-error svg {
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+/* The add-row should wrap its control below the count at narrow widths. */
+.folder-add-row {
+  flex-wrap: wrap;
+}
+
+/* ---- Live scan ticker ---- */
+.scan-ticker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+.scan-ticker-label {
+  color: var(--blue-700);
+  flex-shrink: 0;
+}
+.scan-ticker-item {
+  font-family: var(--font-mono);
+  color: var(--gray-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Aggregate stats strip ---- */
+.source-stats {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  overflow: hidden;
+}
+.source-stat {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 16px;
+}
+.source-stat + .source-stat {
+  border-left: 1px solid var(--border-divider);
+}
+.source-stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--gray-900);
+  white-space: nowrap;
+}
+.source-stat .ds-overline {
+  margin: 3px 0 0;
+}
+
+/* ---- Jira ---- */
+.jira-key {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--blue-700);
+  background: var(--blue-50);
+  border: 1px solid color-mix(in srgb, var(--blue-300) 60%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+.jira-expiry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--gray-500);
+}
+.jira-expiry.soon {
+  color: var(--warning-700);
+}
+.token-clear-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--warning-700);
+}
+.disconnect-prompt {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-700);
+}
+
+/* Inline project picker (searchable list of instance projects). */
+.jira-picker {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  overflow: hidden;
+}
+.jira-picker-search {
+  display: block;
+  margin: 8px;
+}
+.jira-picker-list {
+  max-height: 196px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border-divider);
+}
+.jira-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.jira-picker-item + .jira-picker-item {
+  border-top: 1px solid var(--border-divider);
+}
+.jira-picker-item:hover {
+  background: var(--gray-50);
+}
+.jira-picker-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jira-picker-empty {
+  padding: 18px 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--gray-500);
 }
 
 /* ---- Tools ---- */
