@@ -2,7 +2,13 @@ package ai.corporatedroneagent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import ai.corporatedroneagent.TestDatabaseSupport;
 import ai.corporatedroneagent.dto.JiraConnectionRequest;
@@ -171,6 +177,45 @@ class JiraSettingsServiceTests {
     }
 
     @Test
+    void scheduledJiraScanSkipsPausedProjectsAndContinuesAfterProjectFailure() {
+        JiraKnowledgeScanService scanService = mock(JiraKnowledgeScanService.class);
+        settingsService = serviceWith(validValidator(), fakeDiscovery(), scanService);
+        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        JiraProjectDto dev = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        JiraProjectDto ops = settingsService.addJiraProject(new JiraProjectRequest("OPS"));
+        JiraProjectDto help = settingsService.addJiraProject(new JiraProjectRequest("HLP"));
+        settingsService.pauseJiraProject(ops.getId());
+
+        when(scanService.scanProject(any(), any(), eq("token-1234"))).thenAnswer(invocation -> {
+            JiraProjectDto project = invocation.getArgument(1);
+            if ("DEV".equals(project.getKey())) {
+                throw new JiraKnowledgeScanService.JiraScanException("Could not scan Jira project", new RuntimeException("boom"));
+            }
+            return new JiraKnowledgeScanService.ScanResult(5, 123);
+        });
+
+        settingsService.scanAllJiraProjects();
+
+        verify(scanService, times(2)).scanProject(any(), any(), eq("token-1234"));
+        verify(scanService).scanProject(any(), argThat(project -> "DEV".equals(project.getKey())), eq("token-1234"));
+        verify(scanService).scanProject(any(), argThat(project -> "HLP".equals(project.getKey())), eq("token-1234"));
+        verify(scanService, times(0)).scanProject(any(), argThat(project -> "OPS".equals(project.getKey())), any());
+        assertThat(settingsService.listJiraProjects())
+                .filteredOn(project -> project.getId().equals(help.getId()))
+                .singleElement()
+                .satisfies(project -> {
+                    assertThat(project.getStatus()).isEqualTo("scanned");
+                    assertThat(project.getIssues()).isEqualTo(5);
+                    assertThat(project.getChecked()).isEqualTo("just now");
+                });
+        assertThat(settingsService.listJiraProjects())
+                .filteredOn(project -> project.getId().equals(dev.getId()))
+                .singleElement()
+                .extracting(JiraProjectDto::getIssues)
+                .isEqualTo(42L);
+    }
+
+    @Test
     void syncingJiraProjectsDoesNotTouchLocalFolderRoots() {
         KnowledgeRoot localRoot = new KnowledgeRoot();
         localRoot.setSource(KnowledgeSource.LOCAL_FOLDER);
@@ -232,6 +277,14 @@ class JiraSettingsServiceTests {
             JiraConnectionValidationService validator,
             JiraProjectDiscoveryService discovery
     ) {
+        return serviceWith(validator, discovery, null);
+    }
+
+    private SettingsService serviceWith(
+            JiraConnectionValidationService validator,
+            JiraProjectDiscoveryService discovery,
+            JiraKnowledgeScanService scanService
+    ) {
         JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
         knowledgeRootRepository = new KnowledgeRootRepository(jdbcTemplate);
         settingsRepository = new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules());
@@ -249,7 +302,7 @@ class JiraSettingsServiceTests {
                 new KnowledgeScanCoordinator(),
                 validator,
                 discovery,
-                null
+                scanService
         );
     }
 
@@ -275,7 +328,8 @@ class JiraSettingsServiceTests {
                 String normalizedQuery = query == null ? "" : query.toLowerCase(java.util.Locale.ROOT);
                 return java.util.List.of(
                                 project("10001", "DEV", "Software Development", 42),
-                                project("10002", "OPS", "Operations", 17)
+                                project("10002", "OPS", "Operations", 17),
+                                project("10003", "HLP", "Help Desk", 3)
                         ).stream()
                         .filter(project -> normalizedQuery.isBlank()
                                 || (project.getKey() + " " + project.getName())

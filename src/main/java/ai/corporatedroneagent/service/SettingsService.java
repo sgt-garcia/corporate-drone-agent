@@ -297,6 +297,29 @@ public class SettingsService {
         return currentJiraSettings().getProjects();
     }
 
+    public synchronized void scanAllJiraProjects() {
+        JiraSettings jira = currentJiraSettings();
+        if (!jira.isConnected() || !jira.isTokenConfigured()) {
+            log.debug("Skipping scheduled Jira project scan because Jira is not connected.");
+            return;
+        }
+
+        List<String> projectIds = jira.getProjects().stream()
+                .filter(project -> !"paused".equals(project.getStatus()))
+                .map(JiraProjectDto::getId)
+                .toList();
+        log.info("Starting scheduled Jira scan for {} projects.", projectIds.size());
+
+        for (String projectId : projectIds) {
+            try {
+                scanJiraProject(projectId);
+            } catch (RuntimeException exception) {
+                log.warn("Scheduled Jira scan failed for project {}.", projectId, exception);
+            }
+        }
+        log.info("Finished scheduled Jira scan for {} projects.", projectIds.size());
+    }
+
     public synchronized List<JiraProjectDto> searchJiraProjects(String query) {
         JiraSettings jira = currentJiraSettings();
         requireJiraSetup(jira);
