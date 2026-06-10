@@ -147,16 +147,6 @@ function toolEnabled(tool, settings) {
 const KNOWLEDGE_MAX = 10;
 const JIRA_MAX = 10;
 
-// Sample items the scanning ticker cycles through so a live scan shows what the
-// agent is currently reading.
-const SAMPLE_SCAN_FILES = [
-  "Invoices/Hoffmann-GmbH-Q2.pdf",
-  "Reports/ops-tracker.xlsx",
-  "Contracts/NDA-2024-renewed.docx",
-  "Planning/Q2-roadmap.pptx",
-  "Vendors/renewal-terms-v3.pdf",
-  "Notes/1on1-prep.md"
-];
 const SAMPLE_TICKET_NUMS = [1423, 1287, 1390, 1402, 1356, 1198];
 const sampleTickets = (key) => SAMPLE_TICKET_NUMS.map((n) => `${key}-${n}`);
 
@@ -438,8 +428,8 @@ function InlineError({ children }) {
   );
 }
 
-// Cycles through sample items to show what the agent is reading while a source
-// scans, so "scanning" feels concrete rather than an opaque spinner.
+// Cycles through source-specific scan items when a source can provide them.
+// Local Folders currently expose scan state, not per-file progress.
 function ScanningTicker({ items }) {
   const [index, setIndex] = useState(0);
   useEffect(() => {
@@ -816,7 +806,7 @@ function LocalFoldersConfig({
         onRemove={removeFolder}
         renderLeading={() => <Icon name="folder" size={18} color="var(--gray-500)" />}
         renderTitle={(folder) => folder.path}
-        tickerItems={() => SAMPLE_SCAN_FILES}
+        tickerItems={() => ["Scan in progress"]}
         metaScanned={folderMeta}
         metaPaused={(folder) => `Paused · ${folderMeta(folder)}`}
         addControl={
