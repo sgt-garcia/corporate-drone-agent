@@ -144,7 +144,8 @@ public class KnowledgeFolderScanService {
             return localFolderKnowledgeScanService.scan(
                     folder,
                     folderPath,
-                    () -> knowledgeScanCoordinator.isFolderScanCancelled(folderId)
+                    () -> knowledgeScanCoordinator.isFolderScanCancelled(folderId),
+                    KnowledgeScanProgress.emitter(eventService, folderId.toString())
             );
         } catch (LocalFolderKnowledgeScanService.KnowledgeScanException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not scan folder");

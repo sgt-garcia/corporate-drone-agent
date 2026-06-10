@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,7 +61,19 @@ public class JiraKnowledgeScanService {
         this.issueFetchService = issueFetchService;
     }
 
+    private static final Consumer<String> NO_PROGRESS = item -> {
+    };
+
     public ScanResult scanProject(JiraSettings jira, JiraProjectDto project, String token) {
+        return scanProject(jira, project, token, NO_PROGRESS);
+    }
+
+    public ScanResult scanProject(
+            JiraSettings jira,
+            JiraProjectDto project,
+            String token,
+            Consumer<String> onProgress
+    ) {
         Instant startedAt = Instant.now();
         KnowledgeRoot root = knowledgeRoot(jira, project);
         Instant updatedSince = deltaUpdatedSince(root);
@@ -83,7 +96,7 @@ public class JiraKnowledgeScanService {
                     updatedSince
             );
             stats.add(issues);
-            processIssues(root.getId(), issues, startedAt);
+            processIssues(root.getId(), issues, startedAt, onProgress);
             if (!deltaScan) {
                 removeDeletedResourceIndexes(
                         issues.stream().map(JiraIssueFetchService.JiraIssueDocument::reference).toList(),
@@ -128,7 +141,8 @@ public class JiraKnowledgeScanService {
     private void processIssues(
             UUID rootId,
             List<JiraIssueFetchService.JiraIssueDocument> issues,
-            Instant scannedAt
+            Instant scannedAt,
+            Consumer<String> onProgress
     ) {
         Map<String, KnowledgeResource> existingResources = resourceRepository.findByRootId(rootId).stream()
                 .collect(Collectors.toMap(
@@ -138,6 +152,7 @@ public class JiraKnowledgeScanService {
                 ));
         Set<UUID> reusablePipelineResourceIds = pipelineRepository.findReusablePipelineResourceIdsByRootId(rootId);
         for (JiraIssueFetchService.JiraIssueDocument issue : issues) {
+            onProgress.accept(issue.key());
             saveResource(issue, rootId, existingResources.get(issue.reference()), reusablePipelineResourceIds, scannedAt);
         }
     }

@@ -88,6 +88,9 @@ export default function App() {
   const [draftsByConversationId, setDraftsByConversationId] = useState({});
   const [settings, setSettings] = useState(emptySettings);
   const [knowledgeFolders, setKnowledgeFolders] = useState(defaultKnowledgeFolders);
+  // Live per-source scan progress: source id -> array of recent file names /
+  // ticket keys, streamed over SSE while a folder or Jira project is scanning.
+  const [scanProgressById, setScanProgressById] = useState({});
   const [activePage, setActivePage] = useState("work");
   const [settingsSection, setSettingsSection] = useState(null);
   const [activeWorkItemId, setActiveWorkItemId] = useState(null);
@@ -179,6 +182,12 @@ export default function App() {
     });
     events.addEventListener("settings-updated", () => {
       refreshSettingsFromServer();
+    });
+    events.addEventListener("knowledge-scan-progress", (event) => {
+      const { id, item } = JSON.parse(event.data);
+      if (id && item) {
+        recordScanProgress(id, item);
+      }
     });
     events.onerror = () => setStatusText("Backend event stream disconnected.");
 
@@ -674,6 +683,20 @@ export default function App() {
     }
   }
 
+  // Append a streamed scan item for a source, keeping a short rolling window of
+  // distinct recent names for the ticker to cycle through. Consecutive repeats
+  // are ignored so a slow single-file scan doesn't stutter.
+  function recordScanProgress(id, item) {
+    setScanProgressById((current) => {
+      const previous = current[id] ?? [];
+      if (previous[previous.length - 1] === item) {
+        return current;
+      }
+      const next = [...previous, item].slice(-5);
+      return { ...current, [id]: next };
+    });
+  }
+
   function addMessageToConversation(conversationId, message) {
     setConversationsById((currentConversations) => {
       const conversation = currentConversations[conversationId];
@@ -722,6 +745,7 @@ export default function App() {
           settings={settings}
           onSave={updateSettings}
           knowledgeFolders={knowledgeFolders}
+          scanProgressById={scanProgressById}
           onAddKnowledgeFolder={addKnowledgeFolder}
           onRemoveKnowledgeFolder={removeKnowledgeFolder}
           onScanKnowledgeFolder={scanKnowledgeFolder}

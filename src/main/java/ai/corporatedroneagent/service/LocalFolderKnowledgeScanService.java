@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,11 +68,23 @@ public class LocalFolderKnowledgeScanService {
         this.indexingService = indexingService;
     }
 
+    private static final Consumer<String> NO_PROGRESS = item -> {
+    };
+
     public ScanResult scan(KnowledgeFolderDto folder, Path folderPath) {
         return scan(folder, folderPath, () -> false);
     }
 
     public ScanResult scan(KnowledgeFolderDto folder, Path folderPath, BooleanSupplier isCancelled) {
+        return scan(folder, folderPath, isCancelled, NO_PROGRESS);
+    }
+
+    public ScanResult scan(
+            KnowledgeFolderDto folder,
+            Path folderPath,
+            BooleanSupplier isCancelled,
+            Consumer<String> onProgress
+    ) {
         Instant startedAt = Instant.now();
         KnowledgeRoot root = startRootScan(knowledgeRoot(folder), startedAt);
         KnowledgeRootScan scan = startScan(root.getId(), startedAt);
@@ -81,7 +94,7 @@ public class LocalFolderKnowledgeScanService {
         try {
             Files.walkFileTree(folderPath, visitor);
             if (!visitor.cancelled()) {
-                processResources(root.getId(), visitor, isCancelled);
+                processResources(root.getId(), visitor, isCancelled, onProgress);
             }
             if (visitor.cancelled()) {
                 completeScan(root, scan, visitor.stats(), "Scan cancelled");
@@ -120,7 +133,8 @@ public class LocalFolderKnowledgeScanService {
     private void processResources(
             java.util.UUID rootId,
             ResourceScanningVisitor visitor,
-            BooleanSupplier isCancelled
+            BooleanSupplier isCancelled,
+            Consumer<String> onProgress
     ) {
         visitor.loadExistingResources(resourceRepository.findByRootId(rootId));
         Set<java.util.UUID> reusablePipelineResourceIds = pipelineRepository.findReusablePipelineResourceIdsByRootId(rootId);
@@ -130,6 +144,7 @@ public class LocalFolderKnowledgeScanService {
                 visitor.cancel();
                 return;
             }
+            onProgress.accept(scannedFile.displayName());
             saveResource(
                     scannedFile,
                     visitor.existingResource(scannedFile.reference()),

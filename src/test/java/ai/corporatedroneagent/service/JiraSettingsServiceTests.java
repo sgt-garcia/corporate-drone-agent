@@ -186,7 +186,7 @@ class JiraSettingsServiceTests {
         JiraProjectDto help = settingsService.addJiraProject(new JiraProjectRequest("HLP"));
         settingsService.pauseJiraProject(ops.getId());
 
-        when(scanService.scanProject(any(), any(), eq("token-1234"))).thenAnswer(invocation -> {
+        when(scanService.scanProject(any(), any(), eq("token-1234"), any())).thenAnswer(invocation -> {
             JiraProjectDto project = invocation.getArgument(1);
             if ("DEV".equals(project.getKey())) {
                 throw new JiraKnowledgeScanService.JiraScanException("Could not scan Jira project", new RuntimeException("boom"));
@@ -196,10 +196,10 @@ class JiraSettingsServiceTests {
 
         settingsService.scanAllJiraProjects();
 
-        verify(scanService, times(2)).scanProject(any(), any(), eq("token-1234"));
-        verify(scanService).scanProject(any(), argThat(project -> "DEV".equals(project.getKey())), eq("token-1234"));
-        verify(scanService).scanProject(any(), argThat(project -> "HLP".equals(project.getKey())), eq("token-1234"));
-        verify(scanService, times(0)).scanProject(any(), argThat(project -> "OPS".equals(project.getKey())), any());
+        verify(scanService, times(2)).scanProject(any(), any(), eq("token-1234"), any());
+        verify(scanService).scanProject(any(), argThat(project -> "DEV".equals(project.getKey())), eq("token-1234"), any());
+        verify(scanService).scanProject(any(), argThat(project -> "HLP".equals(project.getKey())), eq("token-1234"), any());
+        verify(scanService, times(0)).scanProject(any(), argThat(project -> "OPS".equals(project.getKey())), any(), any());
         assertThat(settingsService.listJiraProjects())
                 .filteredOn(project -> project.getId().equals(help.getId()))
                 .singleElement()

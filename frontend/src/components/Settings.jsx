@@ -213,6 +213,7 @@ export function Settings({
   settings,
   onSave,
   knowledgeFolders,
+  scanProgressById,
   onAddKnowledgeFolder,
   onRemoveKnowledgeFolder,
   onScanKnowledgeFolder,
@@ -330,6 +331,7 @@ export function Settings({
             (knowledgeView === "local-folders" ? (
               <LocalFoldersConfig
                 folders={knowledgeFolders}
+                scanProgressById={scanProgressById}
                 onAddFolder={onAddKnowledgeFolder}
                 onRemoveFolder={onRemoveKnowledgeFolder}
                 onScanFolder={onScanKnowledgeFolder}
@@ -339,6 +341,7 @@ export function Settings({
             ) : knowledgeView === "jira" ? (
               <JiraConfig
                 config={jiraConfig}
+                scanProgressById={scanProgressById}
                 onSaveConnection={onSaveJiraConnection}
                 onClearConnection={onClearJiraConnection}
                 onSearchProjects={onSearchJiraProjects}
@@ -442,8 +445,9 @@ function InlineError({ children }) {
   );
 }
 
-// Cycles through source-specific scan items when a source can provide them.
-// Local Folders currently expose scan state, not per-file progress.
+// Cycles through source-specific scan items. While a scan runs, the backend
+// streams the current file name / Jira ticket key over SSE; those land here as
+// `items`, falling back to a static label before the first progress event.
 function ScanningTicker({ items }) {
   const [index, setIndex] = useState(0);
   useEffect(() => {
@@ -705,6 +709,7 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
 
 function LocalFoldersConfig({
   folders,
+  scanProgressById,
   onAddFolder,
   onRemoveFolder,
   onScanFolder,
@@ -825,7 +830,7 @@ function LocalFoldersConfig({
         onRemove={removeFolder}
         renderLeading={() => <Icon name="folder" size={18} color="var(--gray-500)" />}
         renderTitle={(folder) => folder.path}
-        tickerItems={() => ["Scan in progress"]}
+        tickerItems={(folder) => scanProgressById?.[folder.id] ?? []}
         metaScanned={folderMeta}
         metaPaused={(folder) => `Paused · ${folderMeta(folder)}`}
         addControl={
@@ -883,6 +888,7 @@ function LocalFoldersConfig({
 
 function JiraConfig({
   config,
+  scanProgressById,
   onSaveConnection,
   onClearConnection,
   onSearchProjects,
@@ -1353,7 +1359,7 @@ function JiraConfig({
           renderLeading={(project) => <span className="jira-key">{project.key}</span>}
           renderTitle={(project) => project.name}
           renderStatus={(project) => <JiraProjectStatus status={project.status} />}
-          tickerItems={() => ["Jira scan in progress"]}
+          tickerItems={(project) => scanProgressById?.[project.id] ?? []}
           metaScanned={(project) =>
             `${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues - scanned ${project.checked || "just now"}`
           }

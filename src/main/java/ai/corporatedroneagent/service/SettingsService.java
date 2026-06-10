@@ -401,7 +401,12 @@ public class SettingsService {
         if (jiraKnowledgeScanService == null) {
             scanResult = new JiraKnowledgeScanService.ScanResult(target.getIssues(), 0);
         } else {
-            scanResult = jiraKnowledgeScanService.scanProject(jira, target, savedJiraToken());
+            scanResult = jiraKnowledgeScanService.scanProject(
+                    jira,
+                    target,
+                    savedJiraToken(),
+                    KnowledgeScanProgress.emitter(eventService, target.getId())
+            );
         }
 
         return replaceJiraProject(settings, jira, projectId, project -> {
