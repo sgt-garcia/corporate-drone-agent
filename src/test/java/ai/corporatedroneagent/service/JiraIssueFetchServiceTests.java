@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -177,6 +178,33 @@ class JiraIssueFetchServiceTests {
         assertThat(issues.getFirst().key()).isEqualTo("DEV-1");
         assertThat(issues.get(99).key()).isEqualTo("DEV-100");
         assertThat(issues.getLast().key()).isEqualTo("DEV-120");
+    }
+
+    @Test
+    void fetchesOnlyIssuesUpdatedSinceProvidedTimestamp() {
+        AtomicReference<String> issueSearchQuery = new AtomicReference<>();
+        server.createContext("/rest/api/3/search/jql", exchange -> {
+            issueSearchQuery.set(exchange.getRequestURI().getQuery());
+            respond(exchange, 200, """
+                    {
+                      "isLast": true,
+                      "issues": []
+                    }
+                    """);
+        });
+
+        var issues = service.fetchProjectIssues(
+                baseUrl(),
+                "me@example.com",
+                "token-1234",
+                project("10001", "DEV"),
+                Instant.parse("2026-06-09T12:34:56Z")
+        );
+
+        assertThat(issues).isEmpty();
+        assertThat(issueSearchQuery.get())
+                .contains("updated+>=+\"2026/06/09+12:34\"")
+                .contains("ORDER+BY+updated+DESC");
     }
 
     private JiraProjectDto project(String id, String key) {

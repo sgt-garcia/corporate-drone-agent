@@ -62,34 +62,48 @@ public class JiraKnowledgeScanService {
 
     public ScanResult scanProject(JiraSettings jira, JiraProjectDto project, String token) {
         Instant startedAt = Instant.now();
-        KnowledgeRoot root = startRootScan(knowledgeRoot(jira, project), startedAt);
+        KnowledgeRoot root = knowledgeRoot(jira, project);
+        Instant updatedSince = deltaUpdatedSince(root);
+        boolean deltaScan = updatedSince != null;
+        root = startRootScan(root, startedAt);
         KnowledgeRootScan scan = startScan(root.getId(), startedAt);
         ScanStats stats = new ScanStats();
-        log.info("Started Jira project scan for {}.", project.getKey());
+        if (deltaScan) {
+            log.info("Started delta Jira project scan for {} since {}.", project.getKey(), updatedSince);
+        } else {
+            log.info("Started full Jira project scan for {}.", project.getKey());
+        }
 
         try {
             List<JiraIssueFetchService.JiraIssueDocument> issues = issueFetchService.fetchProjectIssues(
                     jira.getInstanceUrl(),
                     jira.getEmail(),
                     token,
-                    project
+                    project,
+                    updatedSince
             );
             stats.add(issues);
             processIssues(root.getId(), issues, startedAt);
-            removeDeletedResourceIndexes(
-                    issues.stream().map(JiraIssueFetchService.JiraIssueDocument::reference).toList(),
-                    resourceRepository.findByRootId(root.getId())
-            );
-            completeScan(root, scan, stats, null);
+            if (!deltaScan) {
+                removeDeletedResourceIndexes(
+                        issues.stream().map(JiraIssueFetchService.JiraIssueDocument::reference).toList(),
+                        resourceRepository.findByRootId(root.getId())
+                );
+            }
+            ResourceTotals totals = activeResourceTotals(root.getId());
+            completeScan(root, scan, totals, null);
             log.info(
-                    "Completed Jira project scan for {} with {} issues and {} bytes.",
+                    "Completed {} Jira project scan for {} with {} fetched issues, {} indexed issues, and {} bytes.",
+                    deltaScan ? "delta" : "full",
                     project.getKey(),
                     stats.resources(),
-                    stats.bytes()
+                    totals.resources(),
+                    totals.bytes()
             );
-            return new ScanResult(stats.resources(), stats.bytes());
+            return new ScanResult(totals.resources(), totals.bytes());
         } catch (RuntimeException exception) {
-            completeScan(root, scan, stats, "Could not scan Jira project");
+            ResourceTotals totals = activeResourceTotals(root.getId());
+            completeScan(root, scan, totals, "Could not scan Jira project");
             log.warn(
                     "Jira project scan failed for {} after {} issues and {} bytes.",
                     project.getKey(),
@@ -99,6 +113,16 @@ public class JiraKnowledgeScanService {
             );
             throw new JiraScanException("Could not scan Jira project", exception);
         }
+    }
+
+    private Instant deltaUpdatedSince(KnowledgeRoot root) {
+        if (root.getId() == null
+                || root.getScanStatus() != WorkStatus.DONE
+                || !Boolean.TRUE.equals(root.getScanSuccess())
+                || root.getScanFinishedAt() == null) {
+            return null;
+        }
+        return root.getScanFinishedAt();
     }
 
     private void processIssues(
@@ -245,20 +269,30 @@ public class JiraKnowledgeScanService {
         return scanRepository.save(scan);
     }
 
-    private void completeScan(KnowledgeRoot root, KnowledgeRootScan scan, ScanStats stats, String errorMessage) {
+    private ResourceTotals activeResourceTotals(UUID rootId) {
+        List<KnowledgeResource> resources = resourceRepository.findByRootId(rootId).stream()
+                .filter(resource -> !resource.isDeleted())
+                .toList();
+        return new ResourceTotals(
+                resources.size(),
+                resources.stream().mapToLong(KnowledgeResource::getSizeBytes).sum()
+        );
+    }
+
+    private void completeScan(KnowledgeRoot root, KnowledgeRootScan scan, ResourceTotals totals, String errorMessage) {
         Instant finishedAt = Instant.now();
         boolean success = errorMessage == null || errorMessage.isBlank();
 
         scan.setStatus(WorkStatus.DONE);
         scan.setSuccess(success);
         scan.setMessage(errorMessage);
-        scan.setTotalResources(stats.resources());
-        scan.setTotalSizeBytes(stats.bytes());
+        scan.setTotalResources(totals.resources());
+        scan.setTotalSizeBytes(totals.bytes());
         scan.setFinishedAt(finishedAt);
         scanRepository.save(scan);
 
-        root.setTotalResources(stats.resources());
-        root.setTotalSizeBytes(stats.bytes());
+        root.setTotalResources(totals.resources());
+        root.setTotalSizeBytes(totals.bytes());
         root.setScanStatus(WorkStatus.DONE);
         root.setScanSuccess(success);
         root.setScanMessage(errorMessage);
@@ -303,6 +337,9 @@ public class JiraKnowledgeScanService {
     }
 
     public record ScanResult(long issues, long bytes) {
+    }
+
+    private record ResourceTotals(long resources, long bytes) {
     }
 
     public static class JiraScanException extends RuntimeException {

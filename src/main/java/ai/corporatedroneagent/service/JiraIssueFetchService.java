@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ public class JiraIssueFetchService {
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
     private static final DateTimeFormatter JIRA_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+    private static final DateTimeFormatter JQL_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm");
     private static final String ISSUE_FIELDS = String.join(
             ",",
             "summary",
@@ -76,6 +78,16 @@ public class JiraIssueFetchService {
             String token,
             JiraProjectDto project
     ) {
+        return fetchProjectIssues(instanceUrl, email, token, project, null);
+    }
+
+    public List<JiraIssueDocument> fetchProjectIssues(
+            String instanceUrl,
+            String email,
+            String token,
+            JiraProjectDto project,
+            Instant updatedSince
+    ) {
         String projectKey = Strings.defaultIfBlank(project.getKey(), "").trim();
         if (projectKey.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira project key is required");
@@ -88,7 +100,7 @@ public class JiraIssueFetchService {
                     instanceUrl,
                     email,
                     token,
-                    issueSearchPath(projectKey, ISSUE_PAGE_SIZE, nextPageToken),
+                    issueSearchPath(projectKey, updatedSince, ISSUE_PAGE_SIZE, nextPageToken),
                     "Jira issue search"
             );
             JsonNode issues = response.path("issues");
@@ -306,8 +318,12 @@ public class JiraIssueFetchService {
         }
     }
 
-    private String issueSearchPath(String projectKey, int maxResults, String nextPageToken) {
-        String jql = "project = " + jqlProjectLiteral(projectKey) + " ORDER BY updated DESC";
+    private String issueSearchPath(String projectKey, Instant updatedSince, int maxResults, String nextPageToken) {
+        String jql = "project = " + jqlProjectLiteral(projectKey);
+        if (updatedSince != null) {
+            jql += " AND updated >= \"" + JQL_TIMESTAMP.format(updatedSince.atOffset(ZoneOffset.UTC)) + "\"";
+        }
+        jql += " ORDER BY updated DESC";
         String path = "/rest/api/3/search/jql?jql=" + urlEncode(jql)
                 + "&maxResults=" + maxResults
                 + "&fields=" + urlEncode(ISSUE_FIELDS)

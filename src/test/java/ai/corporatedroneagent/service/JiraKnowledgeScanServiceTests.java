@@ -64,7 +64,8 @@ class JiraKnowledgeScanServiceTests {
                     String instanceUrl,
                     String email,
                     String token,
-                    JiraProjectDto project
+                    JiraProjectDto project,
+                    Instant updatedSince
             ) {
                 assertThat(instanceUrl).isEqualTo("https://example.atlassian.net");
                 assertThat(email).isEqualTo("me@example.com");
@@ -254,6 +255,13 @@ class JiraKnowledgeScanServiceTests {
         JiraIssueFetchService.JiraIssueDocument kept = issue("10101", "DEV-8", "kepttoken");
         issues.set(List.of(stale, kept));
         scanService.scanProject(jira, project, "token-1234");
+        KnowledgeRoot firstScanRoot = rootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+        ).orElseThrow();
+        firstScanRoot.setScanSuccess(null);
+        firstScanRoot.setScanFinishedAt(null);
+        rootRepository.save(firstScanRoot);
 
         issues.set(List.of(kept));
         scanService.scanProject(jira, project, "token-1234");
@@ -271,6 +279,55 @@ class JiraKnowledgeScanServiceTests {
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
         assertThat(indexingService.searchTerm("staletoken", 10)).isEmpty();
         assertThat(indexingService.searchTerm("kepttoken", 10)).hasSize(1);
+    }
+
+    @Test
+    void deltaScanFetchesOnlyUpdatedIssuesAndDoesNotDeleteUnreturnedExistingIssues() {
+        JiraSettings jira = jira();
+        JiraProjectDto project = project();
+        AtomicReference<Instant> updatedSince = new AtomicReference<>();
+        JiraIssueFetchService issueFetchService = new JiraIssueFetchService(new ObjectMapper()) {
+            @Override
+            public List<JiraIssueDocument> fetchProjectIssues(
+                    String instanceUrl,
+                    String email,
+                    String token,
+                    JiraProjectDto project,
+                    Instant since
+            ) {
+                updatedSince.set(since);
+                return issues.get();
+            }
+        };
+        JiraKnowledgeScanService service = new JiraKnowledgeScanService(
+                rootRepository,
+                scanRepository,
+                resourceRepository,
+                pipelineRepository,
+                new KnowledgeChunkingService(pipelineRepository),
+                indexingService,
+                issueFetchService
+        );
+        JiraIssueFetchService.JiraIssueDocument staleButUnchanged = issue("10100", "DEV-7", "staletoken");
+        JiraIssueFetchService.JiraIssueDocument changed = issue("10101", "DEV-8", "changedtoken");
+        issues.set(List.of(staleButUnchanged, changed));
+        service.scanProject(jira, project, "token-1234");
+
+        KnowledgeRoot root = rootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+        ).orElseThrow();
+        Instant firstScanFinishedAt = root.getScanFinishedAt();
+        issues.set(List.of(issue("10101", "DEV-8", "changedtoken2")));
+
+        JiraKnowledgeScanService.ScanResult result = service.scanProject(jira, project, "token-1234");
+
+        assertThat(updatedSince.get()).isEqualTo(firstScanFinishedAt);
+        assertThat(result.issues()).isEqualTo(2);
+        assertThat(resourceRepository.findByRootIdAndReference(root.getId(), staleButUnchanged.reference()))
+                .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
+        assertThat(indexingService.searchTerm("staletoken", 10)).hasSize(1);
+        assertThat(indexingService.searchTerm("changedtoken2", 10)).hasSize(1);
     }
 
     @Test
