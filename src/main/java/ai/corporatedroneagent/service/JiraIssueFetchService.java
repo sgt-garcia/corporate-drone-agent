@@ -29,7 +29,6 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class JiraIssueFetchService {
 
-    static final int MAX_ISSUES_PER_SCAN = 100;
     static final int ISSUE_PAGE_SIZE = 50;
     static final int MAX_COMMENTS_PER_ISSUE = 100;
     static final int COMMENT_PAGE_SIZE = 50;
@@ -84,13 +83,12 @@ public class JiraIssueFetchService {
 
         List<JiraIssueDocument> documents = new ArrayList<>();
         String nextPageToken = "";
-        while (documents.size() < MAX_ISSUES_PER_SCAN) {
-            int pageSize = Math.min(ISSUE_PAGE_SIZE, MAX_ISSUES_PER_SCAN - documents.size());
+        while (true) {
             JsonNode response = getJson(
                     instanceUrl,
                     email,
                     token,
-                    issueSearchPath(projectKey, pageSize, nextPageToken),
+                    issueSearchPath(projectKey, ISSUE_PAGE_SIZE, nextPageToken),
                     "Jira issue search"
             );
             JsonNode issues = response.path("issues");
@@ -99,9 +97,6 @@ public class JiraIssueFetchService {
             }
             for (JsonNode issue : issues) {
                 documents.add(toIssueDocument(instanceUrl, email, token, issue));
-                if (documents.size() == MAX_ISSUES_PER_SCAN) {
-                    break;
-                }
             }
             if (response.path("isLast").asBoolean(false)) {
                 break;

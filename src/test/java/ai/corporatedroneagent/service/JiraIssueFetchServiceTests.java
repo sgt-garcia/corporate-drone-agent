@@ -10,7 +10,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -131,6 +134,51 @@ class JiraIssueFetchServiceTests {
                 });
     }
 
+    @Test
+    void fetchesEveryIssueAcrossAllJiraPages() {
+        AtomicInteger issueSearchCalls = new AtomicInteger();
+        List<String> pageTokens = new ArrayList<>();
+        server.createContext("/rest/api/3/search/jql", exchange -> {
+            issueSearchCalls.incrementAndGet();
+            String query = exchange.getRequestURI().getQuery();
+            pageTokens.add(query == null ? "" : query);
+            String token = queryParameter(query, "nextPageToken");
+            if (token.isBlank()) {
+                respond(exchange, 200, issueSearchResponse(1, 50, false, "page-2"));
+            } else if ("page-2".equals(token)) {
+                respond(exchange, 200, issueSearchResponse(51, 50, false, "page-3"));
+            } else if ("page-3".equals(token)) {
+                respond(exchange, 200, issueSearchResponse(101, 20, true, ""));
+            } else {
+                respond(exchange, 400, "{}");
+            }
+        });
+        server.createContext("/rest/api/3/issue/", exchange -> respond(exchange, 200, """
+                {
+                  "startAt": 0,
+                  "maxResults": 50,
+                  "total": 0,
+                  "comments": []
+                }
+                """));
+
+        var issues = service.fetchProjectIssues(
+                baseUrl(),
+                "me@example.com",
+                "token-1234",
+                project("10001", "DEV")
+        );
+
+        assertThat(issueSearchCalls).hasValue(3);
+        assertThat(pageTokens.get(0)).doesNotContain("nextPageToken");
+        assertThat(pageTokens.get(1)).contains("nextPageToken=page-2");
+        assertThat(pageTokens.get(2)).contains("nextPageToken=page-3");
+        assertThat(issues).hasSize(120);
+        assertThat(issues.getFirst().key()).isEqualTo("DEV-1");
+        assertThat(issues.get(99).key()).isEqualTo("DEV-100");
+        assertThat(issues.getLast().key()).isEqualTo("DEV-120");
+    }
+
     private JiraProjectDto project(String id, String key) {
         JiraProjectDto project = new JiraProjectDto();
         project.setId(id);
@@ -148,5 +196,48 @@ class JiraIssueFetchServiceTests {
         exchange.sendResponseHeaders(status, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
+    }
+
+    private String issueSearchResponse(int startIssue, int count, boolean isLast, String nextPageToken) {
+        StringBuilder issues = new StringBuilder();
+        for (int offset = 0; offset < count; offset++) {
+            int issueNumber = startIssue + offset;
+            if (!issues.isEmpty()) {
+                issues.append(',');
+            }
+            issues.append("""
+                    {
+                      "id": "%d",
+                      "key": "DEV-%d",
+                      "fields": {
+                        "summary": "Issue %d",
+                        "updated": "2026-06-09T12:34:56.000+0000"
+                      }
+                    }
+                    """.formatted(10000 + issueNumber, issueNumber, issueNumber));
+        }
+        String tokenField = nextPageToken.isBlank()
+                ? ""
+                : ", \"nextPageToken\": \"" + nextPageToken + "\"";
+        return """
+                {
+                  "isLast": %s%s,
+                  "issues": [%s]
+                }
+                """.formatted(isLast, tokenField, issues);
+    }
+
+    private String queryParameter(String query, String name) {
+        if (query == null || query.isBlank()) {
+            return "";
+        }
+        for (String part : query.split("&")) {
+            int equals = part.indexOf('=');
+            String key = equals < 0 ? part : part.substring(0, equals);
+            if (key.equals(name)) {
+                return equals < 0 ? "" : part.substring(equals + 1);
+            }
+        }
+        return "";
     }
 }
