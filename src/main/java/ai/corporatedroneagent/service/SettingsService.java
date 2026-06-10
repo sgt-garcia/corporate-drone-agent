@@ -8,6 +8,7 @@ import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.JiraSettings;
+import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
 import ai.corporatedroneagent.model.knowledge.WorkStatus;
@@ -96,8 +97,10 @@ public class SettingsService {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         attachKnowledgeFolders(settings);
+        settings.setJira(sanitizeJira(settings.getJira()));
         settingsSecretsService.clearSecretValues(settings);
         settingsSecretsService.applySecretStatus(settings);
+        syncJiraKnowledgeRoots(settings.getJira());
         return settings;
     }
 
@@ -374,6 +377,7 @@ public class SettingsService {
         migrateLegacyKnowledgeFolders(settings);
         settings.setJira(sanitizeJira(settings.getJira()));
         settingsSecretsService.applySecretStatus(settings);
+        syncJiraKnowledgeRoots(settings.getJira());
         return settings.getJira();
     }
 
@@ -420,10 +424,12 @@ public class SettingsService {
         if (secretRequest != null) {
             settingsSecretsService.saveSubmittedSecrets(secretRequest);
         }
-        settings.setJira(sanitizeJira(jira));
+        JiraSettings sanitizedJira = sanitizeJira(jira);
+        settings.setJira(sanitizedJira);
         settingsSecretsService.clearSecretValues(settings);
         settingsSecretsService.applySecretStatus(settings);
         settingsRepository.save(settings);
+        syncJiraKnowledgeRoots(sanitizedJira);
         publishSettingsUpdated();
     }
 
@@ -438,6 +444,64 @@ public class SettingsService {
         if (!jira.isConnected() || !jira.isTokenConfigured()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Save Jira setup before managing projects");
         }
+    }
+
+    private void syncJiraKnowledgeRoots(JiraSettings jira) {
+        List<String> expectedReferences = jira.isConnected()
+                ? jira.getProjects().stream()
+                .map(project -> jiraProjectRootReference(jira, project))
+                .toList()
+                : List.of();
+
+        knowledgeRootRepository.findBySource(KnowledgeSource.JIRA).stream()
+                .filter(root -> !expectedReferences.contains(root.getReference()))
+                .forEach(root -> knowledgeRootRepository.delete(root.getId()));
+
+        if (!jira.isConnected()) {
+            return;
+        }
+
+        for (JiraProjectDto project : jira.getProjects()) {
+            String reference = jiraProjectRootReference(jira, project);
+            KnowledgeRoot root = knowledgeRootRepository
+                    .findBySourceAndReference(KnowledgeSource.JIRA, reference)
+                    .orElseGet(KnowledgeRoot::new);
+            root.setSource(KnowledgeSource.JIRA);
+            root.setReference(reference);
+            root.setDisplayName(jiraProjectDisplayName(project));
+            root.setPaused("paused".equals(project.getStatus()));
+            root.setTotalResources(project.getIssues());
+            root.setTotalSizeBytes(0);
+            if (root.getScanStatus() == WorkStatus.IN_PROGRESS) {
+                root.setScanStatus(WorkStatus.TO_DO);
+                root.setScanSuccess(null);
+                root.setScanMessage("");
+                root.setScanStartedAt(null);
+                root.setScanFinishedAt(null);
+            }
+            knowledgeRootRepository.save(root);
+        }
+    }
+
+    private String jiraProjectRootReference(JiraSettings jira, JiraProjectDto project) {
+        return JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), jiraProjectReferenceId(project));
+    }
+
+    private String jiraProjectReferenceId(JiraProjectDto project) {
+        String projectId = Strings.defaultIfBlank(project.getId(), "").trim();
+        return projectId.isBlank() ? project.getKey() : projectId;
+    }
+
+    private String jiraProjectDisplayName(JiraProjectDto project) {
+        String key = Strings.defaultIfBlank(project.getKey(), "").trim();
+        String name = Strings.defaultIfBlank(project.getName(), "").trim();
+        if (key.isBlank()) {
+            return name;
+        }
+        if (name.isBlank()) {
+            return key;
+        }
+        return key + " - " + name;
     }
 
     private JiraProjectDto updateJiraProject(String projectId, Consumer<JiraProjectDto> updater) {

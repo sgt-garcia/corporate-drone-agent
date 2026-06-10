@@ -8,10 +8,15 @@ import ai.corporatedroneagent.TestDatabaseSupport;
 import ai.corporatedroneagent.dto.JiraConnectionRequest;
 import ai.corporatedroneagent.dto.JiraProjectDto;
 import ai.corporatedroneagent.dto.JiraProjectRequest;
+import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
+import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
+import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.security.SecretStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import ai.corporatedroneagent.model.ApplicationSettings;
+import ai.corporatedroneagent.model.JiraSettings;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -23,6 +28,8 @@ class JiraSettingsServiceTests {
 
     private SettingsService settingsService;
     private InMemorySecretStore secretStore;
+    private KnowledgeRootRepository knowledgeRootRepository;
+    private SettingsRepository settingsRepository;
 
     @BeforeEach
     void setUp() {
@@ -50,6 +57,7 @@ class JiraSettingsServiceTests {
         JiraProjectDto project = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
 
         assertThat(settingsService.listJiraProjects()).extracting(JiraProjectDto::getId).contains(project.getId());
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).hasSize(1);
 
         var cleared = settingsService.clearJiraConnection();
 
@@ -57,6 +65,7 @@ class JiraSettingsServiceTests {
         assertThat(cleared.isTokenConfigured()).isFalse();
         assertThat(cleared.getProjects()).isEmpty();
         assertThat(secretStore.get("settings.jira.token")).isEmpty();
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).isEmpty();
     }
 
     @Test
@@ -72,6 +81,7 @@ class JiraSettingsServiceTests {
         assertThat(cleared.isTokenConfigured()).isFalse();
         assertThat(cleared.getProjects()).isEmpty();
         assertThat(secretStore.get("settings.jira.token")).isEmpty();
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).isEmpty();
     }
 
     @Test
@@ -104,6 +114,27 @@ class JiraSettingsServiceTests {
     }
 
     @Test
+    void addingJiraProjectCreatesStableKnowledgeRoot() {
+        settingsService.saveJiraConnection(connection("https://Example.atlassian.net/", "me@example.com", "token-1234"));
+
+        JiraProjectDto added = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
+                .singleElement()
+                .satisfies(root -> {
+                    assertThat(root.getReference()).isEqualTo("jira://example.atlassian.net/project/10001");
+                    assertThat(root.getDisplayName()).isEqualTo("DEV - Software Development");
+                    assertThat(root.getTotalResources()).isEqualTo(42);
+                    assertThat(root.isPaused()).isFalse();
+                });
+        assertThat(added.getId()).isEqualTo("10001");
+        assertThat(JiraKnowledgeReferences.issueResourceReference(
+                "https://Example.atlassian.net/",
+                "12345"
+        )).isEqualTo("jira://example.atlassian.net/issue/12345");
+    }
+
+    @Test
     void jiraProjectLifecycleUsesExplicitEndpoints() {
         settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
 
@@ -111,12 +142,23 @@ class JiraSettingsServiceTests {
         assertThat(added.getId()).isEqualTo("10002");
         assertThat(added.getStatus()).isEqualTo("scanned");
         assertThat(added.getIssues()).isEqualTo(17);
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
+                .extracting(KnowledgeRoot::getReference)
+                .containsExactly("jira://example.atlassian.net/project/10002");
 
         JiraProjectDto paused = settingsService.pauseJiraProject(added.getId());
         assertThat(paused.getStatus()).isEqualTo("paused");
+        assertThat(knowledgeRootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                "jira://example.atlassian.net/project/10002"
+        )).get().extracting(KnowledgeRoot::isPaused).isEqualTo(true);
 
         JiraProjectDto resumed = settingsService.resumeJiraProject(added.getId());
         assertThat(resumed.getStatus()).isEqualTo("scanned");
+        assertThat(knowledgeRootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                "jira://example.atlassian.net/project/10002"
+        )).get().extracting(KnowledgeRoot::isPaused).isEqualTo(false);
 
         JiraProjectDto scanned = settingsService.scanJiraProject(added.getId());
         assertThat(scanned.getIssues()).isEqualTo(added.getIssues());
@@ -124,6 +166,45 @@ class JiraSettingsServiceTests {
 
         settingsService.removeJiraProject(added.getId());
         assertThat(settingsService.listJiraProjects()).isEmpty();
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).isEmpty();
+    }
+
+    @Test
+    void syncingJiraProjectsDoesNotTouchLocalFolderRoots() {
+        KnowledgeRoot localRoot = new KnowledgeRoot();
+        localRoot.setSource(KnowledgeSource.LOCAL_FOLDER);
+        localRoot.setReference("C:\\Data");
+        localRoot.setDisplayName("Data");
+        localRoot = knowledgeRootRepository.save(localRoot);
+
+        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        settingsService.clearJiraConnection();
+
+        assertThat(knowledgeRootRepository.findByIdAndSource(localRoot.getId(), KnowledgeSource.LOCAL_FOLDER))
+                .isPresent();
+    }
+
+    @Test
+    void readingSettingsSyncsExistingSavedJiraProjectsToKnowledgeRoots() {
+        ApplicationSettings settings = settingsRepository.get();
+        JiraSettings jira = new JiraSettings();
+        jira.setConnected(true);
+        jira.setInstanceUrl("https://example.atlassian.net");
+        jira.setEmail("me@example.com");
+        jira.setProjects(java.util.List.of(project("10001", "DEV", "Software Development", 42)));
+        settings.setJira(jira);
+        settingsRepository.save(settings);
+        secretStore.put("settings.jira.token", "token-1234");
+
+        settingsService.get();
+
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
+                .singleElement()
+                .satisfies(root -> {
+                    assertThat(root.getReference()).isEqualTo("jira://example.atlassian.net/project/10001");
+                    assertThat(root.getDisplayName()).isEqualTo("DEV - Software Development");
+                });
     }
 
     @Test
@@ -151,9 +232,11 @@ class JiraSettingsServiceTests {
             JiraProjectDiscoveryService discovery
     ) {
         JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
+        knowledgeRootRepository = new KnowledgeRootRepository(jdbcTemplate);
+        settingsRepository = new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules());
         return new SettingsService(
-                new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules()),
-                new KnowledgeRootRepository(jdbcTemplate),
+                settingsRepository,
+                knowledgeRootRepository,
                 new SettingsSecretsService(secretStore),
                 mock(EventService.class),
                 mock(KnowledgeRootCleanupService.class),

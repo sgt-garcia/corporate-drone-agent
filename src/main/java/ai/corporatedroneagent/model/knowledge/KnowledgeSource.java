@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.model.knowledge;
 
 public enum KnowledgeSource {
-    LOCAL_FOLDER
+    LOCAL_FOLDER,
+    JIRA
 }
