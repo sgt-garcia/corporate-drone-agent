@@ -18,9 +18,15 @@ import ai.corporatedroneagent.repository.KnowledgeResourceRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootScanRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
@@ -122,6 +128,125 @@ class JiraKnowledgeScanServiceTests {
     }
 
     @Test
+    void scanProjectFetchesIssuesFromJiraHttpAndIndexesSearchableContext() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        AtomicReference<String> issueSearchAuth = new AtomicReference<>();
+        AtomicReference<String> commentAuth = new AtomicReference<>();
+        server.createContext("/rest/api/3/search/jql", exchange -> {
+            issueSearchAuth.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, """
+                    {
+                      "isLast": true,
+                      "issues": [
+                        {
+                          "id": "10177",
+                          "key": "DEV-77",
+                          "fields": {
+                            "summary": "Checkout telemetry regression",
+                            "description": {
+                              "type": "doc",
+                              "content": [
+                                {
+                                  "type": "paragraph",
+                                  "content": [
+                                    { "type": "text", "text": "checkoutunique appears in the Jira description." }
+                                  ]
+                                }
+                              ]
+                            },
+                            "status": { "name": "Blocked" },
+                            "issuetype": { "name": "Bug" },
+                            "priority": { "name": "Highest" },
+                            "assignee": { "displayName": "Ada Lovelace" },
+                            "reporter": { "displayName": "Grace Hopper" },
+                            "labels": [ "checkout" ],
+                            "components": [ { "name": "Web" } ],
+                            "fixVersions": [ { "name": "2026.6" } ],
+                            "created": "2026-06-01T10:00:00.000+0000",
+                            "updated": "2026-06-09T12:34:56.000+0000"
+                          }
+                        }
+                      ]
+                    }
+                    """);
+        });
+        server.createContext("/rest/api/3/issue/DEV-77/comment", exchange -> {
+            commentAuth.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, """
+                    {
+                      "startAt": 0,
+                      "maxResults": 50,
+                      "total": 1,
+                      "comments": [
+                        {
+                          "author": { "displayName": "Linus Torvalds" },
+                          "created": "2026-06-09T13:00:00.000+0000",
+                          "body": {
+                            "type": "doc",
+                            "content": [
+                              {
+                                "type": "paragraph",
+                                "content": [
+                                  { "type": "text", "text": "The retry guard is still missing." }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                    """);
+        });
+        server.start();
+        try {
+            JiraSettings jira = jira();
+            jira.setInstanceUrl("http://127.0.0.1:" + server.getAddress().getPort());
+            JiraKnowledgeScanService httpScanService = new JiraKnowledgeScanService(
+                    rootRepository,
+                    scanRepository,
+                    resourceRepository,
+                    pipelineRepository,
+                    new KnowledgeChunkingService(pipelineRepository),
+                    indexingService,
+                    new JiraIssueFetchService(HttpClient.newHttpClient(), new ObjectMapper())
+            );
+
+            JiraKnowledgeScanService.ScanResult result = httpScanService.scanProject(jira, project(), "token-1234");
+
+            assertThat(result.issues()).isEqualTo(1);
+            String expectedAuth = "Basic " + Base64.getEncoder()
+                    .encodeToString("me@example.com:token-1234".getBytes(StandardCharsets.UTF_8));
+            assertThat(issueSearchAuth.get()).isEqualTo(expectedAuth);
+            assertThat(commentAuth.get()).isEqualTo(expectedAuth);
+
+            KnowledgeRoot root = rootRepository.findBySourceAndReference(
+                    KnowledgeSource.JIRA,
+                    JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), "10001")
+            ).orElseThrow();
+            KnowledgeResource resource = resourceRepository.findByRootId(root.getId())
+                    .getFirst();
+            assertThat(resource.getDisplayName()).isEqualTo("DEV-77 - Checkout telemetry regression");
+
+            KnowledgeSearchService searchService = new KnowledgeSearchService(
+                    indexingService,
+                    pipelineRepository,
+                    resourceRepository,
+                    rootRepository
+            );
+            assertThat(searchService.search("checkoutunique", 5))
+                    .singleElement()
+                    .satisfies(snippet -> {
+                        assertThat(snippet.source()).isEqualTo("JIRA");
+                        assertThat(snippet.rootName()).isEqualTo("DEV - Software Development");
+                        assertThat(snippet.resourceName()).isEqualTo("DEV-77 - Checkout telemetry regression");
+                        assertThat(snippet.content()).contains("checkoutunique", "Status: Blocked");
+                    });
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void scanProjectMarksMissingIssuesDeletedAndRemovesTheirIndex() {
         JiraSettings jira = jira();
         JiraProjectDto project = project();
@@ -212,5 +337,12 @@ class JiraKnowledgeScanServiceTests {
 
     private String readText(KnowledgeResourceRead read) {
         return new String(read.getValue(), StandardCharsets.UTF_8);
+    }
+
+    private void respond(HttpExchange exchange, int status, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(status, bytes.length);
+        exchange.getResponseBody().write(bytes);
+        exchange.close();
     }
 }

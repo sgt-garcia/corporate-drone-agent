@@ -3,6 +3,7 @@ package ai.corporatedroneagent.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ai.corporatedroneagent.dto.JiraProjectDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -64,6 +65,44 @@ class JiraProjectDiscoveryServiceTests {
         assertThat(projects.getFirst().getKey()).isEqualTo("DEV");
         assertThat(projects.getFirst().getName()).isEqualTo("Software Development");
         assertThat(projects.getFirst().getIssues()).isEqualTo(42);
+    }
+
+    @Test
+    void parsesArrayProjectResponsesAndSkipsIncompleteProjects() {
+        server.createContext("/rest/api/3/project/search", exchange -> respond(exchange, 200, """
+                [
+                  {
+                    "id": "10001",
+                    "key": "DEV",
+                    "name": "Software Development",
+                    "insight": { "totalIssueCount": 42 }
+                  },
+                  {
+                    "id": "10002",
+                    "key": "",
+                    "name": "No Key"
+                  },
+                  {
+                    "id": "10003",
+                    "key": "OPS",
+                    "name": "",
+                    "insight": { "totalIssueCount": 12 }
+                  },
+                  {
+                    "key": "HLP",
+                    "name": "Help Desk",
+                    "insight": { "totalIssueCount": -9 }
+                  }
+                ]
+                """));
+
+        var projects = service.searchProjects(baseUrl(), "me@example.com", "token-1234", "", 25);
+
+        assertThat(projects)
+                .extracting(JiraProjectDto::getKey)
+                .containsExactly("DEV", "HLP");
+        assertThat(projects.get(1).getId()).isEqualTo("jira-hlp");
+        assertThat(projects.get(1).getIssues()).isZero();
     }
 
     @Test

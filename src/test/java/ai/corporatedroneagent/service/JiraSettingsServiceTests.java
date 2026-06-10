@@ -254,6 +254,47 @@ class JiraSettingsServiceTests {
     }
 
     @Test
+    void readingJiraSettingsSanitizesPersistedConnectionAndProjects() {
+        ApplicationSettings settings = settingsRepository.get();
+        JiraSettings jira = new JiraSettings();
+        jira.setConnected(true);
+        jira.setInstanceUrl(" https://example.atlassian.net/ ");
+        jira.setEmail(" me@example.com ");
+        jira.setTokenExpiresDays(30);
+
+        JiraProjectDto dev = project("", " dev ", "Software Development", 42);
+        dev.setStatus("scanning");
+        JiraProjectDto duplicateDev = project("10099", "DEV", "Duplicate Development", 99);
+        JiraProjectDto invalid = project("10003", " ", "Missing Key", 1);
+        JiraProjectDto ops = project("10002", "OPS", "Operations", 17);
+        ops.setStatus("paused");
+        jira.setProjects(java.util.List.of(dev, duplicateDev, invalid, ops));
+        settings.setJira(jira);
+        settingsRepository.save(settings);
+        secretStore.put("settings.jira.token", "token-1234");
+
+        JiraSettings sanitized = settingsService.getJiraSettings();
+
+        assertThat(sanitized.getInstanceUrl()).isEqualTo("https://example.atlassian.net/");
+        assertThat(sanitized.getEmail()).isEqualTo("me@example.com");
+        assertThat(sanitized.getTokenExpiresDays()).isEqualTo(30);
+        assertThat(sanitized.isTokenConfigured()).isTrue();
+        assertThat(sanitized.getProjects())
+                .extracting(JiraProjectDto::getKey)
+                .containsExactly("dev", "OPS");
+        assertThat(sanitized.getProjects().getFirst())
+                .satisfies(project -> {
+                    assertThat(project.getId()).isNotBlank();
+                    assertThat(project.getStatus()).isEqualTo("scanned");
+                    assertThat(project.getIssues()).isEqualTo(42);
+                });
+        assertThat(sanitized.getProjects().get(1).getStatus()).isEqualTo("paused");
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
+                .extracting(KnowledgeRoot::getDisplayName)
+                .containsExactly("dev - Software Development", "OPS - Operations");
+    }
+
+    @Test
     void rejectsProjectManagementBeforeJiraSetupIsSaved() {
         assertThatThrownBy(() -> settingsService.addJiraProject(new JiraProjectRequest("DEV")))
                 .hasMessageContaining("Save Jira setup before managing projects");
