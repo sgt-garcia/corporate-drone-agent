@@ -147,9 +147,6 @@ function toolEnabled(tool, settings) {
 const KNOWLEDGE_MAX = 10;
 const JIRA_MAX = 10;
 
-const SAMPLE_TICKET_NUMS = [1423, 1287, 1390, 1402, 1356, 1198];
-const sampleTickets = (key) => SAMPLE_TICKET_NUMS.map((n) => `${key}-${n}`);
-
 // Projects the picker offers. There is no live Jira API yet, so this stands in
 // for "the projects in your instance" once a connection is saved.
 const MOCK_JIRA_PROJECTS = {
@@ -414,6 +411,26 @@ function ScanStatus({ status }) {
   );
 }
 
+function JiraProjectStatus({ status }) {
+  if (status === "scanning") {
+    return (
+      <span className="badge badge-info">
+        <Icon
+          name="refresh-cw"
+          size={12}
+          color="var(--blue-700)"
+          className="cda-spin"
+        />
+        Previewing
+      </span>
+    );
+  }
+  if (status === "paused") {
+    return <span className="badge badge-neutral">Paused</span>;
+  }
+  return <span className="badge badge-neutral">Saved</span>;
+}
+
 // Inline validation/connection error, shared across folders + Jira so the same
 // screen never teaches the user two different error treatments.
 function InlineError({ children }) {
@@ -482,9 +499,13 @@ function KnowledgeSourceList({
   addRowRef,
   renderLeading,
   renderTitle,
+  renderStatus,
   tickerItems,
   metaScanned,
   metaPaused,
+  scanActionLabel = "Scan now",
+  pauseActionLabel = "Pause scanning",
+  resumeActionLabel = "Resume scanning",
   onScanNow,
   onTogglePause,
   onRemove
@@ -544,12 +565,12 @@ function KnowledgeSourceList({
               </div>
             ) : (
               <div className="folder-row-controls">
-                <ScanStatus status={item.status} />
+                {renderStatus ? renderStatus(item) : <ScanStatus status={item.status} />}
                 <button
                   className="iconbtn"
                   type="button"
-                  title="Scan now"
-                  aria-label="Scan now"
+                  title={scanActionLabel}
+                  aria-label={scanActionLabel}
                   onClick={() => onScanNow(item.id)}
                   disabled={item.status !== "scanned"}
                 >
@@ -558,8 +579,8 @@ function KnowledgeSourceList({
                 <button
                   className="iconbtn"
                   type="button"
-                  title={item.status === "paused" ? "Resume scanning" : "Pause scanning"}
-                  aria-label={item.status === "paused" ? "Resume scanning" : "Pause scanning"}
+                  title={item.status === "paused" ? resumeActionLabel : pauseActionLabel}
+                  aria-label={item.status === "paused" ? resumeActionLabel : pauseActionLabel}
                   onClick={() => onTogglePause(item.id)}
                 >
                   <Icon
@@ -599,9 +620,9 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
   const jiraSummary = !jira?.connected
     ? "Not connected"
     : jiraScanning
-      ? `${jiraScanning} scanning now`
+      ? `${jiraScanning} previewing`
       : jiraProjects.length
-        ? "Auto-scanning · up to date"
+        ? "Saved setup"
         : "No projects yet";
 
   return (
@@ -609,8 +630,8 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
       <div className="settings-intro">
         <h2 className="ds-h3">Knowledge</h2>
         <p className="ds-body">
-          Sources the agent draws on to understand your work context. Everything
-          is indexed locally on this device.
+          Sources the agent draws on to understand your work context. Local
+          folders are indexed locally; Jira is available here as setup only.
         </p>
       </div>
       <div className="providers-grid">
@@ -654,7 +675,7 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
             <div className="provider-id">
               <div className="provider-name">Jira (API)</div>
               <div className="provider-region">
-                {jiraProjects.length} of {JIRA_MAX} projects · continuously scanned
+                {jiraProjects.length} of {JIRA_MAX} project slots · setup only
               </div>
             </div>
           </div>
@@ -662,7 +683,7 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
             {jira?.connected ? (
               <span className="badge badge-success">
                 <span className="dot" />
-                Connected
+                Saved setup
               </span>
             ) : (
               <span className="badge badge-neutral">Not connected</span>
@@ -965,15 +986,32 @@ function JiraConfig({ config, onSave, onBack }) {
       setConnectError("Enter a valid email address.");
       return;
     }
-    if (!token.trim() && !hasSaved) {
+    const trimmedToken = token.trim();
+    if (!trimmedToken && !hasSaved && !pendingClear) {
       setConnectError("Enter an API token.");
       return;
     }
     setConnecting(true);
     setConnectError("");
-    // Mock connect: there is no real Jira API call yet.
+    if (pendingClear && !trimmedToken) {
+      const nextCfg = {
+        ...cfg,
+        instanceUrl: url,
+        email: mail,
+        connected: false,
+        tokenConfigured: false,
+        tokenLastFour: "",
+        tokenExpiresDays: null,
+        projects: []
+      };
+      commit(nextCfg, { clearToken: true });
+      setToken("");
+      setPendingClear(false);
+      setConnecting(false);
+      return;
+    }
+    // Prototype save: there is no real Jira API call yet.
     setTimeout(() => {
-      const trimmedToken = token.trim();
       const nextCfg = {
         ...cfg,
         instanceUrl: url,
@@ -1089,14 +1127,14 @@ function JiraConfig({ config, onSave, onBack }) {
         <div className="provider-id">
           <h2 className="ds-h3">Jira (API)</h2>
           <div className="provider-region">
-            The agent scans issues and project context from Jira so it can reference
-            them. Indexed locally — nothing leaves this device. Up to {JIRA_MAX} projects.
+            Save Jira connection details and choose projects for a future knowledge
+            connector. Live Jira sync and indexing are not implemented yet. Up to {JIRA_MAX} projects.
           </div>
         </div>
         {cfg.connected ? (
           <span className="badge badge-success knowledge-head-badge">
             <span className="dot" />
-            Connected
+            Saved setup
           </span>
         ) : (
           <span className="badge badge-neutral knowledge-head-badge">Not connected</span>
@@ -1106,15 +1144,15 @@ function JiraConfig({ config, onSave, onBack }) {
       {cfg.connected && projects.length > 0 && (
         <SourceStats
           items={[
-            { label: "Issues indexed", value: totalIssues.toLocaleString() },
+            { label: "Demo issues", value: totalIssues.toLocaleString() },
             { label: "Projects", value: `${projects.length} / ${JIRA_MAX}` },
             {
               label: "Status",
               value: scanningCount
-                ? `${scanningCount} scanning`
+                ? `${scanningCount} previewing`
                 : pausedCount
                   ? `${pausedCount} paused`
-                  : "Up to date"
+                  : "Saved only"
             }
           ]}
         />
@@ -1181,7 +1219,7 @@ function JiraConfig({ config, onSave, onBack }) {
             <span className="saved-key-row">
               <span className="token-clear-warning">
                 <Icon name="alert-triangle" size={13} color="var(--warning-700)" />
-                Token will be cleared on save.
+                Token and selected projects will be cleared on save.
               </span>
               <button
                 className="btn btn-ghost btn-sm"
@@ -1205,7 +1243,7 @@ function JiraConfig({ config, onSave, onBack }) {
                 color={expirySoon ? "var(--warning-700)" : "var(--gray-400)"}
               />
               {expirySoon
-                ? `Token expires in ${expiry} days — generate a new one to avoid interrupted scans.`
+                ? `Token expires in ${expiry} days — generate a new one before enabling live sync.`
                 : `Token expires in ${expiry} days.`}
             </span>
           )}
@@ -1223,15 +1261,15 @@ function JiraConfig({ config, onSave, onBack }) {
           {connecting ? (
             <>
               <Icon name="refresh-cw" size={15} color="#fff" className="cda-spin" />
-              Connecting…
+              Saving…
             </>
           ) : cfg.connected ? (
             <>
-              <Icon name="check" size={16} color="#fff" /> Save connection
+              <Icon name="check" size={16} color="#fff" /> Save setup
             </>
           ) : (
             <>
-              <Icon name="check" size={16} color="#fff" /> Connect
+              <Icon name="check" size={16} color="#fff" /> Save setup
             </>
           )}
         </button>
@@ -1241,7 +1279,7 @@ function JiraConfig({ config, onSave, onBack }) {
             type="button"
             onClick={() => setDisconnectConfirm(true)}
           >
-            Disconnect
+            Clear setup
           </button>
         )}
         {cfg.connected && disconnectConfirm && (
@@ -1257,7 +1295,7 @@ function JiraConfig({ config, onSave, onBack }) {
               Cancel
             </button>
             <button className="btn btn-danger btn-sm" type="button" onClick={disconnect}>
-              <Icon name="trash" size={14} color="#fff" /> Disconnect
+              <Icon name="trash" size={14} color="#fff" /> Clear setup
             </button>
           </>
         )}
@@ -1269,7 +1307,7 @@ function JiraConfig({ config, onSave, onBack }) {
           max={JIRA_MAX}
           noun="projects"
           addRowRef={pickerRef}
-          emptyText="No projects yet. Add a Jira project above to start scanning."
+          emptyText="No projects yet. Add a Jira project above to save it in this setup."
           confirmLabel="Remove project?"
           removeLabel="Remove project"
           onScanNow={scanNow}
@@ -1277,13 +1315,17 @@ function JiraConfig({ config, onSave, onBack }) {
           onRemove={removeProject}
           renderLeading={(project) => <span className="jira-key">{project.key}</span>}
           renderTitle={(project) => project.name}
-          tickerItems={(project) => sampleTickets(project.key)}
+          renderStatus={(project) => <JiraProjectStatus status={project.status} />}
+          tickerItems={() => ["Preview in progress"]}
           metaScanned={(project) =>
-            `${Number(project.issues ?? 0).toLocaleString()} issues · checked ${project.checked || "just now"}`
+            `${Number(project.issues ?? 0).toLocaleString()} demo issues · saved ${project.checked || "just now"}`
           }
           metaPaused={(project) =>
-            `Paused · ${Number(project.issues ?? 0).toLocaleString()} issues`
+            `Paused · ${Number(project.issues ?? 0).toLocaleString()} demo issues`
           }
+          scanActionLabel="Preview scan"
+          pauseActionLabel="Pause saved project"
+          resumeActionLabel="Resume saved project"
           addControl={
             pickerOpen ? (
               <button
@@ -1320,7 +1362,7 @@ function JiraConfig({ config, onSave, onBack }) {
                     className="input"
                     type="text"
                     autoFocus
-                    placeholder="Search projects in this instance…"
+                    placeholder="Search prototype projects…"
                     value={pickerSearch}
                     onChange={(event) => setPickerSearch(event.target.value)}
                   />
@@ -1353,7 +1395,7 @@ function JiraConfig({ config, onSave, onBack }) {
 
       <div className="knowledge-privacy">
         <Icon name="shield-check" size={14} color="var(--success-600)" />
-        Issues are indexed locally on this device.
+        Jira issue indexing will run locally once the live connector is implemented.
       </div>
     </div>
   );
