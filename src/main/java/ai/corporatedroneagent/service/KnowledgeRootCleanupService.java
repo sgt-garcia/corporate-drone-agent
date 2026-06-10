@@ -30,18 +30,30 @@ public class KnowledgeRootCleanupService {
     }
 
     public void removeLocalFolderRoot(String reference) {
-        if (reference == null || reference.isBlank()) {
+        removeRoot(KnowledgeSource.LOCAL_FOLDER, reference);
+    }
+
+    public void removeJiraRoot(String reference) {
+        removeRoot(KnowledgeSource.JIRA, reference);
+    }
+
+    public void removeRoot(KnowledgeSource source, String reference) {
+        if (source == null || reference == null || reference.isBlank()) {
             return;
         }
 
-        rootRepository.findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, reference.trim())
+        rootRepository.findBySourceAndReference(source, reference.trim())
                 .ifPresent(this::removeRoot);
     }
 
-    private void removeRoot(KnowledgeRoot root) {
+    public void removeRoot(KnowledgeRoot root) {
+        if (root == null || root.getId() == null) {
+            return;
+        }
         List<KnowledgeResource> resources = resourceRepository.findByRootId(root.getId());
         log.info(
-                "Removing local knowledge root {} at {} with {} resources.",
+                "Removing {} knowledge root {} at {} with {} resources.",
+                root.getSource(),
                 root.getId(),
                 root.getReference(),
                 resources.size()

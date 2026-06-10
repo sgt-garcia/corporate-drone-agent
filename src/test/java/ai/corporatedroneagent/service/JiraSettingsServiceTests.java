@@ -11,6 +11,7 @@ import ai.corporatedroneagent.dto.JiraProjectRequest;
 import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
+import ai.corporatedroneagent.repository.KnowledgeResourceRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.SettingsRepository;
 import ai.corporatedroneagent.security.SecretStore;
@@ -234,12 +235,17 @@ class JiraSettingsServiceTests {
         JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
         knowledgeRootRepository = new KnowledgeRootRepository(jdbcTemplate);
         settingsRepository = new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules());
+        KnowledgeRootCleanupService cleanupService = new KnowledgeRootCleanupService(
+                knowledgeRootRepository,
+                new KnowledgeResourceRepository(jdbcTemplate),
+                mock(KnowledgeIndexingService.class)
+        );
         return new SettingsService(
                 settingsRepository,
                 knowledgeRootRepository,
                 new SettingsSecretsService(secretStore),
                 mock(EventService.class),
-                mock(KnowledgeRootCleanupService.class),
+                cleanupService,
                 new KnowledgeScanCoordinator(),
                 validator,
                 discovery,

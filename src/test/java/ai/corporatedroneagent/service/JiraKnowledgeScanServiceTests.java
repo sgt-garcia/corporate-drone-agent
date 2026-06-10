@@ -148,6 +148,32 @@ class JiraKnowledgeScanServiceTests {
         assertThat(indexingService.searchTerm("kepttoken", 10)).hasSize(1);
     }
 
+    @Test
+    void removingJiraProjectRootDeletesStoredResourcesAndIndexEntries() {
+        JiraSettings jira = jira();
+        JiraProjectDto project = project();
+        JiraIssueFetchService.JiraIssueDocument issue = issue("10100", "DEV-7", "removedtoken");
+        issues.set(List.of(issue));
+        scanService.scanProject(jira, project, "token-1234");
+
+        KnowledgeRoot root = rootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+        ).orElseThrow();
+        KnowledgeResource resource = resourceRepository
+                .findByRootIdAndReference(root.getId(), issue.reference())
+                .orElseThrow();
+        assertThat(indexingService.searchTerm("removedtoken", 10))
+                .containsExactly(resource.getId() + ":0");
+
+        new KnowledgeRootCleanupService(rootRepository, resourceRepository, indexingService)
+                .removeJiraRoot(root.getReference());
+
+        assertThat(rootRepository.findById(root.getId())).isEmpty();
+        assertThat(resourceRepository.findByRootId(root.getId())).isEmpty();
+        assertThat(indexingService.searchTerm("removedtoken", 10)).isEmpty();
+    }
+
     private JiraIssueFetchService.JiraIssueDocument issue(String id, String key, String token) {
         String text = """
                 Jira issue: %s

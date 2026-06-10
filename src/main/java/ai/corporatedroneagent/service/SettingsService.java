@@ -480,7 +480,7 @@ public class SettingsService {
 
         knowledgeRootRepository.findBySource(KnowledgeSource.JIRA).stream()
                 .filter(root -> !expectedReferences.contains(root.getReference()))
-                .forEach(root -> knowledgeRootRepository.delete(root.getId()));
+                .forEach(knowledgeRootCleanupService::removeRoot);
 
         if (!jira.isConnected()) {
             return;
