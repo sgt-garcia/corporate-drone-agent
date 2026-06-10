@@ -1,6 +1,9 @@
 package ai.corporatedroneagent.service;
 
+import ai.corporatedroneagent.dto.JiraConnectionRequest;
+import ai.corporatedroneagent.dto.JiraConnectionValidationDto;
 import ai.corporatedroneagent.dto.JiraProjectDto;
+import ai.corporatedroneagent.dto.JiraProjectRequest;
 import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
@@ -18,9 +21,13 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -33,6 +40,7 @@ public class SettingsService {
     private static final Logger log = LoggerFactory.getLogger(SettingsService.class);
     private static final int MAX_KNOWLEDGE_FOLDERS = 10;
     private static final int MAX_JIRA_PROJECTS = 10;
+    private static final Map<String, String> PROTOTYPE_JIRA_PROJECTS = prototypeJiraProjects();
 
     private final SettingsRepository settingsRepository;
     private final KnowledgeRootRepository knowledgeRootRepository;
@@ -178,6 +186,260 @@ public class SettingsService {
         publishSettingsUpdated();
         log.info("Resumed local knowledge folder {}.", folderId);
         return knowledgeFolder(root);
+    }
+
+    public synchronized JiraSettings getJiraSettings() {
+        return currentJiraSettings();
+    }
+
+    public synchronized JiraConnectionValidationDto validateJiraConnection(JiraConnectionRequest request) {
+        JiraSettings current = currentJiraSettings();
+        validateJiraConnectionRequest(request, current.isTokenConfigured());
+        return new JiraConnectionValidationDto(
+                true,
+                "Jira setup is complete. Live Jira validation is not implemented yet.",
+                false
+        );
+    }
+
+    public synchronized JiraSettings saveJiraConnection(JiraConnectionRequest request) {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+
+        JiraSettings current = settings.getJira();
+        String token = Strings.defaultIfBlank(request == null ? "" : request.token(), "");
+        if (request != null && request.clearToken() && token.isBlank()) {
+            JiraSettings cleared = new JiraSettings();
+            settings.setJira(cleared);
+            persistJiraSettings(settings, cleared, jiraSecretRequest("", true));
+            log.info("Cleared Jira setup.");
+            return currentJiraSettings();
+        }
+
+        validateJiraConnectionRequest(request, current.isTokenConfigured());
+        JiraSettings next = new JiraSettings();
+        next.setInstanceUrl(Strings.defaultIfBlank(request.instanceUrl(), ""));
+        next.setEmail(Strings.defaultIfBlank(request.email(), ""));
+        next.setConnected(true);
+        next.setTokenExpiresDays(current.getTokenExpiresDays() == null ? 90 : current.getTokenExpiresDays());
+        next.setProjects(current.isConnected() ? current.getProjects() : List.of());
+
+        persistJiraSettings(settings, next, token.isBlank() ? null : jiraSecretRequest(token, false));
+        log.info("Saved Jira setup for {}.", next.getInstanceUrl());
+        return currentJiraSettings();
+    }
+
+    public synchronized JiraSettings clearJiraConnection() {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        JiraSettings cleared = new JiraSettings();
+        settings.setJira(cleared);
+        persistJiraSettings(settings, cleared, jiraSecretRequest("", true));
+        log.info("Cleared Jira setup.");
+        return currentJiraSettings();
+    }
+
+    public synchronized List<JiraProjectDto> listJiraProjects() {
+        return currentJiraSettings().getProjects();
+    }
+
+    public synchronized List<JiraProjectDto> searchJiraProjects(String query) {
+        JiraSettings jira = currentJiraSettings();
+        String normalizedQuery = Strings.defaultIfBlank(query, "").toLowerCase(Locale.ROOT);
+        return PROTOTYPE_JIRA_PROJECTS.entrySet().stream()
+                .filter(entry -> jira.getProjects().stream()
+                        .noneMatch(project -> project.getKey().equalsIgnoreCase(entry.getKey())))
+                .filter(entry -> normalizedQuery.isBlank()
+                        || (entry.getKey() + " " + entry.getValue()).toLowerCase(Locale.ROOT).contains(normalizedQuery))
+                .map(entry -> jiraProject(entry.getKey(), entry.getValue(), 0, ""))
+                .toList();
+    }
+
+    public synchronized JiraProjectDto addJiraProject(JiraProjectRequest request) {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        JiraSettings jira = settings.getJira();
+        requireJiraSetup(jira);
+
+        String key = normalizeJiraProjectKey(request == null ? "" : request.key());
+        String name = PROTOTYPE_JIRA_PROJECTS.get(key);
+        if (name == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found");
+        }
+        if (jira.getProjects().stream().anyMatch(project -> project.getKey().equalsIgnoreCase(key))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Jira project is already configured");
+        }
+        if (jira.getProjects().size() >= MAX_JIRA_PROJECTS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira project limit reached");
+        }
+
+        List<JiraProjectDto> projects = new ArrayList<>(jira.getProjects());
+        JiraProjectDto project = jiraProject(key, name, demoIssueCount(key), "just now");
+        projects.add(project);
+        jira.setProjects(projects);
+        persistJiraSettings(settings, jira, null);
+        log.info("Added Jira project {}.", key);
+        return project;
+    }
+
+    public synchronized void removeJiraProject(String projectId) {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        JiraSettings jira = settings.getJira();
+        requireJiraSetup(jira);
+        List<JiraProjectDto> projects = jira.getProjects().stream()
+                .filter(project -> !project.getId().equals(projectId))
+                .toList();
+        if (projects.size() == jira.getProjects().size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found");
+        }
+        jira.setProjects(projects);
+        persistJiraSettings(settings, jira, null);
+        log.info("Removed Jira project {}.", projectId);
+    }
+
+    public synchronized JiraProjectDto scanJiraProject(String projectId) {
+        return updateJiraProject(projectId, project -> {
+            project.setStatus("scanned");
+            project.setIssues(demoIssueCount(project.getKey()));
+            project.setChecked("just now");
+        });
+    }
+
+    public synchronized JiraProjectDto pauseJiraProject(String projectId) {
+        return updateJiraProject(projectId, project -> project.setStatus("paused"));
+    }
+
+    public synchronized JiraProjectDto resumeJiraProject(String projectId) {
+        return updateJiraProject(projectId, project -> project.setStatus("scanned"));
+    }
+
+    private JiraSettings currentJiraSettings() {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settings.setJira(sanitizeJira(settings.getJira()));
+        settingsSecretsService.applySecretStatus(settings);
+        return settings.getJira();
+    }
+
+    private void validateJiraConnectionRequest(JiraConnectionRequest request, boolean hasSavedToken) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira connection details are required");
+        }
+        String instanceUrl = Strings.defaultIfBlank(request.instanceUrl(), "");
+        if (instanceUrl.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira instance URL is required");
+        }
+        if (!instanceUrl.startsWith("https://") && !instanceUrl.startsWith("http://")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira instance URL must start with https://");
+        }
+        String email = Strings.defaultIfBlank(request.email(), "");
+        if (email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira email is required");
+        }
+        if (!email.contains("@")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira email must be valid");
+        }
+        String token = Strings.defaultIfBlank(request.token(), "");
+        if (token.isBlank() && !hasSavedToken) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira API token is required");
+        }
+    }
+
+    private void persistJiraSettings(
+            ApplicationSettings settings,
+            JiraSettings jira,
+            ApplicationSettings secretRequest
+    ) {
+        if (secretRequest != null) {
+            settingsSecretsService.saveSubmittedSecrets(secretRequest);
+        }
+        settings.setJira(sanitizeJira(jira));
+        settingsSecretsService.clearSecretValues(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        settingsRepository.save(settings);
+        publishSettingsUpdated();
+    }
+
+    private ApplicationSettings jiraSecretRequest(String token, boolean clearToken) {
+        ApplicationSettings settings = new ApplicationSettings();
+        settings.getJira().setToken(token);
+        settings.getJira().setClearToken(clearToken);
+        return settings;
+    }
+
+    private void requireJiraSetup(JiraSettings jira) {
+        if (!jira.isConnected() || !jira.isTokenConfigured()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Save Jira setup before managing projects");
+        }
+    }
+
+    private JiraProjectDto updateJiraProject(String projectId, Consumer<JiraProjectDto> updater) {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        JiraSettings jira = settings.getJira();
+        requireJiraSetup(jira);
+
+        JiraProjectDto updatedProject = null;
+        List<JiraProjectDto> projects = new ArrayList<>();
+        for (JiraProjectDto project : jira.getProjects()) {
+            JiraProjectDto copy = copyJiraProject(project);
+            if (copy.getId().equals(projectId)) {
+                updater.accept(copy);
+                updatedProject = copy;
+            }
+            projects.add(copy);
+        }
+        if (updatedProject == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found");
+        }
+        jira.setProjects(projects);
+        persistJiraSettings(settings, jira, null);
+        return updatedProject;
+    }
+
+    private JiraProjectDto copyJiraProject(JiraProjectDto source) {
+        JiraProjectDto copy = new JiraProjectDto();
+        copy.setId(source.getId());
+        copy.setKey(source.getKey());
+        copy.setName(source.getName());
+        copy.setStatus(source.getStatus());
+        copy.setIssues(source.getIssues());
+        copy.setChecked(source.getChecked());
+        return copy;
+    }
+
+    private String normalizeJiraProjectKey(String key) {
+        String normalized = Strings.defaultIfBlank(key, "").toUpperCase(Locale.ROOT);
+        if (normalized.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira project key is required");
+        }
+        return normalized;
+    }
+
+    private JiraProjectDto jiraProject(String key, String name, long issues, String checked) {
+        JiraProjectDto project = new JiraProjectDto();
+        project.setId("jira-" + key.toLowerCase(Locale.ROOT));
+        project.setKey(key);
+        project.setName(name);
+        project.setStatus("scanned");
+        project.setIssues(issues);
+        project.setChecked(checked);
+        return project;
+    }
+
+    private long demoIssueCount(String key) {
+        return 40L + Math.floorMod(key.hashCode(), 300);
     }
 
     private void migratePlaintextSecrets(ApplicationSettings settings) {
@@ -429,6 +691,26 @@ public class SettingsService {
             }
         }
         return sanitized;
+    }
+
+    private static Map<String, String> prototypeJiraProjects() {
+        Map<String, String> projects = new LinkedHashMap<>();
+        projects.put("PROJ", "Project Management");
+        projects.put("DEV", "Software Development");
+        projects.put("OPS", "Operations");
+        projects.put("HR", "Human Resources");
+        projects.put("MKTG", "Marketing");
+        projects.put("SALES", "Sales Pipeline");
+        projects.put("DESIGN", "Design System");
+        projects.put("INFRA", "Infrastructure");
+        projects.put("DATA", "Data Platform");
+        projects.put("LEGAL", "Legal & Compliance");
+        projects.put("SUPPORT", "Customer Support");
+        projects.put("QA", "Quality Assurance");
+        projects.put("MOBILE", "Mobile Apps");
+        projects.put("API", "API Platform");
+        projects.put("SEC", "Security");
+        return java.util.Collections.unmodifiableMap(projects);
     }
 
     private boolean samePath(String first, String second) {

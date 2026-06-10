@@ -147,26 +147,6 @@ function toolEnabled(tool, settings) {
 const KNOWLEDGE_MAX = 10;
 const JIRA_MAX = 10;
 
-// Projects the picker offers. There is no live Jira API yet, so this stands in
-// for "the projects in your instance" once a connection is saved.
-const MOCK_JIRA_PROJECTS = {
-  PROJ: "Project Management",
-  DEV: "Software Development",
-  OPS: "Operations",
-  HR: "Human Resources",
-  MKTG: "Marketing",
-  SALES: "Sales Pipeline",
-  DESIGN: "Design System",
-  INFRA: "Infrastructure",
-  DATA: "Data Platform",
-  LEGAL: "Legal & Compliance",
-  SUPPORT: "Customer Support",
-  QA: "Quality Assurance",
-  MOBILE: "Mobile Apps",
-  API: "API Platform",
-  SEC: "Security"
-};
-
 const DEFAULT_AWS_REGION = "us-east-1";
 
 // Stable module-level loaders. ProviderModelSelect keeps `loadModels` in its
@@ -238,7 +218,13 @@ export function Settings({
   onScanKnowledgeFolder,
   onToggleKnowledgeFolderPause,
   jiraConfig,
-  onSaveJiraConfig
+  onSaveJiraConnection,
+  onClearJiraConnection,
+  onSearchJiraProjects,
+  onAddJiraProject,
+  onRemoveJiraProject,
+  onScanJiraProject,
+  onToggleJiraProjectPause
 }) {
   const [draft, setDraft] = useState(settings);
   const [section, setSection] = useState(initialSection || "general");
@@ -353,7 +339,13 @@ export function Settings({
             ) : knowledgeView === "jira" ? (
               <JiraConfig
                 config={jiraConfig}
-                onSave={onSaveJiraConfig}
+                onSaveConnection={onSaveJiraConnection}
+                onClearConnection={onClearJiraConnection}
+                onSearchProjects={onSearchJiraProjects}
+                onAddProject={onAddJiraProject}
+                onRemoveProject={onRemoveJiraProject}
+                onScanProject={onScanJiraProject}
+                onToggleProjectPause={onToggleJiraProjectPause}
                 onBack={() => setKnowledgeView(null)}
               />
             ) : (
@@ -883,7 +875,17 @@ function LocalFoldersConfig({
   );
 }
 
-function JiraConfig({ config, onSave, onBack }) {
+function JiraConfig({
+  config,
+  onSaveConnection,
+  onClearConnection,
+  onSearchProjects,
+  onAddProject,
+  onRemoveProject,
+  onScanProject,
+  onToggleProjectPause,
+  onBack
+}) {
   const [cfg, setCfg] = useState(() => ({
     instanceUrl: config.instanceUrl ?? "",
     email: config.email ?? "",
@@ -902,13 +904,24 @@ function JiraConfig({ config, onSave, onBack }) {
   const [disconnectConfirm, setDisconnectConfirm] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
+  const [available, setAvailable] = useState([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
   const pickerRef = useRef(null);
-  // Mirror of the latest cfg, so a delayed scan-settle can persist the current
-  // state without a side effect inside the (must-be-pure) state updater.
-  const cfgRef = useRef(cfg);
+
   useEffect(() => {
-    cfgRef.current = cfg;
-  }, [cfg]);
+    const nextCfg = {
+      instanceUrl: config.instanceUrl ?? "",
+      email: config.email ?? "",
+      connected: Boolean(config.connected),
+      tokenConfigured: Boolean(config.tokenConfigured),
+      tokenLastFour: config.tokenLastFour ?? "",
+      tokenExpiresDays: config.tokenExpiresDays ?? null,
+      projects: config.projects ?? []
+    };
+    setCfg(nextCfg);
+    setInstanceUrl(nextCfg.instanceUrl);
+    setEmail(nextCfg.email);
+  }, [config]);
 
   const hasSaved = cfg.tokenConfigured;
   const projects = cfg.projects;
@@ -916,11 +929,6 @@ function JiraConfig({ config, onSave, onBack }) {
   const totalIssues = projects.reduce((total, project) => total + Number(project.issues ?? 0), 0);
   const scanningCount = projects.filter((project) => project.status === "scanning").length;
   const pausedCount = projects.filter((project) => project.status === "paused").length;
-  const available = Object.entries(MOCK_JIRA_PROJECTS)
-    .filter(([key]) => !projects.some((project) => project.key === key))
-    .filter(([key, name]) =>
-      `${key} ${name}`.toLowerCase().includes(pickerSearch.trim().toLowerCase())
-    );
   // Days until the saved API token expires; under 14 we nudge the user to renew.
   const expiry = cfg.tokenExpiresDays;
   const expirySoon = typeof expiry === "number" && expiry <= 14;
@@ -952,20 +960,34 @@ function JiraConfig({ config, onSave, onBack }) {
     };
   }, [pickerOpen]);
 
-  // Update local state and persist. `secret` carries the write-only token fields
-  // when they change (connect/disconnect); other actions leave the saved token
-  // untouched by omitting them.
-  function commit(nextCfg, secret) {
-    setCfg(nextCfg);
-    onSave({
-      instanceUrl: nextCfg.instanceUrl,
-      email: nextCfg.email,
-      connected: nextCfg.connected,
-      tokenExpiresDays: nextCfg.tokenExpiresDays ?? null,
-      projects: nextCfg.projects,
-      ...(secret || {})
-    });
-  }
+  useEffect(() => {
+    if (!pickerOpen || atMax) {
+      setAvailable([]);
+      return undefined;
+    }
+    let cancelled = false;
+    setPickerLoading(true);
+    onSearchProjects(pickerSearch)
+      .then((projects) => {
+        if (!cancelled) {
+          setAvailable(projects);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setConnectError(error.message || "Could not load Jira projects.");
+          setAvailable([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPickerLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pickerOpen, pickerSearch, atMax, projects.length]);
 
   function saveConnection() {
     const url = instanceUrl.trim();
@@ -993,125 +1015,106 @@ function JiraConfig({ config, onSave, onBack }) {
     }
     setConnecting(true);
     setConnectError("");
-    if (pendingClear && !trimmedToken) {
-      const nextCfg = {
-        ...cfg,
-        instanceUrl: url,
-        email: mail,
-        connected: false,
-        tokenConfigured: false,
-        tokenLastFour: "",
-        tokenExpiresDays: null,
-        projects: []
-      };
-      commit(nextCfg, { clearToken: true });
-      setToken("");
-      setPendingClear(false);
-      setConnecting(false);
-      return;
-    }
-    // Prototype save: there is no real Jira API call yet.
-    setTimeout(() => {
-      const nextCfg = {
-        ...cfg,
-        instanceUrl: url,
-        email: mail,
-        connected: true,
-        tokenConfigured: true,
-        tokenLastFour: trimmedToken ? trimmedToken.slice(-4) : cfg.tokenLastFour,
-        tokenExpiresDays: 90
-      };
-      commit(nextCfg, trimmedToken ? { token: trimmedToken } : undefined);
-      setToken("");
-      setPendingClear(false);
-      setConnecting(false);
-    }, 1200);
+    onSaveConnection({
+      instanceUrl: url,
+      email: mail,
+      token: trimmedToken,
+      clearToken: pendingClear
+    })
+      .then((savedCfg) => {
+        setCfg(savedCfg);
+        setToken("");
+        setPendingClear(false);
+      })
+      .catch((error) => {
+        setConnectError(error.message || "Could not save Jira setup.");
+      })
+      .finally(() => {
+        setConnecting(false);
+      });
   }
 
   function disconnect() {
-    const nextCfg = {
-      ...cfg,
-      connected: false,
-      tokenConfigured: false,
-      tokenLastFour: "",
-      tokenExpiresDays: null,
-      projects: []
-    };
-    commit(nextCfg, { clearToken: true });
-    setDisconnectConfirm(false);
-    setToken("");
-    setPendingClear(false);
+    onClearConnection()
+      .then((savedCfg) => {
+        setCfg(savedCfg);
+        setDisconnectConfirm(false);
+        setToken("");
+        setPendingClear(false);
+      })
+      .catch((error) => {
+        setConnectError(error.message || "Could not clear Jira setup.");
+      });
   }
 
-  function addProjectByKey(key) {
+  async function addProjectByKey(key) {
     if (atMax || projects.some((project) => project.key === key)) {
       return;
     }
-    const name = MOCK_JIRA_PROJECTS[key];
-    if (!name) {
+    try {
+      const project = await onAddProject(key);
+      setCfg((prev) => ({
+        ...prev,
+        projects: prev.projects.some((item) => item.id === project.id)
+          ? prev.projects.map((item) => (item.id === project.id ? project : item))
+          : [...prev.projects, project]
+      }));
+      setPickerSearch("");
+    } catch (error) {
+      setConnectError(error.message || "Could not add Jira project.");
+    }
+  }
+
+  async function removeProject(id) {
+    try {
+      await onRemoveProject(id);
+      setCfg((current) => ({
+        ...current,
+        projects: current.projects.filter((project) => project.id !== id)
+      }));
+    } catch (error) {
+      setConnectError(error.message || "Could not remove Jira project.");
+    }
+  }
+
+  async function togglePause(id) {
+    const project = projects.find((item) => item.id === id);
+    if (!project) {
       return;
     }
-    const id = "j" + Math.random().toString(36).slice(2, 7);
-    setCfg((prev) => ({
-      ...prev,
-      projects: [...prev.projects, { id, key, name, status: "scanning", issues: 0, checked: "" }]
-    }));
-    setPickerSearch("");
-    // Settle the simulated first scan, then persist the final scanned project.
-    // Built from cfgRef (the latest state) so it survives any pause/remove that
-    // happened during the scan, and so persistence stays out of the updater.
-    setTimeout(() => {
-      const issues = Math.floor(40 + Math.random() * 300);
-      const base = cfgRef.current;
-      if (!base.projects.some((project) => project.id === id)) {
-        return; // removed mid-scan — nothing to settle
-      }
-      commit({
-        ...base,
-        projects: base.projects.map((project) =>
-          project.id === id
-            ? { ...project, status: "scanned", issues, checked: "just now" }
-            : project
+    try {
+      const savedProject = await onToggleProjectPause(project);
+      setCfg((current) => ({
+        ...current,
+        projects: current.projects.map((item) =>
+          item.id === savedProject.id ? savedProject : item
         )
-      });
-    }, 2400);
+      }));
+    } catch (error) {
+      setConnectError(error.message || "Could not update Jira project.");
+    }
   }
 
-  function removeProject(id) {
-    commit({ ...cfg, projects: projects.filter((project) => project.id !== id) });
-  }
-
-  function togglePause(id) {
-    commit({
-      ...cfg,
-      projects: projects.map((project) =>
-        project.id === id
-          ? { ...project, status: project.status === "paused" ? "scanned" : "paused" }
-          : project
-      )
-    });
-  }
-
-  function scanNow(id) {
-    // Re-scan is a local animation only — it doesn't change persisted state.
-    setCfg((prev) => ({
-      ...prev,
-      projects: prev.projects.map((project) =>
-        project.id === id && project.status === "scanned"
-          ? { ...project, status: "scanning", checked: "" }
-          : project
-      )
-    }));
-    setTimeout(() => {
+  async function scanNow(id) {
+    try {
       setCfg((prev) => ({
         ...prev,
         projects: prev.projects.map((project) =>
-          project.id === id && project.status === "scanning"
-            ? { ...project, status: "scanned", checked: "just now" }
+          project.id === id && project.status === "scanned"
+            ? { ...project, status: "scanning", checked: "" }
             : project
         )
       }));
-    }, 2000);
+      const savedProject = await onScanProject(id);
+      setCfg((current) => ({
+        ...current,
+        projects: current.projects.map((project) =>
+          project.id === savedProject.id ? savedProject : project
+        )
+      }));
+    } catch (error) {
+      setConnectError(error.message || "Could not preview Jira scan.");
+    }
   }
 
   return (
@@ -1368,20 +1371,22 @@ function JiraConfig({ config, onSave, onBack }) {
                   />
                 </span>
                 <div className="jira-picker-list">
-                  {available.length === 0 ? (
+                  {pickerLoading ? (
+                    <div className="jira-picker-empty">Loading projects...</div>
+                  ) : available.length === 0 ? (
                     <div className="jira-picker-empty">
                       {pickerSearch ? "No matching projects." : "Every project is already added."}
                     </div>
                   ) : (
-                    available.map(([key, name]) => (
+                    available.map((project) => (
                       <button
-                        key={key}
+                        key={project.key}
                         type="button"
                         className="jira-picker-item"
-                        onClick={() => addProjectByKey(key)}
+                        onClick={() => addProjectByKey(project.key)}
                       >
-                        <span className="jira-key">{key}</span>
-                        <span className="jira-picker-name">{name}</span>
+                        <span className="jira-key">{project.key}</span>
+                        <span className="jira-picker-name">{project.name}</span>
                         <Icon name="plus" size={15} color="var(--blue-600)" />
                       </button>
                     ))

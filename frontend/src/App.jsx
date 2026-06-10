@@ -1,7 +1,9 @@
 import "./styles.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  addJiraProject as addJiraProjectRequest,
   addKnowledgeFolder as addKnowledgeFolderRequest,
+  clearJiraConnection as clearJiraConnectionRequest,
   createConversation,
   createProject,
   deleteConversation as deleteConversationRequest,
@@ -9,14 +11,20 @@ import {
   getConversation,
   getProjects,
   getSettings,
+  pauseJiraProject as pauseJiraProjectRequest,
   pauseKnowledgeFolder as pauseKnowledgeFolderRequest,
   renameConversation as renameConversationRequest,
+  removeJiraProject as removeJiraProjectRequest,
   removeKnowledgeFolder as removeKnowledgeFolderRequest,
+  resumeJiraProject as resumeJiraProjectRequest,
   resumeKnowledgeFolder as resumeKnowledgeFolderRequest,
   retryConversationReply,
   saveProject,
   saveSettings,
+  saveJiraConnection as saveJiraConnectionRequest,
+  scanJiraProject as scanJiraProjectRequest,
   scanKnowledgeFolder as scanKnowledgeFolderRequest,
+  searchJiraProjects as searchJiraProjectsRequest,
   sendConversationMessage
 } from "./api.js";
 import { Icon } from "./components/Icon.jsx";
@@ -551,16 +559,105 @@ export default function App() {
     }
   }
 
-  // Persist the Jira knowledge source through the settings object. The component
-  // sends the full intended Jira state (connection, projects, and write-only
-  // token fields when they change); other settings are left untouched.
-  async function saveJiraConfig(jira) {
+  function applyJiraSettings(jira) {
+    setSettings((currentSettings) => ({ ...currentSettings, jira }));
+    return jira;
+  }
+
+  async function saveJiraConnection(connection) {
     try {
-      const savedSettings = await saveSettings({ ...settings, jira });
-      setSettings(savedSettings);
-      setKnowledgeFolders(savedSettings.knowledgeFolders ?? []);
+      return applyJiraSettings(await saveJiraConnectionRequest(connection));
     } catch (error) {
       setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function clearJiraConnection() {
+    try {
+      return applyJiraSettings(await clearJiraConnectionRequest());
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function searchJiraProjects(query) {
+    try {
+      return await searchJiraProjectsRequest(query);
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function addJiraProject(key) {
+    try {
+      const project = await addJiraProjectRequest(key);
+      setSettings((currentSettings) => ({
+        ...currentSettings,
+        jira: {
+          ...(currentSettings.jira ?? emptySettings.jira),
+          projects: upsertById(currentSettings.jira?.projects ?? [], project)
+        }
+      }));
+      return project;
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function removeJiraProject(projectId) {
+    try {
+      await removeJiraProjectRequest(projectId);
+      setSettings((currentSettings) => ({
+        ...currentSettings,
+        jira: {
+          ...(currentSettings.jira ?? emptySettings.jira),
+          projects: (currentSettings.jira?.projects ?? []).filter((project) => project.id !== projectId)
+        }
+      }));
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function scanJiraProject(projectId) {
+    try {
+      const project = await scanJiraProjectRequest(projectId);
+      setSettings((currentSettings) => ({
+        ...currentSettings,
+        jira: {
+          ...(currentSettings.jira ?? emptySettings.jira),
+          projects: upsertById(currentSettings.jira?.projects ?? [], project)
+        }
+      }));
+      return project;
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function toggleJiraProjectPause(project) {
+    try {
+      const savedProject =
+        project.status === "paused"
+          ? await resumeJiraProjectRequest(project.id)
+          : await pauseJiraProjectRequest(project.id);
+      setSettings((currentSettings) => ({
+        ...currentSettings,
+        jira: {
+          ...(currentSettings.jira ?? emptySettings.jira),
+          projects: upsertById(currentSettings.jira?.projects ?? [], savedProject)
+        }
+      }));
+      return savedProject;
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
     }
   }
 
@@ -630,7 +727,13 @@ export default function App() {
           onScanKnowledgeFolder={scanKnowledgeFolder}
           onToggleKnowledgeFolderPause={toggleKnowledgeFolderPause}
           jiraConfig={settings.jira ?? emptySettings.jira}
-          onSaveJiraConfig={saveJiraConfig}
+          onSaveJiraConnection={saveJiraConnection}
+          onClearJiraConnection={clearJiraConnection}
+          onSearchJiraProjects={searchJiraProjects}
+          onAddJiraProject={addJiraProject}
+          onRemoveJiraProject={removeJiraProject}
+          onScanJiraProject={scanJiraProject}
+          onToggleJiraProjectPause={toggleJiraProjectPause}
         />
       ) : (
         <main className="main">

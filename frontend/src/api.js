@@ -118,6 +118,69 @@ export async function resumeKnowledgeFolder(folderId) {
   });
 }
 
+export async function getJiraSettings() {
+  return request("/api/settings/knowledge/jira");
+}
+
+export async function validateJiraConnection({ instanceUrl, email, token, clearToken }) {
+  return request("/api/settings/knowledge/jira/connection/validate", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ instanceUrl, email, token, clearToken })
+  });
+}
+
+export async function saveJiraConnection({ instanceUrl, email, token, clearToken }) {
+  return request("/api/settings/knowledge/jira/connection", {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify({ instanceUrl, email, token, clearToken })
+  });
+}
+
+export async function clearJiraConnection() {
+  return request("/api/settings/knowledge/jira/connection", {
+    method: "DELETE"
+  });
+}
+
+export async function searchJiraProjects(query = "") {
+  const params = new URLSearchParams({ query });
+  return request(`/api/settings/knowledge/jira/projects/search?${params}`);
+}
+
+export async function addJiraProject(key) {
+  return request("/api/settings/knowledge/jira/projects", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ key })
+  });
+}
+
+export async function removeJiraProject(projectId) {
+  return requestNoContent(`/api/settings/knowledge/jira/projects/${projectId}`, {
+    method: "DELETE"
+  });
+}
+
+export async function scanJiraProject(projectId) {
+  return request(`/api/settings/knowledge/jira/projects/${projectId}/scan`, {
+    method: "POST"
+  });
+}
+
+export async function pauseJiraProject(projectId) {
+  return request(`/api/settings/knowledge/jira/projects/${projectId}/pause`, {
+    method: "POST"
+  });
+}
+
+export async function resumeJiraProject(projectId) {
+  return request(`/api/settings/knowledge/jira/projects/${projectId}/resume`, {
+    method: "POST"
+  });
+}
+
 export async function getOpenAiModels({ apiKey, provider, useSavedKey }) {
   return request("/api/settings/openai-models", {
     method: "POST",
