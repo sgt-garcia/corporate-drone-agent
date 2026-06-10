@@ -559,6 +559,7 @@ export default function App() {
   }
 
   async function scanKnowledgeFolder(folderId) {
+    clearScanProgress(folderId);
     try {
       const folder = await scanKnowledgeFolderRequest(folderId);
       setKnowledgeFolders((currentFolders) => upsertById(currentFolders, folder));
@@ -634,6 +635,7 @@ export default function App() {
   }
 
   async function scanJiraProject(projectId) {
+    clearScanProgress(projectId);
     try {
       const project = await scanJiraProjectRequest(projectId);
       setSettings((currentSettings) => ({
@@ -694,6 +696,19 @@ export default function App() {
       }
       const next = [...previous, item].slice(-5);
       return { ...current, [id]: next };
+    });
+  }
+
+  // Drop a source's buffered scan items so a fresh scan's ticker starts empty
+  // instead of replaying ticket keys / file names from the previous scan.
+  function clearScanProgress(id) {
+    setScanProgressById((current) => {
+      if (!(id in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[id];
+      return next;
     });
   }
 
