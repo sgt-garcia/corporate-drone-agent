@@ -26,16 +26,8 @@ class JiraSettingsServiceTests {
 
     @BeforeEach
     void setUp() {
-        JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
         secretStore = new InMemorySecretStore();
-        settingsService = new SettingsService(
-                new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules()),
-                new KnowledgeRootRepository(jdbcTemplate),
-                new SettingsSecretsService(secretStore),
-                mock(EventService.class),
-                mock(KnowledgeRootCleanupService.class),
-                new KnowledgeScanCoordinator()
-        );
+        settingsService = serviceWithValidator(validValidator());
     }
 
     @Test
@@ -64,6 +56,37 @@ class JiraSettingsServiceTests {
         assertThat(cleared.isConnected()).isFalse();
         assertThat(cleared.isTokenConfigured()).isFalse();
         assertThat(cleared.getProjects()).isEmpty();
+        assertThat(secretStore.get("settings.jira.token")).isEmpty();
+    }
+
+    @Test
+    void clearTokenOnSaveClearsJiraSetup() {
+        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+
+        var cleared = settingsService.saveJiraConnection(
+                new JiraConnectionRequest("https://example.atlassian.net", "me@example.com", "", true)
+        );
+
+        assertThat(cleared.isConnected()).isFalse();
+        assertThat(cleared.isTokenConfigured()).isFalse();
+        assertThat(cleared.getProjects()).isEmpty();
+        assertThat(secretStore.get("settings.jira.token")).isEmpty();
+    }
+
+    @Test
+    void saveJiraConnectionDoesNotMarkConnectedWhenValidationFails() {
+        settingsService = serviceWithValidator(new JiraConnectionValidationService() {
+            @Override
+            public ValidationResult validate(String instanceUrl, String email, String token) {
+                return new ValidationResult(false, "Jira rejected the email or API token.", true, 401);
+            }
+        });
+
+        assertThatThrownBy(() -> settingsService.saveJiraConnection(
+                connection("https://example.atlassian.net", "me@example.com", "wrong-token")
+        )).hasMessageContaining("Jira rejected the email or API token");
+        assertThat(settingsService.getJiraSettings().isConnected()).isFalse();
         assertThat(secretStore.get("settings.jira.token")).isEmpty();
     }
 
@@ -116,11 +139,33 @@ class JiraSettingsServiceTests {
         );
 
         assertThat(validation.valid()).isTrue();
-        assertThat(validation.liveValidationAvailable()).isFalse();
+        assertThat(validation.liveValidationAvailable()).isTrue();
     }
 
     private JiraConnectionRequest connection(String instanceUrl, String email, String token) {
         return new JiraConnectionRequest(instanceUrl, email, token, false);
+    }
+
+    private SettingsService serviceWithValidator(JiraConnectionValidationService validator) {
+        JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
+        return new SettingsService(
+                new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules()),
+                new KnowledgeRootRepository(jdbcTemplate),
+                new SettingsSecretsService(secretStore),
+                mock(EventService.class),
+                mock(KnowledgeRootCleanupService.class),
+                new KnowledgeScanCoordinator(),
+                validator
+        );
+    }
+
+    private JiraConnectionValidationService validValidator() {
+        return new JiraConnectionValidationService() {
+            @Override
+            public ValidationResult validate(String instanceUrl, String email, String token) {
+                return new ValidationResult(true, "ok", true, 200);
+            }
+        };
     }
 
     private static class InMemorySecretStore implements SecretStore {

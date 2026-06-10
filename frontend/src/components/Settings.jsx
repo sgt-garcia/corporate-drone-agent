@@ -614,7 +614,7 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
     : jiraScanning
       ? `${jiraScanning} previewing`
       : jiraProjects.length
-        ? "Saved setup"
+        ? "Connected · issue sync pending"
         : "No projects yet";
 
   return (
@@ -623,7 +623,8 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
         <h2 className="ds-h3">Knowledge</h2>
         <p className="ds-body">
           Sources the agent draws on to understand your work context. Local
-          folders are indexed locally; Jira is available here as setup only.
+          folders are indexed locally; Jira credentials can be validated, while
+          issue indexing is not implemented yet.
         </p>
       </div>
       <div className="providers-grid">
@@ -667,7 +668,7 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
             <div className="provider-id">
               <div className="provider-name">Jira (API)</div>
               <div className="provider-region">
-                {jiraProjects.length} of {JIRA_MAX} project slots · setup only
+                {jiraProjects.length} of {JIRA_MAX} project slots · issue sync pending
               </div>
             </div>
           </div>
@@ -675,7 +676,7 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
             {jira?.connected ? (
               <span className="badge badge-success">
                 <span className="dot" />
-                Saved setup
+                Connected
               </span>
             ) : (
               <span className="badge badge-neutral">Not connected</span>
@@ -1130,14 +1131,14 @@ function JiraConfig({
         <div className="provider-id">
           <h2 className="ds-h3">Jira (API)</h2>
           <div className="provider-region">
-            Save Jira connection details and choose projects for a future knowledge
-            connector. Live Jira sync and indexing are not implemented yet. Up to {JIRA_MAX} projects.
+            Validate Jira credentials and choose projects for a future knowledge
+            connector. Live issue sync and indexing are not implemented yet. Up to {JIRA_MAX} projects.
           </div>
         </div>
         {cfg.connected ? (
           <span className="badge badge-success knowledge-head-badge">
             <span className="dot" />
-            Saved setup
+            Connected
           </span>
         ) : (
           <span className="badge badge-neutral knowledge-head-badge">Not connected</span>
@@ -1268,11 +1269,11 @@ function JiraConfig({
             </>
           ) : cfg.connected ? (
             <>
-              <Icon name="check" size={16} color="#fff" /> Save setup
+              <Icon name="check" size={16} color="#fff" /> Save connection
             </>
           ) : (
             <>
-              <Icon name="check" size={16} color="#fff" /> Save setup
+              <Icon name="check" size={16} color="#fff" /> Connect
             </>
           )}
         </button>

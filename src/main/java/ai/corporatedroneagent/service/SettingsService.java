@@ -30,6 +30,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -48,8 +49,9 @@ public class SettingsService {
     private final EventService eventService;
     private final KnowledgeRootCleanupService knowledgeRootCleanupService;
     private final KnowledgeScanCoordinator knowledgeScanCoordinator;
+    private final JiraConnectionValidationService jiraConnectionValidationService;
 
-    public SettingsService(
+    SettingsService(
             SettingsRepository settingsRepository,
             KnowledgeRootRepository knowledgeRootRepository,
             SettingsSecretsService settingsSecretsService,
@@ -57,12 +59,34 @@ public class SettingsService {
             KnowledgeRootCleanupService knowledgeRootCleanupService,
             KnowledgeScanCoordinator knowledgeScanCoordinator
     ) {
+        this(
+                settingsRepository,
+                knowledgeRootRepository,
+                settingsSecretsService,
+                eventService,
+                knowledgeRootCleanupService,
+                knowledgeScanCoordinator,
+                new JiraConnectionValidationService()
+        );
+    }
+
+    @Autowired
+    public SettingsService(
+            SettingsRepository settingsRepository,
+            KnowledgeRootRepository knowledgeRootRepository,
+            SettingsSecretsService settingsSecretsService,
+            EventService eventService,
+            KnowledgeRootCleanupService knowledgeRootCleanupService,
+            KnowledgeScanCoordinator knowledgeScanCoordinator,
+            JiraConnectionValidationService jiraConnectionValidationService
+    ) {
         this.settingsRepository = settingsRepository;
         this.knowledgeRootRepository = knowledgeRootRepository;
         this.settingsSecretsService = settingsSecretsService;
         this.eventService = eventService;
         this.knowledgeRootCleanupService = knowledgeRootCleanupService;
         this.knowledgeScanCoordinator = knowledgeScanCoordinator;
+        this.jiraConnectionValidationService = jiraConnectionValidationService;
     }
 
     public ApplicationSettings get() {
@@ -193,13 +217,19 @@ public class SettingsService {
     }
 
     public synchronized JiraConnectionValidationDto validateJiraConnection(JiraConnectionRequest request) {
-        JiraSettings current = currentJiraSettings();
-        validateJiraConnectionRequest(request, current.isTokenConfigured());
-        return new JiraConnectionValidationDto(
-                true,
-                "Jira setup is complete. Live Jira validation is not implemented yet.",
-                false
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        boolean hasSavedToken = settings.getJira().isTokenConfigured();
+        validateJiraConnectionRequest(request, hasSavedToken);
+        String token = jiraValidationToken(request);
+        JiraConnectionValidationService.ValidationResult result = jiraConnectionValidationService.validate(
+                Strings.defaultIfBlank(request.instanceUrl(), ""),
+                Strings.defaultIfBlank(request.email(), ""),
+                token
         );
+        return new JiraConnectionValidationDto(result.valid(), result.message(), result.liveValidationAvailable());
     }
 
     public synchronized JiraSettings saveJiraConnection(JiraConnectionRequest request) {
@@ -219,6 +249,17 @@ public class SettingsService {
         }
 
         validateJiraConnectionRequest(request, current.isTokenConfigured());
+        String validationToken = token.isBlank()
+                ? savedJiraToken()
+                : token;
+        JiraConnectionValidationService.ValidationResult validation = jiraConnectionValidationService.validate(
+                Strings.defaultIfBlank(request.instanceUrl(), ""),
+                Strings.defaultIfBlank(request.email(), ""),
+                validationToken
+        );
+        if (!validation.valid()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, validation.message());
+        }
         JiraSettings next = new JiraSettings();
         next.setInstanceUrl(Strings.defaultIfBlank(request.instanceUrl(), ""));
         next.setEmail(Strings.defaultIfBlank(request.email(), ""));
@@ -352,6 +393,17 @@ public class SettingsService {
         if (token.isBlank() && !hasSavedToken) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira API token is required");
         }
+    }
+
+    private String jiraValidationToken(JiraConnectionRequest request) {
+        String submittedToken = Strings.defaultIfBlank(request.token(), "");
+        return submittedToken.isBlank() ? savedJiraToken() : submittedToken;
+    }
+
+    private String savedJiraToken() {
+        ApplicationSettings secretValues = new ApplicationSettings();
+        settingsSecretsService.applySecretValues(secretValues);
+        return secretValues.getJira().getToken();
     }
 
     private void persistJiraSettings(
