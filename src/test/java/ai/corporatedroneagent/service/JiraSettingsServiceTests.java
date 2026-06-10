@@ -242,7 +242,8 @@ class JiraSettingsServiceTests {
                 mock(KnowledgeRootCleanupService.class),
                 new KnowledgeScanCoordinator(),
                 validator,
-                discovery
+                discovery,
+                null
         );
     }
 

@@ -51,6 +51,7 @@ public class SettingsService {
     private final KnowledgeScanCoordinator knowledgeScanCoordinator;
     private final JiraConnectionValidationService jiraConnectionValidationService;
     private final JiraProjectDiscoveryService jiraProjectDiscoveryService;
+    private final JiraKnowledgeScanService jiraKnowledgeScanService;
 
     SettingsService(
             SettingsRepository settingsRepository,
@@ -68,7 +69,8 @@ public class SettingsService {
                 knowledgeRootCleanupService,
                 knowledgeScanCoordinator,
                 new JiraConnectionValidationService(),
-                new JiraProjectDiscoveryService(new ObjectMapper())
+                new JiraProjectDiscoveryService(new ObjectMapper()),
+                null
         );
     }
 
@@ -81,7 +83,8 @@ public class SettingsService {
             KnowledgeRootCleanupService knowledgeRootCleanupService,
             KnowledgeScanCoordinator knowledgeScanCoordinator,
             JiraConnectionValidationService jiraConnectionValidationService,
-            JiraProjectDiscoveryService jiraProjectDiscoveryService
+            JiraProjectDiscoveryService jiraProjectDiscoveryService,
+            JiraKnowledgeScanService jiraKnowledgeScanService
     ) {
         this.settingsRepository = settingsRepository;
         this.knowledgeRootRepository = knowledgeRootRepository;
@@ -91,6 +94,7 @@ public class SettingsService {
         this.knowledgeScanCoordinator = knowledgeScanCoordinator;
         this.jiraConnectionValidationService = jiraConnectionValidationService;
         this.jiraProjectDiscoveryService = jiraProjectDiscoveryService;
+        this.jiraKnowledgeScanService = jiraKnowledgeScanService;
     }
 
     public ApplicationSettings get() {
@@ -357,8 +361,29 @@ public class SettingsService {
     }
 
     public synchronized JiraProjectDto scanJiraProject(String projectId) {
-        return updateJiraProject(projectId, project -> {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        JiraSettings jira = settings.getJira();
+        requireJiraSetup(jira);
+
+        JiraProjectDto target = jira.getProjects().stream()
+                .filter(project -> project.getId().equals(projectId))
+                .findFirst()
+                .map(this::copyJiraProject)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found"));
+
+        JiraKnowledgeScanService.ScanResult scanResult;
+        if (jiraKnowledgeScanService == null) {
+            scanResult = new JiraKnowledgeScanService.ScanResult(target.getIssues(), 0);
+        } else {
+            scanResult = jiraKnowledgeScanService.scanProject(jira, target, savedJiraToken());
+        }
+
+        return replaceJiraProject(settings, jira, projectId, project -> {
             project.setStatus("scanned");
+            project.setIssues(scanResult.issues());
             project.setChecked("just now");
         });
     }
@@ -466,12 +491,15 @@ public class SettingsService {
             KnowledgeRoot root = knowledgeRootRepository
                     .findBySourceAndReference(KnowledgeSource.JIRA, reference)
                     .orElseGet(KnowledgeRoot::new);
+            boolean newRoot = root.getId() == null;
             root.setSource(KnowledgeSource.JIRA);
             root.setReference(reference);
             root.setDisplayName(jiraProjectDisplayName(project));
             root.setPaused("paused".equals(project.getStatus()));
             root.setTotalResources(project.getIssues());
-            root.setTotalSizeBytes(0);
+            if (newRoot) {
+                root.setTotalSizeBytes(0);
+            }
             if (root.getScanStatus() == WorkStatus.IN_PROGRESS) {
                 root.setScanStatus(WorkStatus.TO_DO);
                 root.setScanSuccess(null);
@@ -512,6 +540,30 @@ public class SettingsService {
         JiraSettings jira = settings.getJira();
         requireJiraSetup(jira);
 
+        JiraProjectDto updatedProject = null;
+        List<JiraProjectDto> projects = new ArrayList<>();
+        for (JiraProjectDto project : jira.getProjects()) {
+            JiraProjectDto copy = copyJiraProject(project);
+            if (copy.getId().equals(projectId)) {
+                updater.accept(copy);
+                updatedProject = copy;
+            }
+            projects.add(copy);
+        }
+        if (updatedProject == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found");
+        }
+        jira.setProjects(projects);
+        persistJiraSettings(settings, jira, null);
+        return updatedProject;
+    }
+
+    private JiraProjectDto replaceJiraProject(
+            ApplicationSettings settings,
+            JiraSettings jira,
+            String projectId,
+            Consumer<JiraProjectDto> updater
+    ) {
         JiraProjectDto updatedProject = null;
         List<JiraProjectDto> projects = new ArrayList<>();
         for (JiraProjectDto project : jira.getProjects()) {
@@ -750,9 +802,8 @@ public class SettingsService {
 
     // Persist only what the Settings screen needs to render on reload: trimmed
     // connection details, the chosen projects (capped and deduped by key), and
-    // the token expiry. Issue indexing is not implemented yet, so the live
-    // "scanning" status is a client-side animation and settles to "scanned"
-    // here. The secret token is handled separately by SettingsSecretsService.
+    // the token expiry. The secret token is handled separately by
+    // SettingsSecretsService.
     private JiraSettings sanitizeJira(JiraSettings jira) {
         JiraSettings sanitized = new JiraSettings();
         if (jira == null) {

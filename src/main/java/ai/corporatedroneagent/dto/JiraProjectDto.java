@@ -2,10 +2,8 @@ package ai.corporatedroneagent.dto;
 
 /**
  * A Jira project the agent scans. Mirrors a local knowledge folder: a capped,
- * continuously-scanned sub-scope with a status pill in the UI. Project
- * discovery uses Jira, but issue indexing is not implemented yet, so the live
- * "scanning" status is a client-side display only: persisted projects settle to
- * "scanned" or "paused".
+ * explicitly scanned sub-scope with a status pill in the UI. Project discovery
+ * uses Jira, while issue indexing runs through the shared knowledge pipeline.
  */
 public class JiraProjectDto {
 

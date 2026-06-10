@@ -9,9 +9,8 @@ import java.util.List;
  * Jira (API) knowledge source configuration. Only enough state is persisted for
  * the Settings UI to work across reloads: the validated connection details, the
  * secret API token (held in the secret store, like provider keys), and the
- * chosen projects. Issue sync and indexing are not implemented yet. The
- * {@code token}/{@code clearToken} fields are write-only so the secret never
- * leaves the device in a settings response.
+ * chosen projects. The {@code token}/{@code clearToken} fields are write-only
+ * so the secret never leaves the device in a settings response.
  */
 public class JiraSettings {
 
