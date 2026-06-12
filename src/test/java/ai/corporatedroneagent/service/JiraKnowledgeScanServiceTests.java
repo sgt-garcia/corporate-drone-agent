@@ -123,6 +123,37 @@ class JiraKnowledgeScanServiceTests {
     }
 
     @Test
+    void conversionFailureStillPersistsNativeJiraReadPayload() {
+        JiraSettings jira = jira();
+        JiraProjectDto project = project();
+        JiraIssueFetchService.JiraIssueManifest manifest = manifest(jira, "10100", "DEV-7", "Issue 10100");
+        JiraIssueFetchService.JiraIssueDocument document = document(jira, "10100", "DEV-7", "Issue 10100", "firsttoken");
+        issueFetchService.setManifests(List.of(manifest));
+        issueFetchService.putDocument(document);
+        issueFetchService.throwOnMarkdown = true;
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                JiraKnowledgeScanService.JiraScanException.class,
+                () -> scanService.scanProject(jira, project, "token-1234")
+        );
+
+        KnowledgeRoot root = rootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+        ).orElseThrow();
+        KnowledgeResource resource = resourceRepository
+                .findByRootIdAndReference(root.getId(), manifest.reference())
+                .orElseThrow();
+        assertThat(pipelineRepository.findReadByResourceId(resource.getId()))
+                .hasValueSatisfying(read -> {
+                    JsonNode payload = readJson(read);
+                    assertThat(payload.path("issue").path("key").asText()).isEqualTo("DEV-7");
+                    assertThat(payload.path("comments").get(0).path("body").toString()).contains("firsttoken");
+                });
+        assertThat(pipelineRepository.findConversionByResourceId(resource.getId())).isEmpty();
+    }
+
+    @Test
     void incrementalScanUsesLastSuccessfulCursorAndDoesNotDeleteUnreturnedIssues() {
         JiraSettings jira = jira();
         JiraProjectDto project = project();
@@ -485,6 +516,7 @@ class JiraKnowledgeScanServiceTests {
         private final Map<String, JiraIssueDocument> documents = new HashMap<>();
         private final AtomicReference<Instant> updatedSince = new AtomicReference<>();
         private boolean throwOnManifest;
+        private boolean throwOnMarkdown;
 
         private FakeJiraIssueFetchService(ObjectMapper objectMapper) {
             super(objectMapper);
@@ -528,6 +560,14 @@ class JiraKnowledgeScanServiceTests {
                 JiraIssueManifest manifest
         ) {
             return documents.get(manifest.key());
+        }
+
+        @Override
+        public String toMarkdown(byte[] readValue) {
+            if (throwOnMarkdown) {
+                throw new RuntimeException("markdown conversion failed");
+            }
+            return super.toMarkdown(readValue);
         }
     }
 }

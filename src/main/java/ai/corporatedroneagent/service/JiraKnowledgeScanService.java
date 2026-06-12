@@ -246,12 +246,12 @@ public class JiraKnowledgeScanService {
         indexingService.deleteResource(savedResource);
 
         KnowledgeResourceRead read = successfulRead(savedResource.getId(), document.readValue(), scannedAt);
+        pipelineRepository.saveRead(read);
         KnowledgeResourceConversion conversion = successfulConversion(
                 savedResource.getId(),
                 issueFetchService.toMarkdown(document.readValue()),
                 scannedAt
         );
-        pipelineRepository.saveRead(read);
         KnowledgeResourceConversion savedConversion = pipelineRepository.saveConversion(conversion);
         List<KnowledgeResourceChunk> chunks = chunkingService.chunk(savedResource, savedConversion);
         indexingService.index(savedResource, savedConversion, chunks);
