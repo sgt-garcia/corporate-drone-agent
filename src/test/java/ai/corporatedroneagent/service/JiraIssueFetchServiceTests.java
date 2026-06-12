@@ -207,6 +207,96 @@ class JiraIssueFetchServiceTests {
                 .contains("ORDER+BY+updated+DESC");
     }
 
+    @Test
+    void fetchesAllCommentPagesForLargeIssues() {
+        server.createContext("/rest/api/3/search/jql", exchange -> respond(exchange, 200, """
+                {
+                  "isLast": true,
+                  "issues": [
+                    {
+                      "id": "10100",
+                      "key": "DEV-7",
+                      "fields": {
+                        "summary": "Long discussion",
+                        "updated": "2026-06-09T12:34:56.000+0000"
+                      }
+                    }
+                  ]
+                }
+                """));
+        AtomicInteger commentCalls = new AtomicInteger();
+        server.createContext("/rest/api/3/issue/DEV-7/comment", exchange -> {
+            commentCalls.incrementAndGet();
+            int startAt = Integer.parseInt(queryParameter(exchange.getRequestURI().getQuery(), "startAt"));
+            respond(exchange, 200, commentsResponse(startAt, 125));
+        });
+
+        var issues = service.fetchProjectIssues(
+                baseUrl(),
+                "me@example.com",
+                "token-1234",
+                project("10001", "DEV")
+        );
+
+        assertThat(commentCalls).hasValue(3);
+        assertThat(issues)
+                .singleElement()
+                .satisfies(issue -> assertThat(issue.text())
+                        .contains("Comment 0", "Comment 99", "Comment 124"));
+    }
+
+    @Test
+    void fetchesJiraServerIssuesWithDetectedV2Api() {
+        AtomicReference<String> searchPath = new AtomicReference<>();
+        AtomicReference<String> searchQuery = new AtomicReference<>();
+        server.createContext("/rest/api/2/search", exchange -> {
+            searchPath.set(exchange.getRequestURI().getPath());
+            searchQuery.set(exchange.getRequestURI().getQuery());
+            respond(exchange, 200, """
+                    {
+                      "startAt": 0,
+                      "maxResults": 50,
+                      "total": 1,
+                      "issues": [
+                        {
+                          "id": "10100",
+                          "key": "DEV-7",
+                          "fields": {
+                            "summary": "Server issue",
+                            "updated": "2026-06-09T12:34:56.000+0000"
+                          }
+                        }
+                      ]
+                    }
+                    """);
+        });
+        server.createContext("/rest/api/2/issue/DEV-7/comment", exchange -> respond(exchange, 200, """
+                {
+                  "startAt": 0,
+                  "maxResults": 50,
+                  "total": 0,
+                  "comments": []
+                }
+                """));
+
+        var issues = service.fetchProjectIssues(
+                baseUrl(),
+                "me@example.com",
+                "token-1234",
+                project("10001", "DEV"),
+                Instant.parse("2026-06-09T12:34:56Z"),
+                "2"
+        );
+
+        assertThat(searchPath.get()).isEqualTo("/rest/api/2/search");
+        assertThat(searchQuery.get())
+                .contains("startAt=0")
+                .contains("updated+>=+\"2026/06/08+12:34\"");
+        assertThat(issues)
+                .singleElement()
+                .satisfies(issue -> assertThat(issue.displayName()).isEqualTo("DEV-7 - Server issue"));
+    }
+
     private JiraProjectDto project(String id, String key) {
         JiraProjectDto project = new JiraProjectDto();
         project.setId(id);
@@ -253,6 +343,42 @@ class JiraIssueFetchServiceTests {
                   "issues": [%s]
                 }
                 """.formatted(isLast, tokenField, issues);
+    }
+
+    private String commentsResponse(int startAt, int total) {
+        int count = Math.min(50, total - startAt);
+        StringBuilder comments = new StringBuilder();
+        for (int offset = 0; offset < count; offset++) {
+            int commentNumber = startAt + offset;
+            if (!comments.isEmpty()) {
+                comments.append(',');
+            }
+            comments.append("""
+                    {
+                      "author": { "displayName": "Reviewer" },
+                      "created": "2026-06-09T13:00:00.000+0000",
+                      "body": {
+                        "type": "doc",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              { "type": "text", "text": "Comment %d" }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                    """.formatted(commentNumber));
+        }
+        return """
+                {
+                  "startAt": %d,
+                  "maxResults": 50,
+                  "total": %d,
+                  "comments": [%s]
+                }
+                """.formatted(startAt, total, comments);
     }
 
     private String queryParameter(String query, String name) {

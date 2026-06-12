@@ -29,7 +29,9 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
 class JiraSettingsServiceTests {
 
@@ -51,11 +53,26 @@ class JiraSettingsServiceTests {
         assertThat(saved.isConnected()).isTrue();
         assertThat(saved.getInstanceUrl()).isEqualTo("https://example.atlassian.net");
         assertThat(saved.getEmail()).isEqualTo("me@example.com");
+        assertThat(saved.getApiVersion()).isEqualTo("3");
         assertThat(saved.isTokenConfigured()).isTrue();
         assertThat(saved.getTokenLastFour()).isEqualTo("1234");
         assertThat(saved.getToken()).isEmpty();
         assertThat(saved.getTokenExpiresDays()).isEqualTo(90);
         assertThat(secretStore.get("settings.jira.token")).contains("token-1234");
+    }
+
+    @Test
+    void saveJiraConnectionPersistsDetectedV2ApiVersion() {
+        settingsService = serviceWith(new JiraConnectionValidationService() {
+            @Override
+            public ValidationResult validate(String instanceUrl, String email, String token) {
+                return new ValidationResult(true, "ok", true, 200, "2");
+            }
+        }, fakeDiscovery());
+
+        var saved = settingsService.saveJiraConnection(connection("https://jira.example.com", "me@example.com", "token-1234"));
+
+        assertThat(saved.getApiVersion()).isEqualTo("2");
     }
 
     @Test
@@ -96,7 +113,7 @@ class JiraSettingsServiceTests {
         settingsService = serviceWith(new JiraConnectionValidationService() {
             @Override
             public ValidationResult validate(String instanceUrl, String email, String token) {
-                return new ValidationResult(false, "Jira rejected the email or API token.", true, 401);
+                return new ValidationResult(false, "Jira rejected the email or API token.", true, 401, "3");
             }
         }, fakeDiscovery());
 
@@ -216,6 +233,29 @@ class JiraSettingsServiceTests {
     }
 
     @Test
+    void scanJiraProjectPersistsErrorStatusAndPreservesResponseStatusException() {
+        JiraKnowledgeScanService scanService = mock(JiraKnowledgeScanService.class);
+        settingsService = serviceWith(validValidator(), fakeDiscovery(), scanService);
+        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        JiraProjectDto dev = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        when(scanService.scanProject(any(), any(), eq("token-1234"), any())).thenThrow(
+                new ResponseStatusException(HttpStatus.FORBIDDEN, "Jira does not allow this account to read issues")
+        );
+
+        assertThatThrownBy(() -> settingsService.scanJiraProject(dev.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Jira does not allow this account to read issues");
+
+        assertThat(settingsService.listJiraProjects())
+                .singleElement()
+                .satisfies(project -> {
+                    assertThat(project.getStatus()).isEqualTo("error");
+                    assertThat(project.getMessage()).isEqualTo("Jira does not allow this account to read issues");
+                    assertThat(project.getIssues()).isEqualTo(42);
+                });
+    }
+
+    @Test
     void syncingJiraProjectsDoesNotTouchLocalFolderRoots() {
         KnowledgeRoot localRoot = new KnowledgeRoot();
         localRoot.setSource(KnowledgeSource.LOCAL_FOLDER);
@@ -268,7 +308,10 @@ class JiraSettingsServiceTests {
         JiraProjectDto invalid = project("10003", " ", "Missing Key", 1);
         JiraProjectDto ops = project("10002", "OPS", "Operations", 17);
         ops.setStatus("paused");
-        jira.setProjects(java.util.List.of(dev, duplicateDev, invalid, ops));
+        JiraProjectDto support = project("10004", "SUP", "Support", 8);
+        support.setStatus("error");
+        support.setMessage("Could not scan Jira project");
+        jira.setProjects(java.util.List.of(dev, duplicateDev, invalid, ops, support));
         settings.setJira(jira);
         settingsRepository.save(settings);
         secretStore.put("settings.jira.token", "token-1234");
@@ -278,10 +321,11 @@ class JiraSettingsServiceTests {
         assertThat(sanitized.getInstanceUrl()).isEqualTo("https://example.atlassian.net/");
         assertThat(sanitized.getEmail()).isEqualTo("me@example.com");
         assertThat(sanitized.getTokenExpiresDays()).isEqualTo(30);
+        assertThat(sanitized.getApiVersion()).isEqualTo("3");
         assertThat(sanitized.isTokenConfigured()).isTrue();
         assertThat(sanitized.getProjects())
                 .extracting(JiraProjectDto::getKey)
-                .containsExactly("dev", "OPS");
+                .containsExactly("dev", "OPS", "SUP");
         assertThat(sanitized.getProjects().getFirst())
                 .satisfies(project -> {
                     assertThat(project.getId()).isNotBlank();
@@ -289,9 +333,11 @@ class JiraSettingsServiceTests {
                     assertThat(project.getIssues()).isEqualTo(42);
                 });
         assertThat(sanitized.getProjects().get(1).getStatus()).isEqualTo("paused");
+        assertThat(sanitized.getProjects().get(2).getStatus()).isEqualTo("error");
+        assertThat(sanitized.getProjects().get(2).getMessage()).isEqualTo("Could not scan Jira project");
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
                 .extracting(KnowledgeRoot::getDisplayName)
-                .containsExactly("dev - Software Development", "OPS - Operations");
+                .containsExactly("dev - Software Development", "OPS - Operations", "SUP - Support");
     }
 
     @Test
@@ -308,6 +354,7 @@ class JiraSettingsServiceTests {
 
         assertThat(validation.valid()).isTrue();
         assertThat(validation.liveValidationAvailable()).isTrue();
+        assertThat(validation.apiVersion()).isEqualTo("3");
     }
 
     private JiraConnectionRequest connection(String instanceUrl, String email, String token) {
@@ -351,7 +398,7 @@ class JiraSettingsServiceTests {
         return new JiraConnectionValidationService() {
             @Override
             public ValidationResult validate(String instanceUrl, String email, String token) {
-                return new ValidationResult(true, "ok", true, 200);
+                return new ValidationResult(true, "ok", true, 200, "3");
             }
         };
     }
@@ -364,7 +411,8 @@ class JiraSettingsServiceTests {
                     String email,
                     String token,
                     String query,
-                    int maxResults
+                    int maxResults,
+                    String apiVersion
             ) {
                 String normalizedQuery = query == null ? "" : query.toLowerCase(java.util.Locale.ROOT);
                 return java.util.List.of(
@@ -381,8 +429,8 @@ class JiraSettingsServiceTests {
             }
 
             @Override
-            public JiraProjectDto getProject(String instanceUrl, String email, String token, String key) {
-                return searchProjects(instanceUrl, email, token, key, 10).stream()
+            public JiraProjectDto getProject(String instanceUrl, String email, String token, String key, String apiVersion) {
+                return searchProjects(instanceUrl, email, token, key, 10, apiVersion).stream()
                         .filter(project -> project.getKey().equalsIgnoreCase(key))
                         .findFirst()
                         .orElseThrow();

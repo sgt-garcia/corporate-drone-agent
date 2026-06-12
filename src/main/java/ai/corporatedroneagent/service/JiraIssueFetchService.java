@@ -31,7 +31,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class JiraIssueFetchService {
 
     static final int ISSUE_PAGE_SIZE = 50;
-    static final int MAX_COMMENTS_PER_ISSUE = 100;
     static final int COMMENT_PAGE_SIZE = 50;
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
@@ -89,19 +88,47 @@ public class JiraIssueFetchService {
             JiraProjectDto project,
             Instant updatedSince
     ) {
+        return fetchProjectIssues(instanceUrl, email, token, project, updatedSince, "3");
+    }
+
+    public List<JiraIssueDocument> fetchProjectIssues(
+            String instanceUrl,
+            String email,
+            String token,
+            JiraProjectDto project,
+            Instant updatedSince,
+            String apiVersion
+    ) {
         String projectKey = Strings.defaultIfBlank(project.getKey(), "").trim();
         if (projectKey.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira project key is required");
         }
 
         List<JiraIssueDocument> documents = new ArrayList<>();
+        String normalizedApiVersion = normalizeApiVersion(apiVersion);
+        if ("2".equals(normalizedApiVersion)) {
+            fetchProjectIssuesV2(instanceUrl, email, token, projectKey, updatedSince, documents);
+        } else {
+            fetchProjectIssuesV3(instanceUrl, email, token, projectKey, updatedSince, documents);
+        }
+        return documents;
+    }
+
+    private void fetchProjectIssuesV3(
+            String instanceUrl,
+            String email,
+            String token,
+            String projectKey,
+            Instant updatedSince,
+            List<JiraIssueDocument> documents
+    ) {
         String nextPageToken = "";
         while (true) {
             JsonNode response = getJson(
                     instanceUrl,
                     email,
                     token,
-                    issueSearchPath(projectKey, updatedSince, ISSUE_PAGE_SIZE, nextPageToken),
+                    issueSearchPathV3(projectKey, updatedSince, ISSUE_PAGE_SIZE, nextPageToken),
                     "Jira issue search"
             );
             JsonNode issues = response.path("issues");
@@ -109,7 +136,7 @@ public class JiraIssueFetchService {
                 break;
             }
             for (JsonNode issue : issues) {
-                documents.add(toIssueDocument(instanceUrl, email, token, issue));
+                documents.add(toIssueDocument(instanceUrl, email, token, "3", issue));
             }
             if (response.path("isLast").asBoolean(false)) {
                 break;
@@ -119,10 +146,48 @@ public class JiraIssueFetchService {
                 break;
             }
         }
-        return documents;
     }
 
-    private JiraIssueDocument toIssueDocument(String instanceUrl, String email, String token, JsonNode issue) {
+    private void fetchProjectIssuesV2(
+            String instanceUrl,
+            String email,
+            String token,
+            String projectKey,
+            Instant updatedSince,
+            List<JiraIssueDocument> documents
+    ) {
+        int startAt = 0;
+        while (true) {
+            JsonNode response = getJson(
+                    instanceUrl,
+                    email,
+                    token,
+                    issueSearchPathV2(projectKey, updatedSince, ISSUE_PAGE_SIZE, startAt),
+                    "Jira issue search"
+            );
+            JsonNode issues = response.path("issues");
+            if (!issues.isArray() || issues.isEmpty()) {
+                break;
+            }
+            for (JsonNode issue : issues) {
+                documents.add(toIssueDocument(instanceUrl, email, token, "2", issue));
+            }
+            int responseStartAt = response.path("startAt").asInt(startAt);
+            startAt = responseStartAt + issues.size();
+            int total = response.path("total").asInt(startAt);
+            if (startAt >= total) {
+                break;
+            }
+        }
+    }
+
+    private JiraIssueDocument toIssueDocument(
+            String instanceUrl,
+            String email,
+            String token,
+            String apiVersion,
+            JsonNode issue
+    ) {
         String id = Strings.defaultIfBlank(issue.path("id").asText(""), "").trim();
         String key = Strings.defaultIfBlank(issue.path("key").asText(""), "").trim();
         if (id.isBlank()) {
@@ -133,7 +198,7 @@ public class JiraIssueFetchService {
         }
 
         JsonNode fields = issue.path("fields");
-        List<JiraIssueComment> comments = fetchComments(instanceUrl, email, token, key);
+        List<JiraIssueComment> comments = fetchComments(instanceUrl, email, token, apiVersion, key);
         String text = issueText(key, fields, comments);
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
         return new JiraIssueDocument(
@@ -148,18 +213,24 @@ public class JiraIssueFetchService {
         );
     }
 
-    private List<JiraIssueComment> fetchComments(String instanceUrl, String email, String token, String issueKey) {
+    private List<JiraIssueComment> fetchComments(
+            String instanceUrl,
+            String email,
+            String token,
+            String apiVersion,
+            String issueKey
+    ) {
         List<JiraIssueComment> comments = new ArrayList<>();
         int startAt = 0;
-        while (comments.size() < MAX_COMMENTS_PER_ISSUE) {
-            int pageSize = Math.min(COMMENT_PAGE_SIZE, MAX_COMMENTS_PER_ISSUE - comments.size());
+        String normalizedApiVersion = normalizeApiVersion(apiVersion);
+        while (true) {
             JsonNode response = getJson(
                     instanceUrl,
                     email,
                     token,
-                    "/rest/api/3/issue/" + urlEncodePathSegment(issueKey)
+                    "/rest/api/" + normalizedApiVersion + "/issue/" + urlEncodePathSegment(issueKey)
                             + "/comment?startAt=" + startAt
-                            + "&maxResults=" + pageSize,
+                            + "&maxResults=" + COMMENT_PAGE_SIZE,
                     "Jira issue comments"
             );
             JsonNode values = response.path("comments");
@@ -172,12 +243,8 @@ public class JiraIssueFetchService {
                         comment.path("created").asText(""),
                         extractDocumentText(comment.path("body"))
                 ));
-                if (comments.size() == MAX_COMMENTS_PER_ISSUE) {
-                    break;
-                }
             }
-            int maxResults = Math.max(1, response.path("maxResults").asInt(pageSize));
-            startAt = response.path("startAt").asInt(startAt) + maxResults;
+            startAt = response.path("startAt").asInt(startAt) + values.size();
             int total = response.path("total").asInt(startAt);
             if (startAt >= total) {
                 break;
@@ -319,7 +386,7 @@ public class JiraIssueFetchService {
         }
     }
 
-    private String issueSearchPath(String projectKey, Instant updatedSince, int maxResults, String nextPageToken) {
+    private String issueSearchPathV3(String projectKey, Instant updatedSince, int maxResults, String nextPageToken) {
         String jql = "project = " + jqlProjectLiteral(projectKey);
         if (updatedSince != null) {
             Instant safeUpdatedSince = updatedSince.minus(DELTA_QUERY_TIMEZONE_SAFETY_OVERLAP);
@@ -334,6 +401,19 @@ public class JiraIssueFetchService {
             path += "&nextPageToken=" + urlEncode(nextPageToken);
         }
         return path;
+    }
+
+    private String issueSearchPathV2(String projectKey, Instant updatedSince, int maxResults, int startAt) {
+        String jql = "project = " + jqlProjectLiteral(projectKey);
+        if (updatedSince != null) {
+            Instant safeUpdatedSince = updatedSince.minus(DELTA_QUERY_TIMEZONE_SAFETY_OVERLAP);
+            jql += " AND updated >= \"" + JQL_TIMESTAMP.format(safeUpdatedSince.atOffset(ZoneOffset.UTC)) + "\"";
+        }
+        jql += " ORDER BY updated DESC";
+        return "/rest/api/2/search?jql=" + urlEncode(jql)
+                + "&startAt=" + Math.max(0, startAt)
+                + "&maxResults=" + maxResults
+                + "&fields=" + urlEncode(ISSUE_FIELDS);
     }
 
     private String jqlProjectLiteral(String projectKey) {
@@ -392,6 +472,10 @@ public class JiraIssueFetchService {
 
     private String urlEncodePathSegment(String value) {
         return urlEncode(value).replace("+", "%20");
+    }
+
+    private String normalizeApiVersion(String apiVersion) {
+        return "2".equals(Strings.defaultIfBlank(apiVersion, "").trim()) ? "2" : "3";
     }
 
     private record JiraIssueComment(String author, String created, String text) {

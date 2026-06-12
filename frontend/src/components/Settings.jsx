@@ -398,6 +398,14 @@ function ScanStatus({ status }) {
   if (status === "paused") {
     return <span className="badge badge-neutral">Paused</span>;
   }
+  if (status === "error") {
+    return (
+      <span className="badge badge-danger">
+        <Icon name="alert-triangle" size={12} color="var(--danger-600)" />
+        Error
+      </span>
+    );
+  }
   return (
     <span className="badge badge-success">
       <span className="dot" />
@@ -573,7 +581,7 @@ function KnowledgeSourceList({
                   title={scanActionLabel}
                   aria-label={scanActionLabel}
                   onClick={() => onScanNow(item.id)}
-                  disabled={item.status !== "scanned"}
+                  disabled={item.status === "paused" || item.status === "scanning"}
                 >
                   <Icon name="refresh-cw" size={16} color="var(--gray-500)" />
                 </button>
@@ -618,13 +626,16 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
 
   const jiraProjects = jira?.projects ?? [];
   const jiraScanning = jiraProjects.filter((p) => p.status === "scanning").length;
+  const jiraErrors = jiraProjects.filter((p) => p.status === "error").length;
   const jiraSummary = !jira?.connected
     ? "Not connected"
     : jiraScanning
       ? `${jiraScanning} scanning now`
-      : jiraProjects.length
-        ? "Connected · ready to scan"
-        : "No projects yet";
+      : jiraErrors
+        ? `${jiraErrors} need attention`
+        : jiraProjects.length
+          ? "Connected · ready to scan"
+          : "No projects yet";
 
   return (
     <div className="settings-section wide">
@@ -902,6 +913,7 @@ function JiraConfig({
     instanceUrl: config.instanceUrl ?? "",
     email: config.email ?? "",
     connected: Boolean(config.connected),
+    apiVersion: config.apiVersion ?? "3",
     tokenConfigured: Boolean(config.tokenConfigured),
     tokenLastFour: config.tokenLastFour ?? "",
     tokenExpiresDays: config.tokenExpiresDays ?? null,
@@ -927,6 +939,7 @@ function JiraConfig({
       instanceUrl: config.instanceUrl ?? "",
       email: config.email ?? "",
       connected: Boolean(config.connected),
+      apiVersion: config.apiVersion ?? "3",
       tokenConfigured: Boolean(config.tokenConfigured),
       tokenLastFour: config.tokenLastFour ?? "",
       tokenExpiresDays: config.tokenExpiresDays ?? null,
@@ -946,6 +959,7 @@ function JiraConfig({
   const totalIssues = projects.reduce((total, project) => total + Number(project.issues ?? 0), 0);
   const scanningCount = visibleProjects.filter((project) => project.status === "scanning").length;
   const pausedCount = visibleProjects.filter((project) => project.status === "paused").length;
+  const errorCount = visibleProjects.filter((project) => project.status === "error").length;
   // Days until the saved API token expires; under 14 we nudge the user to renew.
   const expiry = cfg.tokenExpiresDays;
   const expirySoon = typeof expiry === "number" && expiry <= 14;
@@ -1195,7 +1209,9 @@ function JiraConfig({
                 ? `${scanningCount} scanning`
                 : pausedCount
                   ? `${pausedCount} paused`
-                  : "Ready"
+                  : errorCount
+                    ? `${errorCount} error${errorCount === 1 ? "" : "s"}`
+                    : "Ready"
             }
           ]}
         />
@@ -1361,7 +1377,9 @@ function JiraConfig({
           renderStatus={(project) => <JiraProjectStatus status={project.status} />}
           tickerItems={(project) => scanProgressById?.[project.id] ?? []}
           metaScanned={(project) =>
-            `${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues - scanned ${project.checked || "just now"}`
+            project.status === "error"
+              ? `${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues - ${project.message || "Last scan failed"}`
+              : `${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues - scanned ${project.checked || "just now"}`
           }
           metaPaused={(project) =>
             `Paused - ${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues`

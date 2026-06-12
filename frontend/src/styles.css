@@ -426,6 +426,10 @@ select.input {
   background: var(--warning-50);
   color: var(--warning-700);
 }
+.badge-danger {
+  background: var(--danger-50);
+  color: var(--danger-700);
+}
 
 /* ---- Card ---- */
 .ds-card {

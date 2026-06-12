@@ -13,6 +13,7 @@ public class JiraProjectDto {
     private String status = "scanned";
     private long issues;
     private String checked = "";
+    private String message = "";
 
     public String getId() {
         return id;
@@ -60,5 +61,13 @@ public class JiraProjectDto {
 
     public void setChecked(String checked) {
         this.checked = checked == null ? "" : checked;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message == null ? "" : message;
     }
 }

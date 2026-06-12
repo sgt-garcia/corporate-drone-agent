@@ -239,7 +239,12 @@ public class SettingsService {
                 Strings.defaultIfBlank(request.email(), ""),
                 token
         );
-        return new JiraConnectionValidationDto(result.valid(), result.message(), result.liveValidationAvailable());
+        return new JiraConnectionValidationDto(
+                result.valid(),
+                result.message(),
+                result.liveValidationAvailable(),
+                result.apiVersion()
+        );
     }
 
     public synchronized JiraSettings saveJiraConnection(JiraConnectionRequest request) {
@@ -274,6 +279,7 @@ public class SettingsService {
         next.setInstanceUrl(Strings.defaultIfBlank(request.instanceUrl(), ""));
         next.setEmail(Strings.defaultIfBlank(request.email(), ""));
         next.setConnected(true);
+        next.setApiVersion(validation.apiVersion());
         next.setTokenExpiresDays(current.getTokenExpiresDays() == null ? 90 : current.getTokenExpiresDays());
         next.setProjects(current.isConnected() ? current.getProjects() : List.of());
 
@@ -328,7 +334,8 @@ public class SettingsService {
                         jira.getEmail(),
                         savedJiraToken(),
                         query,
-                        JIRA_PROJECT_SEARCH_LIMIT
+                        JIRA_PROJECT_SEARCH_LIMIT,
+                        jira.getApiVersion()
                 ).stream()
                 .filter(project -> jira.getProjects().stream()
                         .noneMatch(configured -> configured.getKey().equalsIgnoreCase(project.getKey())))
@@ -356,7 +363,8 @@ public class SettingsService {
                 jira.getInstanceUrl(),
                 jira.getEmail(),
                 savedJiraToken(),
-                key
+                key,
+                jira.getApiVersion()
         );
         projects.add(project);
         jira.setProjects(projects);
@@ -401,32 +409,47 @@ public class SettingsService {
                 .map(this::copyJiraProject)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found"));
 
-        JiraKnowledgeScanService.ScanResult scanResult;
-        if (jiraKnowledgeScanService == null) {
-            scanResult = new JiraKnowledgeScanService.ScanResult(target.getIssues(), 0);
-        } else {
-            if (scheduled) {
-                scanResult = jiraKnowledgeScanService.scanScheduledProject(
-                        jira,
-                        target,
-                        savedJiraToken(),
-                        KnowledgeScanProgress.emitter(eventService, target.getId())
-                );
+        try {
+            JiraKnowledgeScanService.ScanResult scanResult;
+            if (jiraKnowledgeScanService == null) {
+                scanResult = new JiraKnowledgeScanService.ScanResult(target.getIssues(), 0);
             } else {
-                scanResult = jiraKnowledgeScanService.scanProject(
-                        jira,
-                        target,
-                        savedJiraToken(),
-                        KnowledgeScanProgress.emitter(eventService, target.getId())
-                );
+                if (scheduled) {
+                    scanResult = jiraKnowledgeScanService.scanScheduledProject(
+                            jira,
+                            target,
+                            savedJiraToken(),
+                            KnowledgeScanProgress.emitter(eventService, target.getId())
+                    );
+                } else {
+                    scanResult = jiraKnowledgeScanService.scanProject(
+                            jira,
+                            target,
+                            savedJiraToken(),
+                            KnowledgeScanProgress.emitter(eventService, target.getId())
+                    );
+                }
             }
-        }
 
-        return replaceJiraProject(settings, jira, projectId, project -> {
-            project.setStatus("scanned");
-            project.setIssues(scanResult.issues());
-            project.setChecked("just now");
-        });
+            return replaceJiraProject(settings, jira, projectId, project -> {
+                project.setStatus("scanned");
+                project.setIssues(scanResult.issues());
+                project.setChecked("just now");
+                project.setMessage("");
+            });
+        } catch (ResponseStatusException exception) {
+            replaceJiraProject(settings, jira, projectId, project -> {
+                project.setStatus("error");
+                project.setMessage(statusMessage(exception));
+            });
+            throw exception;
+        } catch (RuntimeException exception) {
+            replaceJiraProject(settings, jira, projectId, project -> {
+                project.setStatus("error");
+                project.setMessage("Could not scan Jira project");
+            });
+            throw exception;
+        }
     }
 
     public synchronized JiraProjectDto pauseJiraProject(String projectId) {
@@ -434,7 +457,10 @@ public class SettingsService {
     }
 
     public synchronized JiraProjectDto resumeJiraProject(String projectId) {
-        return updateJiraProject(projectId, project -> project.setStatus("scanned"));
+        return updateJiraProject(projectId, project -> {
+            project.setStatus("scanned");
+            project.setMessage("");
+        });
     }
 
     private JiraSettings currentJiraSettings() {
@@ -631,6 +657,7 @@ public class SettingsService {
         copy.setStatus(source.getStatus());
         copy.setIssues(source.getIssues());
         copy.setChecked(source.getChecked());
+        copy.setMessage(source.getMessage());
         return copy;
     }
 
@@ -853,6 +880,7 @@ public class SettingsService {
         sanitized.setInstanceUrl(Strings.emptyIfNull(jira.getInstanceUrl()).trim());
         sanitized.setEmail(Strings.emptyIfNull(jira.getEmail()).trim());
         sanitized.setConnected(jira.isConnected());
+        sanitized.setApiVersion(sanitizeJiraApiVersion(jira.getApiVersion()));
         sanitized.setTokenExpiresDays(jira.getTokenExpiresDays());
         if (!jira.isConnected()) {
             return sanitized;
@@ -880,9 +908,10 @@ public class SettingsService {
                     : project.getId());
             sanitizedProject.setKey(key);
             sanitizedProject.setName(project.getName());
-            sanitizedProject.setStatus("paused".equals(project.getStatus()) ? "paused" : "scanned");
+            sanitizedProject.setStatus(sanitizeJiraProjectStatus(project.getStatus()));
             sanitizedProject.setIssues(project.getIssues());
             sanitizedProject.setChecked(project.getChecked());
+            sanitizedProject.setMessage(project.getMessage());
             sanitized.add(sanitizedProject);
             if (sanitized.size() == MAX_JIRA_PROJECTS) {
                 break;
@@ -901,5 +930,22 @@ public class SettingsService {
             case "paused", "scanning" -> normalized;
             default -> "scanned";
         };
+    }
+
+    private String sanitizeJiraProjectStatus(String status) {
+        String normalized = Strings.defaultIfBlank(status, "scanned");
+        return switch (normalized) {
+            case "paused", "error" -> normalized;
+            default -> "scanned";
+        };
+    }
+
+    private String sanitizeJiraApiVersion(String apiVersion) {
+        return "2".equals(Strings.defaultIfBlank(apiVersion, "").trim()) ? "2" : "3";
+    }
+
+    private String statusMessage(ResponseStatusException exception) {
+        String reason = exception.getReason();
+        return reason == null || reason.isBlank() ? "Could not scan Jira project" : reason;
     }
 }

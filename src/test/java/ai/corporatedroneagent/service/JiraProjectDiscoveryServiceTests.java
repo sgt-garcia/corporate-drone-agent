@@ -106,6 +106,35 @@ class JiraProjectDiscoveryServiceTests {
     }
 
     @Test
+    void searchesJiraServerProjectsWithDetectedV2Api() {
+        AtomicReference<String> path = new AtomicReference<>();
+        server.createContext("/rest/api/2/project", exchange -> {
+            path.set(exchange.getRequestURI().getPath());
+            respond(exchange, 200, """
+                    [
+                      {
+                        "id": "10001",
+                        "key": "DEV",
+                        "name": "Software Development"
+                      },
+                      {
+                        "id": "10002",
+                        "key": "OPS",
+                        "name": "Operations"
+                      }
+                    ]
+                    """);
+        });
+
+        var projects = service.searchProjects(baseUrl(), "me@example.com", "token-1234", "ops", 25, "2");
+
+        assertThat(path.get()).isEqualTo("/rest/api/2/project");
+        assertThat(projects)
+                .extracting(JiraProjectDto::getKey)
+                .containsExactly("OPS");
+    }
+
+    @Test
     void getsProjectByKey() {
         server.createContext("/rest/api/3/project/DEV", exchange -> respond(exchange, 200, """
                 {

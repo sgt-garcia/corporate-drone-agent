@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class JiraKnowledgeScanService {
@@ -128,7 +129,8 @@ public class JiraKnowledgeScanService {
                     jira.getEmail(),
                     token,
                     project,
-                    updatedSince
+                    updatedSince,
+                    jira.getApiVersion()
             );
             stats.add(issues);
             processIssues(root.getId(), issues, startedAt, onProgress);
@@ -149,6 +151,17 @@ public class JiraKnowledgeScanService {
                     totals.bytes()
             );
             return new ScanResult(totals.resources(), totals.bytes());
+        } catch (ResponseStatusException exception) {
+            ResourceTotals totals = activeResourceTotals(root.getId());
+            completeScan(root, scan, totals, scanErrorMessage(exception), !deltaScan);
+            log.warn(
+                    "Jira project scan failed for {} after {} issues and {} bytes.",
+                    project.getKey(),
+                    stats.resources(),
+                    stats.bytes(),
+                    exception
+            );
+            throw exception;
         } catch (RuntimeException exception) {
             ResourceTotals totals = activeResourceTotals(root.getId());
             completeScan(root, scan, totals, "Could not scan Jira project", !deltaScan);
@@ -457,5 +470,10 @@ public class JiraKnowledgeScanService {
         public JiraScanException(String message, Throwable cause) {
             super(message, cause);
         }
+    }
+
+    private String scanErrorMessage(ResponseStatusException exception) {
+        String reason = exception.getReason();
+        return reason == null || reason.isBlank() ? "Could not scan Jira project" : reason;
     }
 }

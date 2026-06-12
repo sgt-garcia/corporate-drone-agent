@@ -66,12 +66,14 @@ class JiraKnowledgeScanServiceTests {
                     String email,
                     String token,
                     JiraProjectDto project,
-                    Instant updatedSince
+                    Instant updatedSince,
+                    String apiVersion
             ) {
                 assertThat(instanceUrl).isEqualTo("https://example.atlassian.net");
                 assertThat(email).isEqualTo("me@example.com");
                 assertThat(token).isEqualTo("token-1234");
                 assertThat(project.getKey()).isEqualTo("DEV");
+                assertThat(apiVersion).isEqualTo("3");
                 return issues.get();
             }
         };
@@ -297,7 +299,8 @@ class JiraKnowledgeScanServiceTests {
                     String email,
                     String token,
                     JiraProjectDto project,
-                    Instant since
+                    Instant since,
+                    String apiVersion
             ) {
                 updatedSince.set(since);
                 return issues.get();
@@ -348,7 +351,8 @@ class JiraKnowledgeScanServiceTests {
                     String email,
                     String token,
                     JiraProjectDto project,
-                    Instant since
+                    Instant since,
+                    String apiVersion
             ) {
                 int call = calls.incrementAndGet();
                 if (call == 1) {

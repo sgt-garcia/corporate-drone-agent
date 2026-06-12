@@ -31,14 +31,15 @@ public class JiraConnectionValidationService {
     }
 
     public ValidationResult validate(String instanceUrl, String email, String token) {
-        ValidationResult cloudResult = validateMyself(instanceUrl, email, token, "/rest/api/3/myself");
+        ValidationResult cloudResult = validateMyself(instanceUrl, email, token, "3");
         if (cloudResult.valid() || cloudResult.statusCode() != HttpStatus.NOT_FOUND.value()) {
             return cloudResult;
         }
-        return validateMyself(instanceUrl, email, token, "/rest/api/2/myself");
+        return validateMyself(instanceUrl, email, token, "2");
     }
 
-    private ValidationResult validateMyself(String instanceUrl, String email, String token, String path) {
+    private ValidationResult validateMyself(String instanceUrl, String email, String token, String apiVersion) {
+        String path = "/rest/api/" + apiVersion + "/myself";
         HttpRequest request = HttpRequest.newBuilder(myselfUri(instanceUrl, path))
                 .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/json")
@@ -49,15 +50,15 @@ public class JiraConnectionValidationService {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             int status = response.statusCode();
             if (status >= 200 && status < 300) {
-                return new ValidationResult(true, "Jira credentials validated.", true, status);
+                return new ValidationResult(true, "Jira credentials validated.", true, status, apiVersion);
             }
             if (status == HttpStatus.UNAUTHORIZED.value() || status == HttpStatus.FORBIDDEN.value()) {
-                return new ValidationResult(false, "Jira rejected the email or API token.", true, status);
+                return new ValidationResult(false, "Jira rejected the email or API token.", true, status, apiVersion);
             }
             if (status == HttpStatus.NOT_FOUND.value()) {
-                return new ValidationResult(false, "Jira user endpoint was not found.", true, status);
+                return new ValidationResult(false, "Jira user endpoint was not found.", true, status, apiVersion);
             }
-            return new ValidationResult(false, "Jira validation failed with HTTP " + status + ".", true, status);
+            return new ValidationResult(false, "Jira validation failed with HTTP " + status + ".", true, status, apiVersion);
         } catch (IOException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not reach Jira instance");
         } catch (InterruptedException exception) {
@@ -82,7 +83,8 @@ public class JiraConnectionValidationService {
             boolean valid,
             String message,
             boolean liveValidationAvailable,
-            int statusCode
+            int statusCode,
+            String apiVersion
     ) {
     }
 }

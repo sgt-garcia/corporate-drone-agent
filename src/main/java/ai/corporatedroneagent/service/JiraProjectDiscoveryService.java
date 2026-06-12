@@ -52,12 +52,31 @@ public class JiraProjectDiscoveryService {
             String query,
             int maxResults
     ) {
+        return searchProjects(instanceUrl, email, token, query, maxResults, "3");
+    }
+
+    public List<JiraProjectDto> searchProjects(
+            String instanceUrl,
+            String email,
+            String token,
+            String query,
+            int maxResults,
+            String apiVersion
+    ) {
         String trimmedQuery = Strings.defaultIfBlank(query, "").trim();
-        String path = "/rest/api/3/project/search?maxResults=" + Math.max(1, maxResults);
+        int limit = Math.max(1, maxResults);
+        String normalizedApiVersion = normalizeApiVersion(apiVersion);
+        String path = "/rest/api/" + normalizedApiVersion + "/project/search?maxResults=" + limit;
         if (!trimmedQuery.isBlank()) {
             path += "&query=" + urlEncode(trimmedQuery);
         }
-        JsonNode response = getJson(instanceUrl, email, token, path, "Jira project search");
+        JsonNode response = getJson(
+                instanceUrl,
+                email,
+                token,
+                "2".equals(normalizedApiVersion) ? "/rest/api/2/project" : path,
+                "Jira project search"
+        );
         JsonNode values = response.path("values");
         if (!values.isArray()) {
             values = response.isArray() ? response : objectMapper.createArrayNode();
@@ -66,19 +85,32 @@ public class JiraProjectDiscoveryService {
         for (JsonNode project : values) {
             toProject(project, "").ifPresent(projects::add);
         }
-        return projects;
+        if (!"2".equals(normalizedApiVersion)) {
+            return projects;
+        }
+        return projects.stream()
+                .filter(project -> trimmedQuery.isBlank()
+                        || (project.getKey() + " " + project.getName()).toLowerCase(Locale.ROOT)
+                        .contains(trimmedQuery.toLowerCase(Locale.ROOT)))
+                .limit(limit)
+                .toList();
     }
 
     public JiraProjectDto getProject(String instanceUrl, String email, String token, String key) {
+        return getProject(instanceUrl, email, token, key, "3");
+    }
+
+    public JiraProjectDto getProject(String instanceUrl, String email, String token, String key, String apiVersion) {
         String normalizedKey = Strings.defaultIfBlank(key, "").trim().toUpperCase(Locale.ROOT);
         if (normalizedKey.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira project key is required");
         }
+        String normalizedApiVersion = normalizeApiVersion(apiVersion);
         JsonNode response = getJson(
                 instanceUrl,
                 email,
                 token,
-                "/rest/api/3/project/" + urlEncodePathSegment(normalizedKey),
+                "/rest/api/" + normalizedApiVersion + "/project/" + urlEncodePathSegment(normalizedKey),
                 "Jira project lookup"
         );
         return toProject(response, "just now")
@@ -153,5 +185,9 @@ public class JiraProjectDiscoveryService {
 
     private String urlEncodePathSegment(String value) {
         return urlEncode(value).replace("+", "%20");
+    }
+
+    private String normalizeApiVersion(String apiVersion) {
+        return "2".equals(Strings.defaultIfBlank(apiVersion, "").trim()) ? "2" : "3";
     }
 }

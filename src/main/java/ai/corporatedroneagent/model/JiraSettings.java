@@ -17,6 +17,7 @@ public class JiraSettings {
     private String instanceUrl = "";
     private String email = "";
     private boolean connected;
+    private String apiVersion = "3";
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String token = "";
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
@@ -48,6 +49,14 @@ public class JiraSettings {
 
     public void setConnected(boolean connected) {
         this.connected = connected;
+    }
+
+    public String getApiVersion() {
+        return apiVersion;
+    }
+
+    public void setApiVersion(String apiVersion) {
+        this.apiVersion = apiVersion == null || apiVersion.isBlank() ? "3" : apiVersion;
     }
 
     public String getToken() {

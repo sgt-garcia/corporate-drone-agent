@@ -75,6 +75,7 @@ const emptySettings = {
     instanceUrl: "",
     email: "",
     connected: false,
+    apiVersion: "3",
     tokenConfigured: false,
     tokenLastFour: "",
     tokenExpiresDays: null,
