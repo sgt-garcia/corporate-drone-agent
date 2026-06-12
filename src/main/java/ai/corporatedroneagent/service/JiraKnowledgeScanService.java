@@ -40,6 +40,8 @@ public class JiraKnowledgeScanService {
 
     private static final Logger log = LoggerFactory.getLogger(JiraKnowledgeScanService.class);
     private static final Duration FULL_RECONCILIATION_INTERVAL = Duration.ofHours(24);
+    private static final String CONFIG_LAST_FULL_SCAN_FINISHED_AT = "lastFullScanFinishedAt";
+    private static final String CONFIG_LAST_SUCCESSFUL_SCAN_STARTED_AT = "lastSuccessfulScanStartedAt";
 
     private final KnowledgeRootRepository rootRepository;
     private final KnowledgeRootScanRepository scanRepository;
@@ -162,12 +164,19 @@ public class JiraKnowledgeScanService {
     }
 
     private Instant deltaUpdatedSince(KnowledgeRoot root) {
-        if (root.getId() == null
-                || root.getScanStatus() != WorkStatus.DONE
+        if (root.getId() == null) {
+            return null;
+        }
+        Instant configuredCursor = configInstant(root, CONFIG_LAST_SUCCESSFUL_SCAN_STARTED_AT);
+        if (configuredCursor != null) {
+            return configuredCursor;
+        }
+        if (root.getScanStatus() != WorkStatus.DONE
                 || !Boolean.TRUE.equals(root.getScanSuccess())
                 || (root.getScanStartedAt() == null && root.getScanFinishedAt() == null)) {
             return null;
         }
+        // Backward compatibility for roots scanned before config metadata existed.
         return root.getScanStartedAt() == null ? root.getScanFinishedAt() : root.getScanStartedAt();
     }
 
@@ -175,7 +184,7 @@ public class JiraKnowledgeScanService {
         if (root.getId() == null) {
             return true;
         }
-        Instant lastFullScanFinishedAt = lastFullScanFinishedAt(root);
+        Instant lastFullScanFinishedAt = configInstant(root, CONFIG_LAST_FULL_SCAN_FINISHED_AT);
         return lastFullScanFinishedAt == null
                 || !lastFullScanFinishedAt.plus(FULL_RECONCILIATION_INTERVAL).isAfter(now);
     }
@@ -360,26 +369,26 @@ public class JiraKnowledgeScanService {
         root.setScanSuccess(success);
         root.setScanMessage(errorMessage);
         root.setScanFinishedAt(finishedAt);
-        if (success && fullScan) {
-            root.setConfigJson(configWithLastFullScan(root, finishedAt));
+        if (success) {
+            root.setConfigJson(configWithScanMetadata(root, finishedAt, fullScan));
         }
         rootRepository.save(root);
     }
 
-    private Instant lastFullScanFinishedAt(KnowledgeRoot root) {
+    private Instant configInstant(KnowledgeRoot root, String fieldName) {
         String configJson = Strings.defaultIfBlank(root.getConfigJson(), "").trim();
         if (configJson.isBlank()) {
             return null;
         }
         try {
-            String value = objectMapper.readTree(configJson).path("lastFullScanFinishedAt").asText("");
+            String value = objectMapper.readTree(configJson).path(fieldName).asText("");
             return value.isBlank() ? null : Instant.parse(value);
         } catch (IOException | DateTimeParseException exception) {
             return null;
         }
     }
 
-    private String configWithLastFullScan(KnowledgeRoot root, Instant finishedAt) {
+    private String configWithScanMetadata(KnowledgeRoot root, Instant finishedAt, boolean fullScan) {
         ObjectNode config = objectMapper.createObjectNode();
         String configJson = Strings.defaultIfBlank(root.getConfigJson(), "").trim();
         if (!configJson.isBlank()) {
@@ -391,7 +400,13 @@ public class JiraKnowledgeScanService {
                 config = objectMapper.createObjectNode();
             }
         }
-        config.put("lastFullScanFinishedAt", finishedAt.toString());
+        Instant startedAt = root.getScanStartedAt();
+        if (startedAt != null) {
+            config.put(CONFIG_LAST_SUCCESSFUL_SCAN_STARTED_AT, startedAt.toString());
+        }
+        if (fullScan) {
+            config.put(CONFIG_LAST_FULL_SCAN_FINISHED_AT, finishedAt.toString());
+        }
         return config.toString();
     }
 

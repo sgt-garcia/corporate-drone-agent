@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -263,6 +264,7 @@ class JiraKnowledgeScanServiceTests {
         ).orElseThrow();
         firstScanRoot.setScanSuccess(null);
         firstScanRoot.setScanFinishedAt(null);
+        firstScanRoot.setConfigJson("");
         rootRepository.save(firstScanRoot);
 
         issues.set(List.of(kept));
@@ -325,12 +327,74 @@ class JiraKnowledgeScanServiceTests {
 
         JiraKnowledgeScanService.ScanResult result = service.scanProject(jira, project, "token-1234");
 
-        assertThat(updatedSince.get()).isEqualTo(firstScanStartedAt);
+        assertThat(updatedSince.get().toEpochMilli()).isEqualTo(firstScanStartedAt.toEpochMilli());
         assertThat(result.issues()).isEqualTo(2);
         assertThat(resourceRepository.findByRootIdAndReference(root.getId(), staleButUnchanged.reference()))
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
         assertThat(indexingService.searchTerm("staletoken", 10)).hasSize(1);
         assertThat(indexingService.searchTerm("changedtoken2", 10)).hasSize(1);
+    }
+
+    @Test
+    void manualDeltaScanKeepsUsingLastSuccessfulCursorAfterFailedScan() {
+        JiraSettings jira = jira();
+        JiraProjectDto project = project();
+        AtomicInteger calls = new AtomicInteger();
+        AtomicReference<Instant> thirdScanUpdatedSince = new AtomicReference<>();
+        JiraIssueFetchService issueFetchService = new JiraIssueFetchService(new ObjectMapper()) {
+            @Override
+            public List<JiraIssueDocument> fetchProjectIssues(
+                    String instanceUrl,
+                    String email,
+                    String token,
+                    JiraProjectDto project,
+                    Instant since
+            ) {
+                int call = calls.incrementAndGet();
+                if (call == 1) {
+                    return List.of(
+                            issue("10100", "DEV-7", "staletoken"),
+                            issue("10101", "DEV-8", "changedtoken")
+                    );
+                }
+                if (call == 2) {
+                    throw new RuntimeException("temporary jira outage");
+                }
+                thirdScanUpdatedSince.set(since);
+                return List.of(issue("10101", "DEV-8", "changedtoken3"));
+            }
+        };
+        JiraKnowledgeScanService service = new JiraKnowledgeScanService(
+                rootRepository,
+                scanRepository,
+                resourceRepository,
+                pipelineRepository,
+                new KnowledgeChunkingService(pipelineRepository),
+                indexingService,
+                issueFetchService,
+                new ObjectMapper()
+        );
+
+        service.scanProject(jira, project, "token-1234");
+        KnowledgeRoot root = rootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+        ).orElseThrow();
+        Instant firstSuccessfulScanStartedAt = root.getScanStartedAt();
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                JiraKnowledgeScanService.JiraScanException.class,
+                () -> service.scanProject(jira, project, "token-1234")
+        );
+        assertThat(rootRepository.findById(root.getId()))
+                .hasValueSatisfying(failedRoot -> assertThat(failedRoot.getScanSuccess()).isFalse());
+
+        JiraKnowledgeScanService.ScanResult result = service.scanProject(jira, project, "token-1234");
+
+        assertThat(thirdScanUpdatedSince.get().toEpochMilli()).isEqualTo(firstSuccessfulScanStartedAt.toEpochMilli());
+        assertThat(result.issues()).isEqualTo(2);
+        assertThat(indexingService.searchTerm("staletoken", 10)).hasSize(1);
+        assertThat(indexingService.searchTerm("changedtoken3", 10)).hasSize(1);
     }
 
     @Test
