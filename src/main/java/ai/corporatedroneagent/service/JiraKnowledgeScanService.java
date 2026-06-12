@@ -19,12 +19,8 @@ import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,8 +36,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class JiraKnowledgeScanService {
 
     private static final Logger log = LoggerFactory.getLogger(JiraKnowledgeScanService.class);
-    private static final Duration FULL_RECONCILIATION_INTERVAL = Duration.ofHours(24);
-    private static final String CONFIG_LAST_FULL_SCAN_FINISHED_AT = "lastFullScanFinishedAt";
     private static final String CONFIG_LAST_SUCCESSFUL_SCAN_STARTED_AT = "lastSuccessfulScanStartedAt";
 
     private final KnowledgeRootRepository rootRepository;
@@ -99,8 +93,7 @@ public class JiraKnowledgeScanService {
             String token,
             Consumer<String> onProgress
     ) {
-        KnowledgeRoot root = knowledgeRoot(jira, project);
-        return scanProject(jira, project, token, onProgress, fullReconciliationDue(root, Instant.now()));
+        return scanProject(jira, project, token, onProgress, false);
     }
 
     private ScanResult scanProject(
@@ -112,19 +105,19 @@ public class JiraKnowledgeScanService {
     ) {
         Instant startedAt = Instant.now();
         KnowledgeRoot root = knowledgeRoot(jira, project);
-        Instant updatedSince = forceFull ? null : deltaUpdatedSince(root);
-        boolean deltaScan = updatedSince != null;
+        Instant updatedSince = forceFull ? null : updatedSince(root);
+        boolean incrementalScan = updatedSince != null;
         root = startRootScan(root, startedAt);
         KnowledgeRootScan scan = startScan(root.getId(), startedAt);
         ScanStats stats = new ScanStats();
-        if (deltaScan) {
-            log.info("Started delta Jira project scan for {} since {}.", project.getKey(), updatedSince);
+        if (incrementalScan) {
+            log.info("Started incremental Jira project scan for {} since {}.", project.getKey(), updatedSince);
         } else {
-            log.info("Started full Jira project scan for {}.", project.getKey());
+            log.info("Started initial Jira project scan for {}.", project.getKey());
         }
 
         try {
-            List<JiraIssueFetchService.JiraIssueDocument> issues = issueFetchService.fetchProjectIssues(
+            List<JiraIssueFetchService.JiraIssueManifest> issues = issueFetchService.fetchProjectIssueManifests(
                     jira.getInstanceUrl(),
                     jira.getEmail(),
                     token,
@@ -133,18 +126,12 @@ public class JiraKnowledgeScanService {
                     jira.getApiVersion()
             );
             stats.add(issues);
-            processIssues(root.getId(), issues, startedAt, onProgress);
-            if (!deltaScan) {
-                removeDeletedResourceIndexes(
-                        issues.stream().map(JiraIssueFetchService.JiraIssueDocument::reference).toList(),
-                        resourceRepository.findByRootId(root.getId())
-                );
-            }
+            processIssues(jira, token, root.getId(), issues, startedAt, onProgress);
             ResourceTotals totals = activeResourceTotals(root.getId());
-            completeScan(root, scan, totals, null, !deltaScan);
+            completeScan(root, scan, totals, null);
             log.info(
-                    "Completed {} Jira project scan for {} with {} fetched issues, {} indexed issues, and {} bytes.",
-                    deltaScan ? "delta" : "full",
+                    "Completed {} Jira project scan for {} with {} fetched issue manifests, {} indexed issues, and {} bytes.",
+                    incrementalScan ? "incremental" : "initial",
                     project.getKey(),
                     stats.resources(),
                     totals.resources(),
@@ -153,7 +140,7 @@ public class JiraKnowledgeScanService {
             return new ScanResult(totals.resources(), totals.bytes());
         } catch (ResponseStatusException exception) {
             ResourceTotals totals = activeResourceTotals(root.getId());
-            completeScan(root, scan, totals, scanErrorMessage(exception), !deltaScan);
+            completeScan(root, scan, totals, scanErrorMessage(exception));
             log.warn(
                     "Jira project scan failed for {} after {} issues and {} bytes.",
                     project.getKey(),
@@ -164,7 +151,7 @@ public class JiraKnowledgeScanService {
             throw exception;
         } catch (RuntimeException exception) {
             ResourceTotals totals = activeResourceTotals(root.getId());
-            completeScan(root, scan, totals, "Could not scan Jira project", !deltaScan);
+            completeScan(root, scan, totals, "Could not scan Jira project");
             log.warn(
                     "Jira project scan failed for {} after {} issues and {} bytes.",
                     project.getKey(),
@@ -176,7 +163,7 @@ public class JiraKnowledgeScanService {
         }
     }
 
-    private Instant deltaUpdatedSince(KnowledgeRoot root) {
+    private Instant updatedSince(KnowledgeRoot root) {
         if (root.getId() == null) {
             return null;
         }
@@ -193,18 +180,11 @@ public class JiraKnowledgeScanService {
         return root.getScanStartedAt() == null ? root.getScanFinishedAt() : root.getScanStartedAt();
     }
 
-    private boolean fullReconciliationDue(KnowledgeRoot root, Instant now) {
-        if (root.getId() == null) {
-            return true;
-        }
-        Instant lastFullScanFinishedAt = configInstant(root, CONFIG_LAST_FULL_SCAN_FINISHED_AT);
-        return lastFullScanFinishedAt == null
-                || !lastFullScanFinishedAt.plus(FULL_RECONCILIATION_INTERVAL).isAfter(now);
-    }
-
     private void processIssues(
+            JiraSettings jira,
+            String token,
             UUID rootId,
-            List<JiraIssueFetchService.JiraIssueDocument> issues,
+            List<JiraIssueFetchService.JiraIssueManifest> issues,
             Instant scannedAt,
             Consumer<String> onProgress
     ) {
@@ -215,14 +195,24 @@ public class JiraKnowledgeScanService {
                         (first, second) -> first
                 ));
         Set<UUID> reusablePipelineResourceIds = pipelineRepository.findReusablePipelineResourceIdsByRootId(rootId);
-        for (JiraIssueFetchService.JiraIssueDocument issue : issues) {
+        for (JiraIssueFetchService.JiraIssueManifest issue : issues) {
             onProgress.accept(issue.key());
-            saveResource(issue, rootId, existingResources.get(issue.reference()), reusablePipelineResourceIds, scannedAt);
+            saveResource(
+                    jira,
+                    token,
+                    issue,
+                    rootId,
+                    existingResources.get(issue.reference()),
+                    reusablePipelineResourceIds,
+                    scannedAt
+            );
         }
     }
 
     private void saveResource(
-            JiraIssueFetchService.JiraIssueDocument issue,
+            JiraSettings jira,
+            String token,
+            JiraIssueFetchService.JiraIssueManifest issue,
             UUID rootId,
             KnowledgeResource existingResource,
             Set<UUID> reusablePipelineResourceIds,
@@ -233,23 +223,34 @@ public class JiraKnowledgeScanService {
             return;
         }
 
+        JiraIssueFetchService.JiraIssueDocument document = issueFetchService.fetchIssueDocument(
+                jira.getInstanceUrl(),
+                jira.getEmail(),
+                token,
+                jira.getApiVersion(),
+                issue
+        );
         KnowledgeResource resource = new KnowledgeResource();
         resource.setRootId(rootId);
         if (existingResource != null) {
             resource.setId(existingResource.getId());
         }
-        resource.setReference(issue.reference());
-        resource.setDisplayName(issue.displayName());
-        resource.setFormat(issue.format());
-        resource.setSizeBytes(issue.sizeBytes());
-        resource.setLastModifiedAt(issue.lastModifiedAt());
+        resource.setReference(document.reference());
+        resource.setDisplayName(document.displayName());
+        resource.setFormat(document.format());
+        resource.setSizeBytes(document.sizeBytes());
+        resource.setLastModifiedAt(document.lastModifiedAt());
         resource.setDeleted(false);
         resource.setScannedAt(scannedAt);
         KnowledgeResource savedResource = resourceRepository.save(resource);
         indexingService.deleteResource(savedResource);
 
-        KnowledgeResourceRead read = successfulRead(savedResource.getId(), issue.text(), scannedAt);
-        KnowledgeResourceConversion conversion = successfulConversion(savedResource.getId(), issue.text(), scannedAt);
+        KnowledgeResourceRead read = successfulRead(savedResource.getId(), document.readValue(), scannedAt);
+        KnowledgeResourceConversion conversion = successfulConversion(
+                savedResource.getId(),
+                issueFetchService.toMarkdown(document.readValue()),
+                scannedAt
+        );
         pipelineRepository.saveRead(read);
         KnowledgeResourceConversion savedConversion = pipelineRepository.saveConversion(conversion);
         List<KnowledgeResourceChunk> chunks = chunkingService.chunk(savedResource, savedConversion);
@@ -258,11 +259,10 @@ public class JiraKnowledgeScanService {
 
     private boolean canReusePipeline(
             KnowledgeResource resource,
-            JiraIssueFetchService.JiraIssueDocument issue,
+            JiraIssueFetchService.JiraIssueManifest issue,
             Set<UUID> reusablePipelineResourceIds
     ) {
         return !resource.isDeleted()
-                && resource.getSizeBytes() == issue.sizeBytes()
                 && sameTimestamp(resource.getLastModifiedAt(), issue.lastModifiedAt())
                 && reusablePipelineResourceIds.contains(resource.getId());
     }
@@ -274,14 +274,14 @@ public class JiraKnowledgeScanService {
         return first.toEpochMilli() == second.toEpochMilli();
     }
 
-    private KnowledgeResourceRead successfulRead(UUID resourceId, String text, Instant scannedAt) {
+    private KnowledgeResourceRead successfulRead(UUID resourceId, byte[] value, Instant scannedAt) {
         KnowledgeResourceRead read = new KnowledgeResourceRead();
         read.setResourceId(resourceId);
         read.setStatus(WorkStatus.DONE);
         read.setSuccess(true);
         read.setReason(null);
         read.setMessage("");
-        read.setValue(text.getBytes(StandardCharsets.UTF_8));
+        read.setValue(value);
         read.setReadAt(scannedAt);
         return read;
     }
@@ -296,25 +296,6 @@ public class JiraKnowledgeScanService {
         conversion.setValue(text);
         conversion.setConvertedAt(scannedAt);
         return conversion;
-    }
-
-    private void removeDeletedResourceIndexes(
-            List<String> currentReferences,
-            Collection<KnowledgeResource> existingResources
-    ) {
-        Set<String> activeReferences = new HashSet<>(currentReferences);
-        List<KnowledgeResource> staleResources = existingResources.stream()
-                .filter(resource -> !resource.isDeleted())
-                .filter(resource -> !activeReferences.contains(resource.getReference()))
-                .toList();
-        staleResources.forEach(resource -> {
-            log.debug("Removing stale Jira knowledge resource {}.", resource.getReference());
-            indexingService.deleteResource(resource);
-            chunkingService.deleteChunks(resource);
-        });
-        resourceRepository.markDeletedResourcesByIds(staleResources.stream()
-                .map(KnowledgeResource::getId)
-                .toList());
     }
 
     private KnowledgeRoot knowledgeRoot(JiraSettings jira, JiraProjectDto project) {
@@ -362,8 +343,7 @@ public class JiraKnowledgeScanService {
             KnowledgeRoot root,
             KnowledgeRootScan scan,
             ResourceTotals totals,
-            String errorMessage,
-            boolean fullScan
+            String errorMessage
     ) {
         Instant finishedAt = Instant.now();
         boolean success = errorMessage == null || errorMessage.isBlank();
@@ -383,7 +363,7 @@ public class JiraKnowledgeScanService {
         root.setScanMessage(errorMessage);
         root.setScanFinishedAt(finishedAt);
         if (success) {
-            root.setConfigJson(configWithScanMetadata(root, finishedAt, fullScan));
+            root.setConfigJson(configWithScanMetadata(root));
         }
         rootRepository.save(root);
     }
@@ -401,7 +381,7 @@ public class JiraKnowledgeScanService {
         }
     }
 
-    private String configWithScanMetadata(KnowledgeRoot root, Instant finishedAt, boolean fullScan) {
+    private String configWithScanMetadata(KnowledgeRoot root) {
         ObjectNode config = objectMapper.createObjectNode();
         String configJson = Strings.defaultIfBlank(root.getConfigJson(), "").trim();
         if (!configJson.isBlank()) {
@@ -416,9 +396,6 @@ public class JiraKnowledgeScanService {
         Instant startedAt = root.getScanStartedAt();
         if (startedAt != null) {
             config.put(CONFIG_LAST_SUCCESSFUL_SCAN_STARTED_AT, startedAt.toString());
-        }
-        if (fullScan) {
-            config.put(CONFIG_LAST_FULL_SCAN_FINISHED_AT, finishedAt.toString());
         }
         return config.toString();
     }
@@ -445,9 +422,9 @@ public class JiraKnowledgeScanService {
         private long resources;
         private long bytes;
 
-        private void add(List<JiraIssueFetchService.JiraIssueDocument> issues) {
+        private void add(List<JiraIssueFetchService.JiraIssueManifest> issues) {
             resources += issues.size();
-            bytes += issues.stream().mapToLong(JiraIssueFetchService.JiraIssueDocument::sizeBytes).sum();
+            bytes += issues.stream().mapToLong(JiraIssueFetchService.JiraIssueManifest::sizeBytes).sum();
         }
 
         private long resources() {

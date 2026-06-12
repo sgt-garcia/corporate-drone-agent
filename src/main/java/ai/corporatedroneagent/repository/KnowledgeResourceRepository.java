@@ -4,6 +4,7 @@ import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.insta
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.timestamp;
 
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
+import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -57,6 +58,37 @@ public class KnowledgeResourceRepository {
                 WHERE root_id = ?
                 ORDER BY display_name, resource_reference
                 """, this::mapResource, rootId);
+    }
+
+    public List<KnowledgeResource> findActiveBySourceAndDisplayNamePrefix(
+            KnowledgeSource source,
+            String displayNamePrefix,
+            int limit
+    ) {
+        if (source == null || displayNamePrefix == null || displayNamePrefix.isBlank() || limit <= 0) {
+            return List.of();
+        }
+        String normalizedPrefix = displayNamePrefix.trim().toUpperCase(java.util.Locale.ROOT);
+        return jdbcTemplate.query("""
+                SELECT resource.*
+                FROM knowledge_resources resource
+                JOIN knowledge_roots root
+                  ON root.id = resource.root_id
+                WHERE root.source_type = ?
+                  AND resource.deleted = FALSE
+                  AND (
+                    UPPER(resource.display_name) = ?
+                    OR UPPER(resource.display_name) LIKE ? ESCAPE '\\'
+                  )
+                ORDER BY resource.display_name, resource.resource_reference
+                LIMIT ?
+                """,
+                this::mapResource,
+                source.name(),
+                normalizedPrefix,
+                escapeLike(normalizedPrefix) + " - %",
+                limit
+        );
     }
 
     public KnowledgeResource save(KnowledgeResource resource) {
@@ -160,5 +192,12 @@ public class KnowledgeResourceRepository {
         resource.setCreatedAt(instant(resultSet, "created_at"));
         resource.setUpdatedAt(instant(resultSet, "updated_at"));
         return resource;
+    }
+
+    private String escapeLike(String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 }

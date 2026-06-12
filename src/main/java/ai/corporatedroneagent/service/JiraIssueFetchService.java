@@ -5,6 +5,8 @@ import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
 import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -37,7 +39,16 @@ public class JiraIssueFetchService {
     private static final Duration DELTA_QUERY_TIMEZONE_SAFETY_OVERLAP = Duration.ofHours(24);
     private static final DateTimeFormatter JIRA_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
     private static final DateTimeFormatter JQL_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm");
-    private static final String ISSUE_FIELDS = String.join(
+
+    private static final String MANIFEST_FIELDS = String.join(
+            ",",
+            "summary",
+            "status",
+            "issuetype",
+            "updated"
+    );
+
+    private static final String READ_FIELDS = String.join(
             ",",
             "summary",
             "description",
@@ -46,11 +57,18 @@ public class JiraIssueFetchService {
             "priority",
             "assignee",
             "reporter",
+            "creator",
             "labels",
             "components",
             "fixVersions",
+            "versions",
+            "project",
+            "parent",
+            "resolution",
             "created",
-            "updated"
+            "updated",
+            "resolutiondate",
+            "duedate"
     );
 
     private final HttpClient httpClient;
@@ -72,26 +90,26 @@ public class JiraIssueFetchService {
         this.objectMapper = objectMapper;
     }
 
-    public List<JiraIssueDocument> fetchProjectIssues(
+    public List<JiraIssueManifest> fetchProjectIssueManifests(
             String instanceUrl,
             String email,
             String token,
             JiraProjectDto project
     ) {
-        return fetchProjectIssues(instanceUrl, email, token, project, null);
+        return fetchProjectIssueManifests(instanceUrl, email, token, project, null);
     }
 
-    public List<JiraIssueDocument> fetchProjectIssues(
+    public List<JiraIssueManifest> fetchProjectIssueManifests(
             String instanceUrl,
             String email,
             String token,
             JiraProjectDto project,
             Instant updatedSince
     ) {
-        return fetchProjectIssues(instanceUrl, email, token, project, updatedSince, "3");
+        return fetchProjectIssueManifests(instanceUrl, email, token, project, updatedSince, "3");
     }
 
-    public List<JiraIssueDocument> fetchProjectIssues(
+    public List<JiraIssueManifest> fetchProjectIssueManifests(
             String instanceUrl,
             String email,
             String token,
@@ -104,23 +122,79 @@ public class JiraIssueFetchService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira project key is required");
         }
 
-        List<JiraIssueDocument> documents = new ArrayList<>();
+        List<JiraIssueManifest> manifests = new ArrayList<>();
         String normalizedApiVersion = normalizeApiVersion(apiVersion);
         if ("2".equals(normalizedApiVersion)) {
-            fetchProjectIssuesV2(instanceUrl, email, token, projectKey, updatedSince, documents);
+            fetchProjectIssueManifestsV2(instanceUrl, email, token, projectKey, updatedSince, manifests);
         } else {
-            fetchProjectIssuesV3(instanceUrl, email, token, projectKey, updatedSince, documents);
+            fetchProjectIssueManifestsV3(instanceUrl, email, token, projectKey, updatedSince, manifests);
         }
-        return documents;
+        return manifests;
     }
 
-    private void fetchProjectIssuesV3(
+    public JiraIssueDocument fetchIssueDocument(
+            String instanceUrl,
+            String email,
+            String token,
+            String apiVersion,
+            JiraIssueManifest manifest
+    ) {
+        String normalizedApiVersion = normalizeApiVersion(apiVersion);
+        JsonNode issue = getJson(
+                instanceUrl,
+                email,
+                token,
+                issuePath(normalizedApiVersion, manifest.key()),
+                "Jira issue"
+        );
+        ArrayNode comments = objectMapper.createArrayNode();
+        fetchComments(instanceUrl, email, token, normalizedApiVersion, manifest.key()).forEach(comments::add);
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("source", "jira");
+        payload.put("apiVersion", normalizedApiVersion);
+        payload.put("fetchedAt", Instant.now().toString());
+        payload.set("issue", issue);
+        payload.set("comments", comments);
+
+        try {
+            byte[] value = objectMapper.writeValueAsBytes(payload);
+            JsonNode fields = issue.path("fields");
+            String id = Strings.defaultIfBlank(issue.path("id").asText(""), manifest.id()).trim();
+            String key = Strings.defaultIfBlank(issue.path("key").asText(""), manifest.key()).trim();
+            return new JiraIssueDocument(
+                    id,
+                    key,
+                    JiraKnowledgeReferences.issueResourceReference(instanceUrl, id),
+                    displayName(key, fields.path("summary").asText("")),
+                    "jira-issue",
+                    value.length,
+                    parseJiraTimestamp(fields.path("updated").asText("")).orElse(manifest.lastModifiedAt()),
+                    value
+            );
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not serialize Jira issue");
+        }
+    }
+
+    public String toMarkdown(byte[] readValue) {
+        try {
+            JsonNode payload = objectMapper.readTree(readValue == null ? new byte[0] : readValue);
+            JsonNode issue = payload.path("issue");
+            String key = Strings.defaultIfBlank(issue.path("key").asText(""), "").trim();
+            return issueText(key, issue.path("fields"), payload.path("comments"));
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not parse Jira issue payload");
+        }
+    }
+
+    private void fetchProjectIssueManifestsV3(
             String instanceUrl,
             String email,
             String token,
             String projectKey,
             Instant updatedSince,
-            List<JiraIssueDocument> documents
+            List<JiraIssueManifest> manifests
     ) {
         String nextPageToken = "";
         while (true) {
@@ -136,7 +210,7 @@ public class JiraIssueFetchService {
                 break;
             }
             for (JsonNode issue : issues) {
-                documents.add(toIssueDocument(instanceUrl, email, token, "3", issue));
+                manifests.add(toIssueManifest(instanceUrl, issue));
             }
             if (response.path("isLast").asBoolean(false)) {
                 break;
@@ -148,13 +222,13 @@ public class JiraIssueFetchService {
         }
     }
 
-    private void fetchProjectIssuesV2(
+    private void fetchProjectIssueManifestsV2(
             String instanceUrl,
             String email,
             String token,
             String projectKey,
             Instant updatedSince,
-            List<JiraIssueDocument> documents
+            List<JiraIssueManifest> manifests
     ) {
         int startAt = 0;
         while (true) {
@@ -170,7 +244,7 @@ public class JiraIssueFetchService {
                 break;
             }
             for (JsonNode issue : issues) {
-                documents.add(toIssueDocument(instanceUrl, email, token, "2", issue));
+                manifests.add(toIssueManifest(instanceUrl, issue));
             }
             int responseStartAt = response.path("startAt").asInt(startAt);
             startAt = responseStartAt + issues.size();
@@ -181,13 +255,7 @@ public class JiraIssueFetchService {
         }
     }
 
-    private JiraIssueDocument toIssueDocument(
-            String instanceUrl,
-            String email,
-            String token,
-            String apiVersion,
-            JsonNode issue
-    ) {
+    private JiraIssueManifest toIssueManifest(String instanceUrl, JsonNode issue) {
         String id = Strings.defaultIfBlank(issue.path("id").asText(""), "").trim();
         String key = Strings.defaultIfBlank(issue.path("key").asText(""), "").trim();
         if (id.isBlank()) {
@@ -198,29 +266,26 @@ public class JiraIssueFetchService {
         }
 
         JsonNode fields = issue.path("fields");
-        List<JiraIssueComment> comments = fetchComments(instanceUrl, email, token, apiVersion, key);
-        String text = issueText(key, fields, comments);
-        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-        return new JiraIssueDocument(
+        String summary = fields.path("summary").asText("");
+        return new JiraIssueManifest(
                 id,
                 key,
                 JiraKnowledgeReferences.issueResourceReference(instanceUrl, id),
-                displayName(key, fields.path("summary").asText("")),
+                displayName(key, summary),
                 "jira-issue",
-                bytes.length,
-                parseJiraTimestamp(fields.path("updated").asText("")).orElse(null),
-                text
+                manifestSizeBytes(key, summary),
+                parseJiraTimestamp(fields.path("updated").asText("")).orElse(null)
         );
     }
 
-    private List<JiraIssueComment> fetchComments(
+    private List<JsonNode> fetchComments(
             String instanceUrl,
             String email,
             String token,
             String apiVersion,
             String issueKey
     ) {
-        List<JiraIssueComment> comments = new ArrayList<>();
+        List<JsonNode> comments = new ArrayList<>();
         int startAt = 0;
         String normalizedApiVersion = normalizeApiVersion(apiVersion);
         while (true) {
@@ -237,13 +302,7 @@ public class JiraIssueFetchService {
             if (!values.isArray() || values.isEmpty()) {
                 break;
             }
-            for (JsonNode comment : values) {
-                comments.add(new JiraIssueComment(
-                        displayName(comment.path("author")),
-                        comment.path("created").asText(""),
-                        extractDocumentText(comment.path("body"))
-                ));
-            }
+            values.forEach(comments::add);
             startAt = response.path("startAt").asInt(startAt) + values.size();
             int total = response.path("total").asInt(startAt);
             if (startAt >= total) {
@@ -253,41 +312,68 @@ public class JiraIssueFetchService {
         return comments;
     }
 
-    private String issueText(String key, JsonNode fields, List<JiraIssueComment> comments) {
+    private String issueText(String key, JsonNode fields, JsonNode comments) {
         StringBuilder text = new StringBuilder();
-        appendLine(text, "Jira issue: " + key);
+        appendLine(text, "# " + displayName(key, fields.path("summary").asText("")));
+        appendField(text, "Issue key", key);
         appendField(text, "Summary", fields.path("summary").asText(""));
+        appendField(text, "Project", projectName(fields.path("project")));
+        appendField(text, "Parent", parentName(fields.path("parent")));
         appendField(text, "Type", fields.path("issuetype").path("name").asText(""));
         appendField(text, "Status", fields.path("status").path("name").asText(""));
+        appendField(text, "Status category", fields.path("status").path("statusCategory").path("name").asText(""));
         appendField(text, "Priority", fields.path("priority").path("name").asText(""));
+        appendField(text, "Resolution", fields.path("resolution").path("name").asText(""));
         appendField(text, "Assignee", displayName(fields.path("assignee")));
         appendField(text, "Reporter", displayName(fields.path("reporter")));
+        appendField(text, "Creator", displayName(fields.path("creator")));
         appendField(text, "Labels", names(fields.path("labels"), ""));
         appendField(text, "Components", names(fields.path("components"), "name"));
         appendField(text, "Fix versions", names(fields.path("fixVersions"), "name"));
+        appendField(text, "Affected versions", names(fields.path("versions"), "name"));
         appendField(text, "Created", fields.path("created").asText(""));
         appendField(text, "Updated", fields.path("updated").asText(""));
+        appendField(text, "Resolved", fields.path("resolutiondate").asText(""));
+        appendField(text, "Due", fields.path("duedate").asText(""));
 
         String description = extractDocumentText(fields.path("description"));
         if (!description.isBlank()) {
             appendLine(text, "");
-            appendLine(text, "Description:");
+            appendLine(text, "## Description");
+            appendLine(text, "");
             appendLine(text, description);
         }
 
-        if (!comments.isEmpty()) {
+        if (comments.isArray() && !comments.isEmpty()) {
             appendLine(text, "");
-            appendLine(text, "Comments:");
-            for (JiraIssueComment comment : comments) {
-                String heading = "- " + Strings.defaultIfBlank(comment.author(), "Unknown author");
-                if (!comment.created().isBlank()) {
-                    heading += " at " + comment.created();
+            appendLine(text, "## Comments");
+            for (JsonNode comment : comments) {
+                appendLine(text, "");
+                String heading = "### " + Strings.defaultIfBlank(displayName(comment.path("author")), "Unknown author");
+                String created = Strings.defaultIfBlank(comment.path("created").asText(""), "").trim();
+                if (!created.isBlank()) {
+                    heading += " at " + created;
                 }
-                appendLine(text, heading + ":");
-                appendLine(text, comment.text());
+                appendLine(text, heading);
+                appendField(text, "Updated", comment.path("updated").asText(""));
+                appendField(text, "Updated by", displayName(comment.path("updateAuthor")));
+                appendField(text, "Visibility", visibility(comment.path("visibility")));
+                String body = extractDocumentText(comment.path("body"));
+                if (!body.isBlank()) {
+                    appendLine(text, body);
+                }
             }
         }
         return text.toString().strip();
+    }
+
+    private String issuePath(String apiVersion, String issueKey) {
+        return "/rest/api/" + apiVersion + "/issue/" + urlEncodePathSegment(issueKey)
+                + "?fields=" + urlEncode(READ_FIELDS);
+    }
+
+    private long manifestSizeBytes(String key, String summary) {
+        return (key + "\n" + Strings.defaultIfBlank(summary, "")).getBytes(StandardCharsets.UTF_8).length;
     }
 
     private void appendField(StringBuilder builder, String label, String value) {
@@ -315,6 +401,39 @@ public class JiraIssueFetchService {
             return displayName;
         }
         return Strings.defaultIfBlank(user.path("emailAddress").asText(""), "").trim();
+    }
+
+    private String projectName(JsonNode project) {
+        if (project == null || project.isMissingNode() || project.isNull()) {
+            return "";
+        }
+        String key = Strings.defaultIfBlank(project.path("key").asText(""), "").trim();
+        String name = Strings.defaultIfBlank(project.path("name").asText(""), "").trim();
+        if (key.isBlank()) {
+            return name;
+        }
+        return name.isBlank() ? key : key + " - " + name;
+    }
+
+    private String parentName(JsonNode parent) {
+        if (parent == null || parent.isMissingNode() || parent.isNull()) {
+            return "";
+        }
+        String key = Strings.defaultIfBlank(parent.path("key").asText(""), "").trim();
+        String summary = parent.path("fields").path("summary").asText("");
+        return displayName(key, summary);
+    }
+
+    private String visibility(JsonNode visibility) {
+        if (visibility == null || visibility.isMissingNode() || visibility.isNull()) {
+            return "";
+        }
+        String type = Strings.defaultIfBlank(visibility.path("type").asText(""), "").trim();
+        String value = Strings.defaultIfBlank(visibility.path("value").asText(""), "").trim();
+        if (type.isBlank()) {
+            return value;
+        }
+        return value.isBlank() ? type : type + ": " + value;
     }
 
     private String names(JsonNode values, String fieldName) {
@@ -395,7 +514,7 @@ public class JiraIssueFetchService {
         jql += " ORDER BY updated DESC";
         String path = "/rest/api/3/search/jql?jql=" + urlEncode(jql)
                 + "&maxResults=" + maxResults
-                + "&fields=" + urlEncode(ISSUE_FIELDS)
+                + "&fields=" + urlEncode(MANIFEST_FIELDS)
                 + "&failFast=false";
         if (!Strings.defaultIfBlank(nextPageToken, "").isBlank()) {
             path += "&nextPageToken=" + urlEncode(nextPageToken);
@@ -413,7 +532,7 @@ public class JiraIssueFetchService {
         return "/rest/api/2/search?jql=" + urlEncode(jql)
                 + "&startAt=" + Math.max(0, startAt)
                 + "&maxResults=" + maxResults
-                + "&fields=" + urlEncode(ISSUE_FIELDS);
+                + "&fields=" + urlEncode(MANIFEST_FIELDS);
     }
 
     private String jqlProjectLiteral(String projectKey) {
@@ -478,7 +597,15 @@ public class JiraIssueFetchService {
         return "2".equals(Strings.defaultIfBlank(apiVersion, "").trim()) ? "2" : "3";
     }
 
-    private record JiraIssueComment(String author, String created, String text) {
+    public record JiraIssueManifest(
+            String id,
+            String key,
+            String reference,
+            String displayName,
+            String format,
+            long sizeBytes,
+            Instant lastModifiedAt
+    ) {
     }
 
     public record JiraIssueDocument(
@@ -489,7 +616,7 @@ public class JiraIssueFetchService {
             String format,
             long sizeBytes,
             Instant lastModifiedAt,
-            String text
+            byte[] readValue
     ) {
     }
 }
