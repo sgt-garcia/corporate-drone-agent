@@ -312,7 +312,7 @@ public class SettingsService {
 
         for (String projectId : projectIds) {
             try {
-                scanJiraProject(projectId);
+                scanJiraProject(projectId, true);
             } catch (RuntimeException exception) {
                 log.warn("Scheduled Jira scan failed for project {}.", projectId, exception);
             }
@@ -384,6 +384,10 @@ public class SettingsService {
     }
 
     public synchronized JiraProjectDto scanJiraProject(String projectId) {
+        return scanJiraProject(projectId, false);
+    }
+
+    private JiraProjectDto scanJiraProject(String projectId, boolean scheduled) {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         migrateLegacyKnowledgeFolders(settings);
@@ -401,12 +405,21 @@ public class SettingsService {
         if (jiraKnowledgeScanService == null) {
             scanResult = new JiraKnowledgeScanService.ScanResult(target.getIssues(), 0);
         } else {
-            scanResult = jiraKnowledgeScanService.scanProject(
-                    jira,
-                    target,
-                    savedJiraToken(),
-                    KnowledgeScanProgress.emitter(eventService, target.getId())
-            );
+            if (scheduled) {
+                scanResult = jiraKnowledgeScanService.scanScheduledProject(
+                        jira,
+                        target,
+                        savedJiraToken(),
+                        KnowledgeScanProgress.emitter(eventService, target.getId())
+                );
+            } else {
+                scanResult = jiraKnowledgeScanService.scanProject(
+                        jira,
+                        target,
+                        savedJiraToken(),
+                        KnowledgeScanProgress.emitter(eventService, target.getId())
+                );
+            }
         }
 
         return replaceJiraProject(settings, jira, projectId, project -> {

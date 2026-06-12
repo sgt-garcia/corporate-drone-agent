@@ -203,7 +203,7 @@ class JiraIssueFetchServiceTests {
 
         assertThat(issues).isEmpty();
         assertThat(issueSearchQuery.get())
-                .contains("updated+>=+\"2026/06/09+12:34\"")
+                .contains("updated+>=+\"2026/06/08+12:34\"")
                 .contains("ORDER+BY+updated+DESC");
     }
 

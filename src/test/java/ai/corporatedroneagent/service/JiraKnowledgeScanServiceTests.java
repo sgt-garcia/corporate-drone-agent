@@ -81,7 +81,8 @@ class JiraKnowledgeScanServiceTests {
                 pipelineRepository,
                 chunkingService,
                 indexingService,
-                issueFetchService
+                issueFetchService,
+                new ObjectMapper()
         );
     }
 
@@ -209,7 +210,8 @@ class JiraKnowledgeScanServiceTests {
                     pipelineRepository,
                     new KnowledgeChunkingService(pipelineRepository),
                     indexingService,
-                    new JiraIssueFetchService(HttpClient.newHttpClient(), new ObjectMapper())
+                    new JiraIssueFetchService(HttpClient.newHttpClient(), new ObjectMapper()),
+                    new ObjectMapper()
             );
 
             JiraKnowledgeScanService.ScanResult result = httpScanService.scanProject(jira, project(), "token-1234");
@@ -306,7 +308,8 @@ class JiraKnowledgeScanServiceTests {
                 pipelineRepository,
                 new KnowledgeChunkingService(pipelineRepository),
                 indexingService,
-                issueFetchService
+                issueFetchService,
+                new ObjectMapper()
         );
         JiraIssueFetchService.JiraIssueDocument staleButUnchanged = issue("10100", "DEV-7", "staletoken");
         JiraIssueFetchService.JiraIssueDocument changed = issue("10101", "DEV-8", "changedtoken");
@@ -317,17 +320,49 @@ class JiraKnowledgeScanServiceTests {
                 KnowledgeSource.JIRA,
                 JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
         ).orElseThrow();
-        Instant firstScanFinishedAt = root.getScanFinishedAt();
+        Instant firstScanStartedAt = root.getScanStartedAt();
         issues.set(List.of(issue("10101", "DEV-8", "changedtoken2")));
 
         JiraKnowledgeScanService.ScanResult result = service.scanProject(jira, project, "token-1234");
 
-        assertThat(updatedSince.get()).isEqualTo(firstScanFinishedAt);
+        assertThat(updatedSince.get()).isEqualTo(firstScanStartedAt);
         assertThat(result.issues()).isEqualTo(2);
         assertThat(resourceRepository.findByRootIdAndReference(root.getId(), staleButUnchanged.reference()))
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
         assertThat(indexingService.searchTerm("staletoken", 10)).hasSize(1);
         assertThat(indexingService.searchTerm("changedtoken2", 10)).hasSize(1);
+    }
+
+    @Test
+    void scheduledScanRunsFullReconciliationWhenLastFullScanIsStale() {
+        JiraSettings jira = jira();
+        JiraProjectDto project = project();
+        JiraIssueFetchService.JiraIssueDocument stale = issue("10100", "DEV-7", "staletoken");
+        JiraIssueFetchService.JiraIssueDocument kept = issue("10101", "DEV-8", "kepttoken");
+        issues.set(List.of(stale, kept));
+        scanService.scanProject(jira, project, "token-1234");
+        KnowledgeRoot firstScanRoot = rootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+        ).orElseThrow();
+        assertThat(firstScanRoot.getConfigJson()).contains("lastFullScanFinishedAt");
+        firstScanRoot.setConfigJson("{\"lastFullScanFinishedAt\":\""
+                + Instant.now().minusSeconds(25 * 60 * 60) + "\"}");
+        rootRepository.save(firstScanRoot);
+
+        issues.set(List.of(kept));
+        scanService.scanScheduledProject(jira, project, "token-1234");
+
+        KnowledgeRoot root = rootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+        ).orElseThrow();
+        assertThat(resourceRepository.findByRootIdAndReference(root.getId(), stale.reference()))
+                .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isTrue());
+        assertThat(resourceRepository.findByRootIdAndReference(root.getId(), kept.reference()))
+                .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
+        assertThat(indexingService.searchTerm("staletoken", 10)).isEmpty();
+        assertThat(indexingService.searchTerm("kepttoken", 10)).hasSize(1);
     }
 
     @Test

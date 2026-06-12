@@ -16,8 +16,13 @@ import ai.corporatedroneagent.repository.KnowledgeResourceRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootScanRepository;
 import ai.corporatedroneagent.util.Strings;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -34,6 +39,7 @@ import org.springframework.stereotype.Service;
 public class JiraKnowledgeScanService {
 
     private static final Logger log = LoggerFactory.getLogger(JiraKnowledgeScanService.class);
+    private static final Duration FULL_RECONCILIATION_INTERVAL = Duration.ofHours(24);
 
     private final KnowledgeRootRepository rootRepository;
     private final KnowledgeRootScanRepository scanRepository;
@@ -42,6 +48,7 @@ public class JiraKnowledgeScanService {
     private final KnowledgeChunkingService chunkingService;
     private final KnowledgeIndexingService indexingService;
     private final JiraIssueFetchService issueFetchService;
+    private final ObjectMapper objectMapper;
 
     public JiraKnowledgeScanService(
             KnowledgeRootRepository rootRepository,
@@ -50,7 +57,8 @@ public class JiraKnowledgeScanService {
             KnowledgeResourcePipelineRepository pipelineRepository,
             KnowledgeChunkingService chunkingService,
             KnowledgeIndexingService indexingService,
-            JiraIssueFetchService issueFetchService
+            JiraIssueFetchService issueFetchService,
+            ObjectMapper objectMapper
     ) {
         this.rootRepository = rootRepository;
         this.scanRepository = scanRepository;
@@ -59,6 +67,7 @@ public class JiraKnowledgeScanService {
         this.chunkingService = chunkingService;
         this.indexingService = indexingService;
         this.issueFetchService = issueFetchService;
+        this.objectMapper = objectMapper;
     }
 
     private static final Consumer<String> NO_PROGRESS = item -> {
@@ -74,9 +83,33 @@ public class JiraKnowledgeScanService {
             String token,
             Consumer<String> onProgress
     ) {
+        return scanProject(jira, project, token, onProgress, false);
+    }
+
+    public ScanResult scanScheduledProject(JiraSettings jira, JiraProjectDto project, String token) {
+        return scanScheduledProject(jira, project, token, NO_PROGRESS);
+    }
+
+    public ScanResult scanScheduledProject(
+            JiraSettings jira,
+            JiraProjectDto project,
+            String token,
+            Consumer<String> onProgress
+    ) {
+        KnowledgeRoot root = knowledgeRoot(jira, project);
+        return scanProject(jira, project, token, onProgress, fullReconciliationDue(root, Instant.now()));
+    }
+
+    private ScanResult scanProject(
+            JiraSettings jira,
+            JiraProjectDto project,
+            String token,
+            Consumer<String> onProgress,
+            boolean forceFull
+    ) {
         Instant startedAt = Instant.now();
         KnowledgeRoot root = knowledgeRoot(jira, project);
-        Instant updatedSince = deltaUpdatedSince(root);
+        Instant updatedSince = forceFull ? null : deltaUpdatedSince(root);
         boolean deltaScan = updatedSince != null;
         root = startRootScan(root, startedAt);
         KnowledgeRootScan scan = startScan(root.getId(), startedAt);
@@ -104,7 +137,7 @@ public class JiraKnowledgeScanService {
                 );
             }
             ResourceTotals totals = activeResourceTotals(root.getId());
-            completeScan(root, scan, totals, null);
+            completeScan(root, scan, totals, null, !deltaScan);
             log.info(
                     "Completed {} Jira project scan for {} with {} fetched issues, {} indexed issues, and {} bytes.",
                     deltaScan ? "delta" : "full",
@@ -116,7 +149,7 @@ public class JiraKnowledgeScanService {
             return new ScanResult(totals.resources(), totals.bytes());
         } catch (RuntimeException exception) {
             ResourceTotals totals = activeResourceTotals(root.getId());
-            completeScan(root, scan, totals, "Could not scan Jira project");
+            completeScan(root, scan, totals, "Could not scan Jira project", !deltaScan);
             log.warn(
                     "Jira project scan failed for {} after {} issues and {} bytes.",
                     project.getKey(),
@@ -132,10 +165,19 @@ public class JiraKnowledgeScanService {
         if (root.getId() == null
                 || root.getScanStatus() != WorkStatus.DONE
                 || !Boolean.TRUE.equals(root.getScanSuccess())
-                || root.getScanFinishedAt() == null) {
+                || (root.getScanStartedAt() == null && root.getScanFinishedAt() == null)) {
             return null;
         }
-        return root.getScanFinishedAt();
+        return root.getScanStartedAt() == null ? root.getScanFinishedAt() : root.getScanStartedAt();
+    }
+
+    private boolean fullReconciliationDue(KnowledgeRoot root, Instant now) {
+        if (root.getId() == null) {
+            return true;
+        }
+        Instant lastFullScanFinishedAt = lastFullScanFinishedAt(root);
+        return lastFullScanFinishedAt == null
+                || !lastFullScanFinishedAt.plus(FULL_RECONCILIATION_INTERVAL).isAfter(now);
     }
 
     private void processIssues(
@@ -294,7 +336,13 @@ public class JiraKnowledgeScanService {
         );
     }
 
-    private void completeScan(KnowledgeRoot root, KnowledgeRootScan scan, ResourceTotals totals, String errorMessage) {
+    private void completeScan(
+            KnowledgeRoot root,
+            KnowledgeRootScan scan,
+            ResourceTotals totals,
+            String errorMessage,
+            boolean fullScan
+    ) {
         Instant finishedAt = Instant.now();
         boolean success = errorMessage == null || errorMessage.isBlank();
 
@@ -312,7 +360,39 @@ public class JiraKnowledgeScanService {
         root.setScanSuccess(success);
         root.setScanMessage(errorMessage);
         root.setScanFinishedAt(finishedAt);
+        if (success && fullScan) {
+            root.setConfigJson(configWithLastFullScan(root, finishedAt));
+        }
         rootRepository.save(root);
+    }
+
+    private Instant lastFullScanFinishedAt(KnowledgeRoot root) {
+        String configJson = Strings.defaultIfBlank(root.getConfigJson(), "").trim();
+        if (configJson.isBlank()) {
+            return null;
+        }
+        try {
+            String value = objectMapper.readTree(configJson).path("lastFullScanFinishedAt").asText("");
+            return value.isBlank() ? null : Instant.parse(value);
+        } catch (IOException | DateTimeParseException exception) {
+            return null;
+        }
+    }
+
+    private String configWithLastFullScan(KnowledgeRoot root, Instant finishedAt) {
+        ObjectNode config = objectMapper.createObjectNode();
+        String configJson = Strings.defaultIfBlank(root.getConfigJson(), "").trim();
+        if (!configJson.isBlank()) {
+            try {
+                if (objectMapper.readTree(configJson) instanceof ObjectNode existingConfig) {
+                    config = existingConfig;
+                }
+            } catch (IOException ignored) {
+                config = objectMapper.createObjectNode();
+            }
+        }
+        config.put("lastFullScanFinishedAt", finishedAt.toString());
+        return config.toString();
     }
 
     private String jiraProjectReferenceId(JiraProjectDto project) {

@@ -35,6 +35,7 @@ public class JiraIssueFetchService {
     static final int COMMENT_PAGE_SIZE = 50;
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration DELTA_QUERY_TIMEZONE_SAFETY_OVERLAP = Duration.ofHours(24);
     private static final DateTimeFormatter JIRA_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
     private static final DateTimeFormatter JQL_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm");
     private static final String ISSUE_FIELDS = String.join(
@@ -321,7 +322,8 @@ public class JiraIssueFetchService {
     private String issueSearchPath(String projectKey, Instant updatedSince, int maxResults, String nextPageToken) {
         String jql = "project = " + jqlProjectLiteral(projectKey);
         if (updatedSince != null) {
-            jql += " AND updated >= \"" + JQL_TIMESTAMP.format(updatedSince.atOffset(ZoneOffset.UTC)) + "\"";
+            Instant safeUpdatedSince = updatedSince.minus(DELTA_QUERY_TIMEZONE_SAFETY_OVERLAP);
+            jql += " AND updated >= \"" + JQL_TIMESTAMP.format(safeUpdatedSince.atOffset(ZoneOffset.UTC)) + "\"";
         }
         jql += " ORDER BY updated DESC";
         String path = "/rest/api/3/search/jql?jql=" + urlEncode(jql)
