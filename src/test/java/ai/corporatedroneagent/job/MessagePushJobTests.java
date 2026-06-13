@@ -14,15 +14,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ai.corporatedroneagent.dto.MessageEventDto;
-import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.service.AiChatService;
 import ai.corporatedroneagent.service.ChatReply;
 import ai.corporatedroneagent.service.EventService;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -50,7 +47,7 @@ class MessagePushJobTests {
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
 
         try {
-            job.queueAssistantReply(conversationId, "hello");
+            queueAssistantReply(job, conversationId, "hello");
 
             verify(eventService, timeout(1000).times(2)).publish(eq("message-created"), eventCaptor.capture());
             assertThat(eventCaptor.getAllValues())
@@ -78,7 +75,7 @@ class MessagePushJobTests {
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
 
         try {
-            job.queueAssistantReply(conversationId, "hello");
+            queueAssistantReply(job, conversationId, "hello");
 
             verify(eventService, timeout(1000).times(2)).publish(eq("message-created"), eventCaptor.capture());
             assertThat(eventCaptor.getAllValues())
@@ -126,12 +123,12 @@ class MessagePushJobTests {
 
         try {
             for (int index = 0; index < 4; index++) {
-                job.queueAssistantReply(conversationId, "hang-" + index);
+                queueAssistantReply(job, conversationId, "hang-" + index);
             }
             assertThat(hungCallsStarted.await(1, TimeUnit.SECONDS)).isTrue();
             assertEventually(() -> assertThat(interrupts.get()).isGreaterThanOrEqualTo(4));
 
-            job.queueAssistantReply(conversationId, "after");
+            queueAssistantReply(job, conversationId, "after");
 
             verify(aiChatService, timeout(1000)).reply(conversationId, "after");
         } finally {
@@ -163,14 +160,13 @@ class MessagePushJobTests {
             }
             return ChatReply.assistant("late answer");
         });
-        Conversation conversation = conversationWithMessages(
-                conversationId,
-                new Message(userMessageId, "user", "slow", Instant.now())
-        );
-        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
-        when(conversationRepository.appendMessage(eq(conversationId), any(Message.class))).thenAnswer(invocation -> {
+        when(conversationRepository.appendMessageIfLastMessageIs(
+                eq(conversationId),
+                eq(userMessageId),
+                any(Message.class)
+        )).thenAnswer(invocation -> {
             lateReplyAppended.countDown();
-            return Optional.of(invocation.getArgument(1, Message.class));
+            return Optional.of(invocation.getArgument(2, Message.class));
         });
         MessagePushJob job = new MessagePushJob(
                 conversationRepository,
@@ -189,7 +185,11 @@ class MessagePushJobTests {
 
             assertThat(lateReplyAppended.await(3, TimeUnit.SECONDS)).isTrue();
             assertThat(interrupts.get()).isGreaterThanOrEqualTo(1);
-            verify(conversationRepository).appendMessage(eq(conversationId), messageCaptor.capture());
+            verify(conversationRepository).appendMessageIfLastMessageIs(
+                    eq(conversationId),
+                    eq(userMessageId),
+                    messageCaptor.capture()
+            );
             assertThat(messageCaptor.getValue().getRole()).isEqualTo("assistant");
             assertThat(messageCaptor.getValue().getContent()).isEqualTo("late answer");
         } finally {
@@ -229,11 +229,11 @@ class MessagePushJobTests {
             }
             return ChatReply.assistant("late answer");
         });
-        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversationWithMessages(
-                conversationId,
-                new Message(userMessageId, "user", "slow", Instant.now()),
-                new Message(UUID.randomUUID(), "user", "newer turn", Instant.now())
-        )));
+        when(conversationRepository.appendMessageIfLastMessageIs(
+                eq(conversationId),
+                eq(userMessageId),
+                any(Message.class)
+        )).thenReturn(Optional.empty());
         MessagePushJob job = new MessagePushJob(
                 conversationRepository,
                 eventService,
@@ -250,6 +250,8 @@ class MessagePushJobTests {
 
             assertThat(lateReplyPublished.await(3, TimeUnit.SECONDS)).isTrue();
             assertThat(interrupts.get()).isGreaterThanOrEqualTo(1);
+            verify(conversationRepository)
+                    .appendMessageIfLastMessageIs(eq(conversationId), eq(userMessageId), any(Message.class));
             verify(conversationRepository, after(200).never())
                     .appendMessage(eq(conversationId), any(Message.class));
         } finally {
@@ -268,7 +270,7 @@ class MessagePushJobTests {
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
 
         job.shutdown();
-        job.queueAssistantReply(conversationId, "hello");
+        queueAssistantReply(job, conversationId, "hello");
 
         verify(eventService, timeout(1000)).publish(eq("message-created"), eventCaptor.capture());
         assertThat(eventCaptor.getAllValues())
@@ -279,12 +281,12 @@ class MessagePushJobTests {
     }
 
     @Test
-    void timeoutSchedulerRejectionDoesNotSubmitLlmTask() {
+    void timeoutSchedulerRejectionDoesNotCallProvider() {
         UUID conversationId = UUID.randomUUID();
         ConversationRepository conversationRepository = mock(ConversationRepository.class);
         EventService eventService = mock(EventService.class);
         AiChatService aiChatService = mock(AiChatService.class);
-        ExecutorService llmExecutor = mock(ExecutorService.class);
+        ExecutorService llmExecutor = Executors.newSingleThreadExecutor();
         ExecutorService replyExecutor = Executors.newSingleThreadExecutor();
         ScheduledExecutorService timeoutExecutor = mock(ScheduledExecutorService.class);
         when(timeoutExecutor.schedule(any(Runnable.class), anyLong(), eq(TimeUnit.MILLISECONDS)))
@@ -303,9 +305,9 @@ class MessagePushJobTests {
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
 
         try {
-            job.queueAssistantReply(conversationId, "hello");
+            queueAssistantReply(job, conversationId, "hello");
 
-            verify(llmExecutor, after(200).never()).submit(any(Runnable.class));
+            verify(aiChatService, after(200).never()).reply(eq(conversationId), any(String.class));
             verify(eventService, timeout(1000).times(2)).publish(eq("message-created"), eventCaptor.capture());
             assertThat(eventCaptor.getAllValues())
                     .map(MessageEventDto.class::cast)
@@ -350,15 +352,15 @@ class MessagePushJobTests {
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
 
         try {
-            job.queueAssistantReply(conversationId, "hang-1");
+            queueAssistantReply(job, conversationId, "hang-1");
             assertEventually(() -> assertThat(hungCallsStarted.getCount()).isEqualTo(1));
             verify(eventService, timeout(1000).atLeast(2)).publish(eq("message-created"), any());
 
-            job.queueAssistantReply(conversationId, "hang-2");
+            queueAssistantReply(job, conversationId, "hang-2");
             assertEventually(() -> assertThat(hungCallsStarted.getCount()).isZero());
             verify(eventService, timeout(1000).atLeast(4)).publish(eq("message-created"), any());
 
-            job.queueAssistantReply(conversationId, "overflow");
+            queueAssistantReply(job, conversationId, "overflow");
 
             verify(aiChatService, after(200).never()).reply(conversationId, "overflow");
             verify(eventService, timeout(1000).atLeast(6)).publish(eq("message-created"), eventCaptor.capture());
@@ -389,10 +391,7 @@ class MessagePushJobTests {
         }
     }
 
-    private static Conversation conversationWithMessages(UUID conversationId, Message... messages) {
-        Conversation conversation = new Conversation();
-        conversation.setId(conversationId);
-        conversation.setMessages(List.of(messages));
-        return conversation;
+    private static void queueAssistantReply(MessagePushJob job, UUID conversationId, String userContent) {
+        job.queueAssistantReply(conversationId, UUID.randomUUID(), userContent);
     }
 }

@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -124,10 +125,6 @@ public class MessagePushJob {
         this.physicalRequests = new Semaphore(maxActiveRequests + maxTimedOutRequests);
     }
 
-    public void queueAssistantReply(UUID conversationId, String userContent) {
-        queueAssistantReply(conversationId, null, userContent);
-    }
-
     public void queueAssistantReply(UUID conversationId, UUID userMessageId, String userContent) {
         if (shuttingDown) {
             publishTransientMessage(conversationId, "error", SHUTTING_DOWN_REPLY);
@@ -170,46 +167,44 @@ public class MessagePushJob {
 
         AtomicBoolean activePermitHeld = new AtomicBoolean(true);
         AtomicBoolean physicalPermitHeld = new AtomicBoolean(true);
-        AtomicReference<Future<?>> llmTask = new AtomicReference<>();
-        ScheduledFuture<?> timeoutTask;
-        try {
-            timeoutTask = timeoutExecutor.schedule(
-                    () -> timeoutReply(conversationId, replyFuture, llmTask.get()),
-                    Math.max(1L, llmTimeout.toMillis()),
-                    TimeUnit.MILLISECONDS
-            );
-        } catch (RejectedExecutionException exception) {
-            releaseActivePermit(activePermitHeld);
-            releasePhysicalPermit(physicalPermitHeld);
-            replyFuture.completeExceptionally(exception);
-            return replyFuture;
-        }
-
-        try {
-            Future<?> submittedTask = llmExecutor.submit(() -> {
-                try {
-                    ChatReply reply = aiChatService.reply(conversationId, userContent);
-                    if (!replyFuture.complete(reply)) {
-                        publishLateReply(conversationId, userMessageId, reply);
-                    }
-                } catch (Throwable error) {
-                    if (!replyFuture.completeExceptionally(error)) {
-                        LOGGER.warn(
-                                "LLM request completed with an error after the reply pipeline moved on for conversation {}.",
-                                conversationId,
-                                error
-                        );
-                    }
-                } finally {
-                    releasePhysicalPermit(physicalPermitHeld);
+        AtomicReference<FutureTask<Void>> llmTask = new AtomicReference<>();
+        AtomicReference<ScheduledFuture<?>> timeoutTask = new AtomicReference<>();
+        FutureTask<Void> task = new FutureTask<>(() -> {
+            ScheduledFuture<?> scheduledTimeout = null;
+            try {
+                scheduledTimeout = timeoutExecutor.schedule(
+                        () -> timeoutReply(conversationId, replyFuture, llmTask.get()),
+                        Math.max(1L, llmTimeout.toMillis()),
+                        TimeUnit.MILLISECONDS
+                );
+                timeoutTask.set(scheduledTimeout);
+                ChatReply reply = aiChatService.reply(conversationId, userContent);
+                if (!replyFuture.complete(reply)) {
+                    publishLateReply(conversationId, userMessageId, reply);
                 }
-            });
-            llmTask.set(submittedTask);
+            } catch (Throwable error) {
+                if (!replyFuture.completeExceptionally(error)) {
+                    LOGGER.warn(
+                            "LLM request completed with an error after the reply pipeline moved on for conversation {}.",
+                            conversationId,
+                            error
+                    );
+                }
+            } finally {
+                if (scheduledTimeout != null) {
+                    scheduledTimeout.cancel(false);
+                }
+                releasePhysicalPermit(physicalPermitHeld);
+            }
+            return null;
+        });
+        llmTask.set(task);
+        try {
+            llmExecutor.execute(task);
             if (replyFuture.isDone()) {
-                submittedTask.cancel(true);
+                task.cancel(true);
             }
         } catch (RejectedExecutionException exception) {
-            timeoutTask.cancel(false);
             releaseActivePermit(activePermitHeld);
             releasePhysicalPermit(physicalPermitHeld);
             replyFuture.completeExceptionally(exception);
@@ -218,7 +213,10 @@ public class MessagePushJob {
 
         replyFuture.whenComplete((reply, error) -> {
             releaseActivePermit(activePermitHeld);
-            timeoutTask.cancel(false);
+            ScheduledFuture<?> scheduledTimeout = timeoutTask.get();
+            if (scheduledTimeout != null) {
+                scheduledTimeout.cancel(false);
+            }
         });
         return replyFuture;
     }
@@ -263,17 +261,12 @@ public class MessagePushJob {
     }
 
     private void appendAssistantMessage(UUID conversationId, String content) {
-        Message message = new Message(
-                UUID.randomUUID(),
-                "assistant",
-                content,
-                Instant.now()
-        );
+        Message message = assistantMessage(content);
 
         conversationRepository.appendMessage(conversationId, message)
                 .ifPresent(savedMessage -> eventService.publish(
                         "message-created",
-                        new MessageEventDto(conversationId, toDto(message))
+                        new MessageEventDto(conversationId, toDto(savedMessage))
                 ));
     }
 
@@ -316,26 +309,28 @@ public class MessagePushJob {
     }
 
     private void publishLateAssistantReply(UUID conversationId, UUID userMessageId, ChatReply reply) {
-        if (canAppendLateReply(conversationId, userMessageId)) {
-            appendAssistantMessage(conversationId, reply.content());
+        if (userMessageId == null) {
+            publishTransientMessage(conversationId, reply.role(), reply.content());
             return;
         }
-        publishTransientMessage(conversationId, reply.role(), reply.content());
+        Message message = assistantMessage(reply.content());
+        conversationRepository.appendMessageIfLastMessageIs(conversationId, userMessageId, message)
+                .ifPresentOrElse(
+                        savedMessage -> eventService.publish(
+                                "message-created",
+                                new MessageEventDto(conversationId, toDto(savedMessage))
+                        ),
+                        () -> publishTransientMessage(conversationId, reply.role(), reply.content())
+                );
     }
 
-    private boolean canAppendLateReply(UUID conversationId, UUID userMessageId) {
-        if (userMessageId == null) {
-            return false;
-        }
-        return conversationRepository.findById(conversationId)
-                .map(conversation -> {
-                    if (conversation.getMessages().isEmpty()) {
-                        return false;
-                    }
-                    Message lastMessage = conversation.getMessages().get(conversation.getMessages().size() - 1);
-                    return userMessageId.equals(lastMessage.getId()) && "user".equals(lastMessage.getRole());
-                })
-                .orElse(false);
+    private Message assistantMessage(String content) {
+        return new Message(
+                UUID.randomUUID(),
+                "assistant",
+                content,
+                Instant.now()
+        );
     }
 
     private static ThreadFactory namedThreadFactory(String prefix) {

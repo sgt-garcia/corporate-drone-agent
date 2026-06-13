@@ -97,13 +97,40 @@ public class ConversationRepository {
         if (!exists(conversationId)) {
             return Optional.empty();
         }
+        prepareForAppend(message);
+        insertMessage(conversationId, message);
+        return Optional.of(message);
+    }
+
+    @Transactional
+    public synchronized Optional<Message> appendMessageIfLastMessageIs(
+            UUID conversationId,
+            UUID expectedLastMessageId,
+            Message message
+    ) {
+        if (expectedLastMessageId == null || !exists(conversationId)) {
+            return Optional.empty();
+        }
+        if (lastMessageId(conversationId)
+                .filter(expectedLastMessageId::equals)
+                .isEmpty()) {
+            return Optional.empty();
+        }
+        prepareForAppend(message);
+        insertMessage(conversationId, message);
+        return Optional.of(message);
+    }
+
+    private void prepareForAppend(Message message) {
         if (message.getId() == null) {
             message.setId(UUID.randomUUID());
         }
         if (message.getCreatedAt() == null) {
             message.setCreatedAt(Instant.now());
         }
+    }
 
+    private void insertMessage(UUID conversationId, Message message) {
         jdbcTemplate.update("""
                 INSERT INTO conversation_messages (
                     id, conversation_id, message_index, role, content, created_at
@@ -122,7 +149,6 @@ public class ConversationRepository {
                 Timestamp.from(Instant.now()),
                 conversationId
         );
-        return Optional.of(message);
     }
 
     @Transactional
@@ -182,6 +208,20 @@ public class ConversationRepository {
                 WHERE conversation_id = ?
                 """, Integer.class, conversationId);
         return next == null ? 0 : next;
+    }
+
+    private Optional<UUID> lastMessageId(UUID conversationId) {
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject("""
+                    SELECT id
+                    FROM conversation_messages
+                    WHERE conversation_id = ?
+                    ORDER BY message_index DESC, created_at DESC
+                    LIMIT 1
+                    """, UUID.class, conversationId));
+        } catch (EmptyResultDataAccessException exception) {
+            return Optional.empty();
+        }
     }
 
     private boolean exists(UUID conversationId) {
