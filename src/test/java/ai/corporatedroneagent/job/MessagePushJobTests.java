@@ -355,6 +355,55 @@ class MessagePushJobTests {
     }
 
     @Test
+    void cancelledQueuedLlmTaskReleasesPermitsForLaterReplies() {
+        UUID conversationId = UUID.randomUUID();
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        EventService eventService = mock(EventService.class);
+        AiChatService aiChatService = mock(AiChatService.class);
+        ExecutorService llmExecutor = mock(ExecutorService.class);
+        ExecutorService replyExecutor = Executors.newSingleThreadExecutor();
+        ScheduledExecutorService timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
+        AtomicInteger executedTasks = new AtomicInteger();
+        doAnswer(invocation -> {
+            Runnable task = invocation.getArgument(0, Runnable.class);
+            if (executedTasks.incrementAndGet() == 1) {
+                ((java.util.concurrent.Future<?>) task).cancel(false);
+            } else {
+                task.run();
+            }
+            return null;
+        }).when(llmExecutor).execute(any(Runnable.class));
+        when(aiChatService.reply(conversationId, "after"))
+                .thenReturn(ChatReply.error("visible after cancellation"));
+        MessagePushJob job = new MessagePushJob(
+                conversationRepository,
+                eventService,
+                aiChatService,
+                Duration.ofSeconds(5),
+                1,
+                0,
+                llmExecutor,
+                replyExecutor,
+                timeoutExecutor
+        );
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+
+        try {
+            queueAssistantReply(job, conversationId, "cancelled");
+            queueAssistantReply(job, conversationId, "after");
+
+            verify(aiChatService, timeout(1000)).reply(conversationId, "after");
+            verify(eventService, timeout(1000).atLeast(4)).publish(eq("message-created"), eventCaptor.capture());
+            assertThat(eventCaptor.getAllValues())
+                    .map(MessageEventDto.class::cast)
+                    .extracting(event -> event.message().content())
+                    .contains("visible after cancellation");
+        } finally {
+            job.shutdown();
+        }
+    }
+
+    @Test
     void interruptResistantTimedOutCallsAreCappedWithVisibleSaturationError() throws InterruptedException {
         UUID conversationId = UUID.randomUUID();
         ConversationRepository conversationRepository = mock(ConversationRepository.class);

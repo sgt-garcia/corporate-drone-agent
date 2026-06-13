@@ -11,6 +11,8 @@ import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -56,6 +58,12 @@ public class MessagePushJob {
     private final Semaphore activeRequests;
     private final Semaphore physicalRequests;
     private volatile boolean shuttingDown;
+
+    private enum LlmRequestState {
+        WAITING_TO_START,
+        CALLING_PROVIDER,
+        TIMED_OUT_BEFORE_PROVIDER
+    }
 
     @Autowired
     public MessagePushJob(
@@ -167,18 +175,24 @@ public class MessagePushJob {
 
         AtomicBoolean activePermitHeld = new AtomicBoolean(true);
         AtomicBoolean physicalPermitHeld = new AtomicBoolean(true);
+        AtomicBoolean taskStarted = new AtomicBoolean(false);
+        AtomicReference<LlmRequestState> requestState = new AtomicReference<>(LlmRequestState.WAITING_TO_START);
         AtomicReference<FutureTask<Void>> llmTask = new AtomicReference<>();
         AtomicReference<ScheduledFuture<?>> timeoutTask = new AtomicReference<>();
-        FutureTask<Void> task = new FutureTask<>(() -> {
+        Callable<Void> request = () -> {
+            taskStarted.set(true);
             ScheduledFuture<?> scheduledTimeout = null;
             try {
                 scheduledTimeout = timeoutExecutor.schedule(
-                        () -> timeoutReply(conversationId, replyFuture, llmTask.get()),
+                        () -> timeoutReply(conversationId, replyFuture, llmTask.get(), requestState),
                         Math.max(1L, llmTimeout.toMillis()),
                         TimeUnit.MILLISECONDS
                 );
                 timeoutTask.set(scheduledTimeout);
-                if (replyFuture.isDone()) {
+                if (!requestState.compareAndSet(
+                        LlmRequestState.WAITING_TO_START,
+                        LlmRequestState.CALLING_PROVIDER
+                ) || replyFuture.isDone()) {
                     return null;
                 }
                 ChatReply reply = aiChatService.reply(conversationId, userContent);
@@ -200,7 +214,20 @@ public class MessagePushJob {
                 releasePhysicalPermit(physicalPermitHeld);
             }
             return null;
-        });
+        };
+        FutureTask<Void> task = new FutureTask<>(request) {
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+                boolean cancelled = super.cancel(mayInterruptIfRunning);
+                if (cancelled && !taskStarted.get()) {
+                    releasePhysicalPermit(physicalPermitHeld);
+                    replyFuture.completeExceptionally(
+                            new CancellationException("LLM request was cancelled before starting")
+                    );
+                }
+                return cancelled;
+            }
+        };
         llmTask.set(task);
         try {
             llmExecutor.execute(task);
@@ -224,7 +251,25 @@ public class MessagePushJob {
         return replyFuture;
     }
 
-    private void timeoutReply(UUID conversationId, CompletableFuture<ChatReply> replyFuture, Future<?> llmTask) {
+    private void timeoutReply(
+            UUID conversationId,
+            CompletableFuture<ChatReply> replyFuture,
+            Future<?> llmTask,
+            AtomicReference<LlmRequestState> requestState
+    ) {
+        while (true) {
+            LlmRequestState state = requestState.get();
+            if (state == LlmRequestState.TIMED_OUT_BEFORE_PROVIDER) {
+                return;
+            }
+            if (state != LlmRequestState.WAITING_TO_START
+                    || requestState.compareAndSet(
+                            LlmRequestState.WAITING_TO_START,
+                            LlmRequestState.TIMED_OUT_BEFORE_PROVIDER
+                    )) {
+                break;
+            }
+        }
         if (replyFuture.complete(ChatReply.error(TIMEOUT_REPLY))) {
             if (llmTask != null) {
                 llmTask.cancel(true);
