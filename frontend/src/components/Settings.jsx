@@ -2390,7 +2390,12 @@ function ProviderModelSelect({
         <button
           className="btn btn-secondary btn-sm model-select-retry"
           type="button"
-          onClick={() => setRetryNonce((nonce) => nonce + 1)}
+          onClick={() => {
+            // Flip to loading immediately so the click registers visibly; the
+            // effect (keyed on retryNonce) then re-runs the lookup.
+            setStatus("loading");
+            setRetryNonce((nonce) => nonce + 1);
+          }}
         >
           <Icon name="refresh-cw" size={14} color="var(--gray-700)" /> Retry
         </button>
