@@ -132,9 +132,13 @@ public class ConversationService {
 
     /**
      * Re-run the reply for the most recent user message. A failed reply is a
-     * transient turn (it is published over SSE but never persisted), so there is
-     * nothing to delete server-side — we simply re-queue the assistant reply and
-     * let it stream back in place of the dropped error turn.
+     * transient turn (it is published over SSE but never persisted), so retrying
+     * after a plain failure has nothing to replace and simply appends. But a
+     * retry can also follow a <em>failed regenerate</em>: that path keeps the
+     * original persisted reply in place, so the conversation still ends in an
+     * assistant turn. To avoid stacking a second assistant turn onto the same
+     * user message, we hand any trailing assistant reply to the pipeline as the
+     * replacement target — symmetric with {@link #regenerateLastReply}.
      */
     public synchronized void retryLastReply(UUID conversationId) {
         Conversation conversation = getConversation(conversationId);
@@ -144,7 +148,9 @@ public class ConversationService {
         Message lastUserMessage = lastUserMessage(conversation)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "There is no message to retry yet"));
-        messagePushJob.queueAssistantReply(conversationId, lastUserMessage.getId(), lastUserMessage.getContent());
+        UUID replacedReplyId = trailingAssistantReplyId(conversation).orElse(null);
+        messagePushJob.queueAssistantReply(
+                conversationId, lastUserMessage.getId(), lastUserMessage.getContent(), replacedReplyId);
     }
 
     /**

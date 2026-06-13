@@ -7,7 +7,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import ai.corporatedroneagent.TestDatabaseSupport;
@@ -133,9 +132,41 @@ class WorkspaceDeletionServiceTests {
         assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
                 .extracting(Message::getContent)
                 .containsExactly("Draft the kickoff note");
-        // The reply is re-queued for that same message: once on send, once on retry.
-        verify(messagePushJob, times(2))
+        // The send queued the reply (3-arg); the retry re-queues for the same user
+        // message. With no trailing assistant turn there is nothing to replace, so
+        // the retry appends — it carries a null replacement id.
+        verify(messagePushJob)
                 .queueAssistantReply(eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"));
+        verify(messagePushJob).queueAssistantReply(
+                eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"), isNull());
+    }
+
+    @Test
+    void retryingAfterAFailedRegenerateReplacesTheKeptReplyInsteadOfStackingADuplicate() {
+        // A failed regenerate keeps the original persisted reply in place, so the
+        // conversation still ends in an assistant turn. Clicking Retry on the error
+        // card must replace that kept reply, not append a second assistant turn for
+        // the one user message.
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+        conversationService.sendUserMessage(conversation.getId(), "Draft the kickoff note");
+        // Stand in for the reply the (mocked) push job would have appended, which a
+        // failed regenerate then left intact.
+        UUID keptReplyId = UUID.randomUUID();
+        conversationRepository.appendMessage(
+                conversation.getId(),
+                new Message(keptReplyId, "assistant", "Here is a draft", null));
+
+        conversationService.retryLastReply(conversation.getId());
+
+        // Nothing is appended or removed here (the push job is mocked); the kept
+        // reply's id is handed to the push job as the replacement target.
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .extracting(Message::getContent)
+                .containsExactly("Draft the kickoff note", "Here is a draft");
+        verify(eventService, never()).publish(eq("message-deleted"), any());
+        verify(messagePushJob).queueAssistantReply(
+                eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"), eq(keptReplyId));
     }
 
     @Test
