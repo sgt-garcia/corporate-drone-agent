@@ -47,6 +47,7 @@
   --success-700: #0f5a38;
   --warning-50: #fbf1df;
   --warning-500: #c2820e;
+  --warning-600: #9c6708;
   --warning-700: #7a4f06;
   --danger-50: #fbeae8;
   --danger-500: #c8362c;
@@ -629,8 +630,8 @@ select.input {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 /* The per-conversation status word, revealed on the active/hovered row. */
 .conversation-btn .status-word {
@@ -650,13 +651,13 @@ select.input {
   color: var(--blue-700);
 }
 .status-word--review {
-  color: var(--warning-700);
+  color: var(--warning-600);
 }
 .status-word--success {
-  color: var(--success-700);
+  color: var(--success-600);
 }
 .status-word--error {
-  color: var(--danger-700);
+  color: var(--danger-600);
 }
 .status-word--idle {
   color: var(--gray-500);
@@ -666,8 +667,8 @@ select.input {
 .status-legend {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 14px 11px;
+  gap: 5px 11px;
+  padding: 9px 16px 11px;
   border-top: 1px solid var(--border-divider);
   white-space: nowrap;
   overflow: hidden;
@@ -675,11 +676,12 @@ select.input {
 .status-legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
 }
 .status-legend-label {
   font-size: 11px;
+  font-weight: 500;
   color: var(--gray-500);
   white-space: nowrap;
 }
@@ -883,11 +885,14 @@ select.input {
 .turn-text ol,
 .turn-text pre,
 .turn-text blockquote {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
 }
 .turn-text ul,
 .turn-text ol {
   padding-left: 22px;
+}
+.turn-text li {
+  line-height: 1.55;
 }
 .turn-text h1,
 .turn-text h2,
@@ -930,6 +935,7 @@ select.input {
   padding: 1px 5px;
 }
 .turn-text pre {
+  margin: 0 0 14px;
   overflow-x: auto;
   border-radius: var(--radius-lg);
   background: var(--gray-900);
@@ -949,6 +955,8 @@ select.input {
 .turn-text a {
   color: var(--fg-link);
   font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .turn-time {
   margin-top: 6px;

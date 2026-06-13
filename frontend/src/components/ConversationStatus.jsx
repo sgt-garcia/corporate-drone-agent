@@ -16,50 +16,118 @@ export function statusKey(status) {
   return STATUS_META[status] ? status : "idle";
 }
 
+// Per-state fill/stroke color for the shape itself. Distinct from STATUS_META's
+// text colors, which run a step darker for legibility at small label sizes.
+const STATUS_COLOR = {
+  success: "var(--success-500)",
+  running: "var(--blue-600)",
+  review: "var(--warning-500)",
+  error: "var(--danger-500)",
+  idle: "var(--gray-300)"
+};
+
 export function StatusShape({ status }) {
   const key = statusKey(status);
   const { label } = STATUS_META[key];
+  const color = STATUS_COLOR[key];
+  // Crisp 2.6px glyph strokes scaled into the 11px filled marks.
+  const glyphStroke = {
+    stroke: "var(--white)",
+    strokeWidth: 2.6,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    fill: "none"
+  };
+
+  let shape;
+  switch (key) {
+    case "running":
+      shape = (
+        <span
+          className="cda-pulse"
+          style={{ width: 9, height: 9, borderRadius: "50%", background: color, display: "block" }}
+        />
+      );
+      break;
+    case "review":
+      shape = (
+        <span
+          style={{
+            width: 9,
+            height: 9,
+            borderRadius: "50%",
+            border: "2.25px solid " + color,
+            boxSizing: "border-box",
+            display: "block"
+          }}
+        />
+      );
+      break;
+    case "error":
+      // Sharp filled diamond (angular — unmistakable vs. a round dot) + an ✕.
+      shape = (
+        <span
+          style={{
+            width: 11,
+            height: 11,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transform: "rotate(45deg)",
+            borderRadius: 1.5,
+            background: color
+          }}
+        >
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 11 11"
+            style={{ transform: "rotate(-45deg)" }}
+            aria-hidden="true"
+          >
+            <path d="M3.4 3.4 7.6 7.6 M7.6 3.4 3.4 7.6" {...glyphStroke} />
+          </svg>
+        </span>
+      );
+      break;
+    case "idle":
+      shape = (
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: "50%",
+            border: "1.5px solid " + color,
+            boxSizing: "border-box",
+            display: "block"
+          }}
+        />
+      );
+      break;
+    default:
+      // success — filled round dot + a check.
+      shape = (
+        <span
+          style={{
+            width: 11,
+            height: 11,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "50%",
+            background: color
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+            <path d="M3 5.7 4.7 7.4 8 3.8" {...glyphStroke} />
+          </svg>
+        </span>
+      );
+  }
+
   return (
     <span className="status-shape" role="img" aria-label={label} title={label}>
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 16 16"
-        className={key === "running" ? "cda-pulse" : undefined}
-        aria-hidden="true"
-      >
-        {key === "success" && (
-          <>
-            <circle cx="8" cy="8" r="6.5" fill="var(--success-600)" />
-            <path
-              d="M5.1 8.2l1.9 1.9 3.9-4.1"
-              fill="none"
-              stroke="#fff"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </>
-        )}
-        {key === "error" && (
-          <>
-            <path d="M8 1.4 14.6 8 8 14.6 1.4 8Z" fill="var(--danger-600)" />
-            <path
-              d="M6 6l4 4M10 6l-4 4"
-              stroke="#fff"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </>
-        )}
-        {key === "running" && <circle cx="8" cy="8" r="4.5" fill="var(--blue-500)" />}
-        {key === "review" && (
-          <circle cx="8" cy="8" r="4.5" fill="none" stroke="var(--warning-500)" strokeWidth="2" />
-        )}
-        {key === "idle" && (
-          <circle cx="8" cy="8" r="3.5" fill="none" stroke="var(--gray-300)" strokeWidth="1.75" />
-        )}
-      </svg>
+      {shape}
     </span>
   );
 }
