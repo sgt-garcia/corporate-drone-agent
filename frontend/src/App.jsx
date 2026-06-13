@@ -134,23 +134,34 @@ export default function App() {
         ? "Settings"
         : "Workspace";
 
+  // Primitive id/status of the open conversation. findWorkItem rebuilds
+  // activeWorkItem as a fresh object on every render, so the open-conversation
+  // effect below must gate on these primitives rather than the object — otherwise
+  // any projects mutation (e.g. a sibling conversation's status SSE) re-runs it.
+  const activeConversationId =
+    activeWorkItem.type === "conversation" ? activeWorkItem.item.id : null;
+  const activeConversationStatus =
+    activeWorkItem.type === "conversation" ? activeWorkItem.item.status : null;
+
   useEffect(() => {
     loadInitialState();
   }, []);
 
   useEffect(() => {
-    if (activeWorkItem.type !== "conversation") {
+    if (!activeConversationId) {
       return;
     }
 
-    loadConversation(activeWorkItem.item.id);
+    loadConversation(activeConversationId);
     // Opening a conversation that just finished acknowledges it (review →
     // success). Runs on every open — not just the first — since loadConversation
-    // short-circuits once a conversation is cached.
-    if (activeWorkItem.item.status === "review") {
-      markConversationSeen(activeWorkItem.item.id);
+    // short-circuits once a conversation is cached. Gating on primitive id/status
+    // keeps a redundant /seen POST (and loadConversation call) from firing while
+    // the conversation is still "review" and unrelated state changes re-render.
+    if (activeConversationStatus === "review") {
+      markConversationSeen(activeConversationId);
     }
-  }, [activeWorkItem]);
+  }, [activeConversationId, activeConversationStatus]);
 
   useEffect(() => {
     const events = new EventSource("/api/events");
