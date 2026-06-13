@@ -108,7 +108,7 @@ public class ConversationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
         MessageDto dto = toDto(message);
         eventService.publish("message-created", new MessageEventDto(conversationId, dto));
-        messagePushJob.queueAssistantReply(conversationId, message.getContent());
+        messagePushJob.queueAssistantReply(conversationId, message.getId(), message.getContent());
         return dto;
     }
 
@@ -123,7 +123,7 @@ public class ConversationService {
         Message lastUserMessage = lastUserMessage(conversation)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "There is no message to retry yet"));
-        messagePushJob.queueAssistantReply(conversationId, lastUserMessage.getContent());
+        messagePushJob.queueAssistantReply(conversationId, lastUserMessage.getId(), lastUserMessage.getContent());
     }
 
     private Optional<Message> lastUserMessage(Conversation conversation) {

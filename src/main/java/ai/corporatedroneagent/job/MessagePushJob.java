@@ -22,6 +22,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,25 +89,53 @@ public class MessagePushJob {
             int maxActiveRequests,
             int maxTimedOutRequests
     ) {
+        this(
+                conversationRepository,
+                eventService,
+                aiChatService,
+                llmTimeout,
+                maxActiveRequests,
+                maxTimedOutRequests,
+                Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("cda-llm-", 1).factory()),
+                Executors.newSingleThreadExecutor(namedThreadFactory("cda-reply")),
+                Executors.newSingleThreadScheduledExecutor(namedThreadFactory("cda-llm-timeout"))
+        );
+    }
+
+    MessagePushJob(
+            ConversationRepository conversationRepository,
+            EventService eventService,
+            AiChatService aiChatService,
+            Duration llmTimeout,
+            int maxActiveRequests,
+            int maxTimedOutRequests,
+            ExecutorService llmExecutor,
+            ExecutorService replyExecutor,
+            ScheduledExecutorService timeoutExecutor
+    ) {
         this.conversationRepository = conversationRepository;
         this.eventService = eventService;
         this.aiChatService = aiChatService;
-        this.llmExecutor = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("cda-llm-", 1).factory());
-        this.replyExecutor = Executors.newSingleThreadExecutor(namedThreadFactory("cda-reply"));
-        this.timeoutExecutor = Executors.newSingleThreadScheduledExecutor(namedThreadFactory("cda-llm-timeout"));
+        this.llmExecutor = llmExecutor;
+        this.replyExecutor = replyExecutor;
+        this.timeoutExecutor = timeoutExecutor;
         this.llmTimeout = llmTimeout;
         this.activeRequests = new Semaphore(maxActiveRequests);
         this.physicalRequests = new Semaphore(maxActiveRequests + maxTimedOutRequests);
     }
 
     public void queueAssistantReply(UUID conversationId, String userContent) {
-        publishStatus(conversationId);
+        queueAssistantReply(conversationId, null, userContent);
+    }
+
+    public void queueAssistantReply(UUID conversationId, UUID userMessageId, String userContent) {
         if (shuttingDown) {
             publishTransientMessage(conversationId, "error", SHUTTING_DOWN_REPLY);
             return;
         }
+        publishStatus(conversationId);
 
-        requestReply(conversationId, userContent)
+        requestReply(conversationId, userMessageId, userContent)
                 .exceptionally(error -> ChatReply.error("LLM request failed: " + rootMessage(error)))
                 .thenAcceptAsync(reply -> publishReply(conversationId, reply), replyExecutor)
                 .exceptionally(error -> {
@@ -123,7 +152,7 @@ public class MessagePushJob {
         timeoutExecutor.shutdownNow();
     }
 
-    private CompletableFuture<ChatReply> requestReply(UUID conversationId, String userContent) {
+    private CompletableFuture<ChatReply> requestReply(UUID conversationId, UUID userMessageId, String userContent) {
         CompletableFuture<ChatReply> replyFuture = new CompletableFuture<>();
         if (shuttingDown) {
             replyFuture.complete(ChatReply.error(SHUTTING_DOWN_REPLY));
@@ -141,15 +170,27 @@ public class MessagePushJob {
 
         AtomicBoolean activePermitHeld = new AtomicBoolean(true);
         AtomicBoolean physicalPermitHeld = new AtomicBoolean(true);
-        AtomicBoolean llmTaskStarted = new AtomicBoolean(false);
-        Future<?> llmTask;
+        AtomicReference<Future<?>> llmTask = new AtomicReference<>();
+        ScheduledFuture<?> timeoutTask;
         try {
-            llmTask = llmExecutor.submit(() -> {
-                llmTaskStarted.set(true);
+            timeoutTask = timeoutExecutor.schedule(
+                    () -> timeoutReply(conversationId, replyFuture, llmTask.get()),
+                    Math.max(1L, llmTimeout.toMillis()),
+                    TimeUnit.MILLISECONDS
+            );
+        } catch (RejectedExecutionException exception) {
+            releaseActivePermit(activePermitHeld);
+            releasePhysicalPermit(physicalPermitHeld);
+            replyFuture.completeExceptionally(exception);
+            return replyFuture;
+        }
+
+        try {
+            Future<?> submittedTask = llmExecutor.submit(() -> {
                 try {
                     ChatReply reply = aiChatService.reply(conversationId, userContent);
                     if (!replyFuture.complete(reply)) {
-                        publishLateReply(conversationId, reply);
+                        publishLateReply(conversationId, userMessageId, reply);
                     }
                 } catch (Throwable error) {
                     if (!replyFuture.completeExceptionally(error)) {
@@ -163,29 +204,18 @@ public class MessagePushJob {
                     releasePhysicalPermit(physicalPermitHeld);
                 }
             });
+            llmTask.set(submittedTask);
+            if (replyFuture.isDone()) {
+                submittedTask.cancel(true);
+            }
         } catch (RejectedExecutionException exception) {
+            timeoutTask.cancel(false);
             releaseActivePermit(activePermitHeld);
             releasePhysicalPermit(physicalPermitHeld);
             replyFuture.completeExceptionally(exception);
             return replyFuture;
         }
 
-        ScheduledFuture<?> timeoutTask;
-        try {
-            timeoutTask = timeoutExecutor.schedule(
-                    () -> timeoutReply(conversationId, replyFuture, llmTask),
-                    Math.max(1L, llmTimeout.toMillis()),
-                    TimeUnit.MILLISECONDS
-            );
-        } catch (RejectedExecutionException exception) {
-            llmTask.cancel(true);
-            replyFuture.completeExceptionally(exception);
-            releaseActivePermit(activePermitHeld);
-            if (!llmTaskStarted.get()) {
-                releasePhysicalPermit(physicalPermitHeld);
-            }
-            return replyFuture;
-        }
         replyFuture.whenComplete((reply, error) -> {
             releaseActivePermit(activePermitHeld);
             timeoutTask.cancel(false);
@@ -195,7 +225,9 @@ public class MessagePushJob {
 
     private void timeoutReply(UUID conversationId, CompletableFuture<ChatReply> replyFuture, Future<?> llmTask) {
         if (replyFuture.complete(ChatReply.error(TIMEOUT_REPLY))) {
-            llmTask.cancel(true);
+            if (llmTask != null) {
+                llmTask.cancel(true);
+            }
             LOGGER.warn("LLM request timed out after {} ms for conversation {}.", llmTimeout.toMillis(), conversationId);
         }
     }
@@ -264,7 +296,7 @@ public class MessagePushJob {
         }
     }
 
-    private void publishLateReply(UUID conversationId, ChatReply reply) {
+    private void publishLateReply(UUID conversationId, UUID userMessageId, ChatReply reply) {
         if (!reply.assistant()) {
             LOGGER.warn("LLM request returned a late {} reply for conversation {} after the pipeline moved on.",
                     reply.role(), conversationId);
@@ -273,7 +305,7 @@ public class MessagePushJob {
         LOGGER.info("Publishing late assistant reply for conversation {} after an earlier timeout.", conversationId);
         try {
             CompletableFuture
-                    .runAsync(() -> publishTransientMessage(conversationId, reply.role(), reply.content()), replyExecutor)
+                    .runAsync(() -> publishLateAssistantReply(conversationId, userMessageId, reply), replyExecutor)
                     .exceptionally(error -> {
                         publishPipelineFailure(conversationId, error);
                         return null;
@@ -283,7 +315,30 @@ public class MessagePushJob {
         }
     }
 
-    private ThreadFactory namedThreadFactory(String prefix) {
+    private void publishLateAssistantReply(UUID conversationId, UUID userMessageId, ChatReply reply) {
+        if (canAppendLateReply(conversationId, userMessageId)) {
+            appendAssistantMessage(conversationId, reply.content());
+            return;
+        }
+        publishTransientMessage(conversationId, reply.role(), reply.content());
+    }
+
+    private boolean canAppendLateReply(UUID conversationId, UUID userMessageId) {
+        if (userMessageId == null) {
+            return false;
+        }
+        return conversationRepository.findById(conversationId)
+                .map(conversation -> {
+                    if (conversation.getMessages().isEmpty()) {
+                        return false;
+                    }
+                    Message lastMessage = conversation.getMessages().get(conversation.getMessages().size() - 1);
+                    return userMessageId.equals(lastMessage.getId()) && "user".equals(lastMessage.getRole());
+                })
+                .orElse(false);
+    }
+
+    private static ThreadFactory namedThreadFactory(String prefix) {
         AtomicInteger counter = new AtomicInteger();
         return runnable -> {
             Thread thread = new Thread(runnable, prefix + "-" + counter.incrementAndGet());

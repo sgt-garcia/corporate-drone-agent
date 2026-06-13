@@ -102,7 +102,8 @@ class WorkspaceDeletionServiceTests {
                     assertThat(message.getContent()).isEqualTo("Draft the kickoff note");
                     assertThat(message.getCreatedAt()).isNotNull();
                 });
-        verify(messagePushJob).queueAssistantReply(conversation.getId(), "Draft the kickoff note");
+        verify(messagePushJob)
+                .queueAssistantReply(eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"));
     }
 
     @Test
@@ -132,7 +133,7 @@ class WorkspaceDeletionServiceTests {
                 .containsExactly("Draft the kickoff note");
         // The reply is re-queued for that same message: once on send, once on retry.
         verify(messagePushJob, times(2))
-                .queueAssistantReply(conversation.getId(), "Draft the kickoff note");
+                .queueAssistantReply(eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"));
     }
 
     @Test
