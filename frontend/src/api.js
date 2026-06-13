@@ -76,6 +76,12 @@ export async function regenerateConversationReply(conversationId) {
   });
 }
 
+export async function markConversationSeen(conversationId) {
+  return requestNoContent(`/api/conversations/${conversationId}/seen`, {
+    method: "POST"
+  });
+}
+
 export async function getSettings() {
   return request("/api/settings");
 }

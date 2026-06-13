@@ -188,28 +188,28 @@ class WorkspaceDeletionServiceTests {
     }
 
     @Test
-    void openingAReviewConversationMarksItSeen() {
+    void markingAReviewConversationSeenMovesItToSuccess() {
         Project project = saveProject("Launch");
         Conversation conversation = saveConversation(project, "Prep");
         conversationRepository.updateStatus(conversation.getId(), "review");
 
-        ConversationDto opened = conversationService.get(conversation.getId());
+        conversationService.markSeen(conversation.getId());
 
-        assertThat(opened.status()).isEqualTo("success");
         assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getStatus())
                 .isEqualTo("success");
         verify(eventService).publish(eq("conversation-status"), any());
     }
 
     @Test
-    void openingANonReviewConversationLeavesItsStatusUnchanged() {
+    void markingANonReviewConversationSeenLeavesItsStatusUnchanged() {
         Project project = saveProject("Launch");
         Conversation conversation = saveConversation(project, "Prep");
         conversationRepository.updateStatus(conversation.getId(), "running");
 
-        ConversationDto opened = conversationService.get(conversation.getId());
+        conversationService.markSeen(conversation.getId());
 
-        assertThat(opened.status()).isEqualTo("running");
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getStatus())
+                .isEqualTo("running");
         verify(eventService, never()).publish(eq("conversation-status"), any());
     }
 

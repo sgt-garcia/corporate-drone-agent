@@ -11,6 +11,7 @@ import {
   getConversation,
   getProjects,
   getSettings,
+  markConversationSeen as markConversationSeenRequest,
   pauseJiraProject as pauseJiraProjectRequest,
   pauseKnowledgeFolder as pauseKnowledgeFolderRequest,
   regenerateConversationReply,
@@ -138,6 +139,12 @@ export default function App() {
     }
 
     loadConversation(activeWorkItem.item.id);
+    // Opening a conversation that just finished acknowledges it (review →
+    // success). Runs on every open — not just the first — since loadConversation
+    // short-circuits once a conversation is cached.
+    if (activeWorkItem.item.status === "review") {
+      markConversationSeen(activeWorkItem.item.id);
+    }
   }, [activeWorkItem]);
 
   useEffect(() => {
@@ -511,6 +518,16 @@ export default function App() {
       await regenerateConversationReply(conversationId);
     } catch (error) {
       setStatusText(error.message);
+    }
+  }
+
+  // Tell the backend a review conversation has been opened. Best-effort: a
+  // failure just leaves it in "review", so it's not surfaced as an error.
+  async function markConversationSeen(conversationId) {
+    try {
+      await markConversationSeenRequest(conversationId);
+    } catch {
+      // ignored — status simply stays "review"
     }
   }
 

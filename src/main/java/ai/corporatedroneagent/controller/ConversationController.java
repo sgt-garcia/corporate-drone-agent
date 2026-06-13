@@ -65,4 +65,10 @@ public class ConversationController {
     public void regenerateLastReply(@PathVariable UUID conversationId) {
         conversationService.regenerateLastReply(conversationId);
     }
+
+    @PostMapping("/{conversationId}/seen")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void markSeen(@PathVariable UUID conversationId) {
+        conversationService.markSeen(conversationId);
+    }
 }

@@ -43,14 +43,21 @@ public class ConversationService {
     }
 
     public synchronized ConversationDto get(UUID conversationId) {
+        return toDto(getConversation(conversationId));
+    }
+
+    /**
+     * Acknowledge a freshly-completed conversation: review → success. Triggered
+     * when the user opens it. A no-op for any other status, so callers can fire
+     * it on every open without checking first.
+     */
+    public synchronized void markSeen(UUID conversationId) {
         Conversation conversation = getConversation(conversationId);
-        // Opening a freshly-completed conversation acknowledges it: review → success.
-        if ("review".equals(conversation.getStatus())) {
-            conversationRepository.updateStatus(conversationId, "success");
-            conversation.setStatus("success");
-            eventService.publish("conversation-status", new ConversationStatusDto(conversationId, "success"));
+        if (!"review".equals(conversation.getStatus())) {
+            return;
         }
-        return toDto(conversation);
+        conversationRepository.updateStatus(conversationId, "success");
+        eventService.publish("conversation-status", new ConversationStatusDto(conversationId, "success"));
     }
 
     public synchronized ConversationDto create(UUID projectId, ConversationRequest request) {
