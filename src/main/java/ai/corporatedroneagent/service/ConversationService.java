@@ -137,6 +137,9 @@ public class ConversationService {
      */
     public synchronized void retryLastReply(UUID conversationId) {
         Conversation conversation = getConversation(conversationId);
+        if (replyInFlight(conversation)) {
+            return;
+        }
         Message lastUserMessage = lastUserMessage(conversation)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "There is no message to retry yet"));
@@ -158,12 +161,24 @@ public class ConversationService {
      */
     public synchronized void regenerateLastReply(UUID conversationId) {
         Conversation conversation = getConversation(conversationId);
+        if (replyInFlight(conversation)) {
+            return;
+        }
         Message lastUserMessage = lastUserMessage(conversation)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "There is no reply to regenerate yet"));
         UUID replacedReplyId = trailingAssistantReplyId(conversation).orElse(null);
         messagePushJob.queueAssistantReply(
                 conversationId, lastUserMessage.getId(), lastUserMessage.getContent(), replacedReplyId);
+    }
+
+    // A reply is already being generated for this conversation. queueAssistantReply
+    // flips the status to "running" synchronously (publishStatus) before the async
+    // pipeline starts, and retry/regenerate share this service's monitor, so a
+    // second rapid request — e.g. a double-clicked button — sees "running" and is
+    // dropped rather than stacking a duplicate reply onto the same turn.
+    private boolean replyInFlight(Conversation conversation) {
+        return "running".equals(conversation.getStatus());
     }
 
     private Optional<UUID> trailingAssistantReplyId(Conversation conversation) {

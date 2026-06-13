@@ -106,6 +106,11 @@ export default function App() {
   // selection without depending on a stale render-time closure.
   const projectsRef = useRef(projects);
   const renameRef = useRef(null);
+  // Conversations with a retry/regenerate POST in flight. Set synchronously on
+  // click and held until the server's status turn lands (or the POST fails), so a
+  // second click before the "thinking" turn appears can't fire a duplicate POST —
+  // the !busy button gate alone leaves that first-click window open.
+  const pendingReplyActionsRef = useRef(new Set());
 
   useEffect(() => {
     projectsRef.current = projects;
@@ -479,11 +484,28 @@ export default function App() {
     }
   }
 
+  // Claim the in-flight slot for a retry/regenerate. Returns false when a reply
+  // is already pending (a POST hasn't yet surfaced its status turn) or running
+  // (the "thinking" turn is up), so the caller bails before issuing a duplicate
+  // request. The flag is cleared once the server's response lands
+  // (addMessageToConversation) or the POST fails.
+  function beginReplyAction(conversationId) {
+    if (pendingReplyActionsRef.current.has(conversationId)) {
+      return false;
+    }
+    const conversation = conversationsById[conversationId];
+    if (conversation?.messages.some((message) => message.role === "status")) {
+      return false;
+    }
+    pendingReplyActionsRef.current.add(conversationId);
+    return true;
+  }
+
   // Re-run the last reply in place. The failed turn is transient (never
   // persisted), so drop it locally, then ask the backend to regenerate the
   // reply for the existing last user message — no duplicate prompt is added.
   async function retryConversation(conversationId) {
-    if (!conversationsById[conversationId]) {
+    if (!conversationsById[conversationId] || !beginReplyAction(conversationId)) {
       return;
     }
     setConversationsById((current) => {
@@ -503,6 +525,7 @@ export default function App() {
       await retryConversationReply(conversationId);
     } catch (error) {
       setStatusText(error.message);
+      pendingReplyActionsRef.current.delete(conversationId);
     }
   }
 
@@ -512,13 +535,14 @@ export default function App() {
   // the replacement has landed. So the turn is swapped rather than duplicated,
   // and a failed regenerate leaves the original reply intact.
   async function regenerateConversation(conversationId) {
-    if (!conversationsById[conversationId]) {
+    if (!conversationsById[conversationId] || !beginReplyAction(conversationId)) {
       return;
     }
     try {
       await regenerateConversationReply(conversationId);
     } catch (error) {
       setStatusText(error.message);
+      pendingReplyActionsRef.current.delete(conversationId);
     }
   }
 
@@ -780,6 +804,10 @@ export default function App() {
   }
 
   function addMessageToConversation(conversationId, message) {
+    // The action's first server-driven turn (the "thinking" status, or a terminal
+    // error if the pipeline never started) has landed, so the !busy gate now
+    // guards re-clicks — release the synchronous pending flag.
+    pendingReplyActionsRef.current.delete(conversationId);
     setConversationsById((currentConversations) => {
       const conversation = currentConversations[conversationId];
 

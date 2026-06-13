@@ -193,6 +193,34 @@ class WorkspaceDeletionServiceTests {
     }
 
     @Test
+    void regeneratingWhileAReplyIsAlreadyInFlightIsIgnored() {
+        // A reply is mid-flight (status "running"). A second regenerate — e.g. a
+        // double-clicked button — must not stack a duplicate reply onto the turn.
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+        seedUserMessage(conversation, "Draft the kickoff note");
+        conversationRepository.updateStatus(conversation.getId(), "running");
+
+        conversationService.regenerateLastReply(conversation.getId());
+
+        verify(messagePushJob, never()).queueAssistantReply(
+                any(UUID.class), any(UUID.class), any(String.class), any());
+    }
+
+    @Test
+    void retryingWhileAReplyIsAlreadyInFlightIsIgnored() {
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+        seedUserMessage(conversation, "Draft the kickoff note");
+        conversationRepository.updateStatus(conversation.getId(), "running");
+
+        conversationService.retryLastReply(conversation.getId());
+
+        verify(messagePushJob, never()).queueAssistantReply(
+                any(UUID.class), any(UUID.class), any(String.class));
+    }
+
+    @Test
     void markingAReviewConversationSeenMovesItToSuccess() {
         Project project = saveProject("Launch");
         Conversation conversation = saveConversation(project, "Prep");
@@ -266,5 +294,14 @@ class WorkspaceDeletionServiceTests {
         stored.getConversationIds().add(conversation.getId());
         projectRepository.save(stored);
         return conversation;
+    }
+
+    // Append a user turn straight through the repository, bypassing sendUserMessage
+    // so the (mocked) push job records no queue call the test would have to account
+    // for.
+    private void seedUserMessage(Conversation conversation, String content) {
+        conversationRepository.appendMessage(
+                conversation.getId(),
+                new Message(UUID.randomUUID(), "user", content, null));
     }
 }
