@@ -126,6 +126,38 @@ public class ConversationService {
         messagePushJob.queueAssistantReply(conversationId, lastUserMessage.getId(), lastUserMessage.getContent());
     }
 
+    /**
+     * Regenerate the most recent assistant reply in place. Unlike {@link
+     * #retryLastReply}, the reply being replaced here is a <em>persisted</em>
+     * assistant turn, so we delete it (publishing a {@code message-deleted} event
+     * so connected clients drop it) before re-queueing a fresh reply for the same
+     * user message. The status indicator and the new reply then stream back over
+     * SSE, swapping the turn rather than appending a duplicate. If the last reply
+     * never persisted (e.g. it errored), there is nothing to remove and this
+     * behaves like {@link #retryLastReply}.
+     */
+    public synchronized void regenerateLastReply(UUID conversationId) {
+        Conversation conversation = getConversation(conversationId);
+        Message lastUserMessage = lastUserMessage(conversation)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "There is no reply to regenerate yet"));
+        removeTrailingAssistantReply(conversation);
+        messagePushJob.queueAssistantReply(conversationId, lastUserMessage.getId(), lastUserMessage.getContent());
+    }
+
+    private void removeTrailingAssistantReply(Conversation conversation) {
+        List<Message> messages = conversation.getMessages();
+        if (messages.isEmpty()) {
+            return;
+        }
+        Message last = messages.get(messages.size() - 1);
+        if (!"assistant".equals(last.getRole())) {
+            return;
+        }
+        conversationRepository.deleteMessage(conversation.getId(), last.getId());
+        eventService.publish("message-deleted", new MessageEventDto(conversation.getId(), toDto(last)));
+    }
+
     private Optional<Message> lastUserMessage(Conversation conversation) {
         List<Message> messages = conversation.getMessages();
         for (int index = messages.size() - 1; index >= 0; index--) {

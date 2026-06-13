@@ -70,6 +70,12 @@ export async function retryConversationReply(conversationId) {
   });
 }
 
+export async function regenerateConversationReply(conversationId) {
+  return requestNoContent(`/api/conversations/${conversationId}/regenerate`, {
+    method: "POST"
+  });
+}
+
 export async function getSettings() {
   return request("/api/settings");
 }

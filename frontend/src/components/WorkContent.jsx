@@ -13,6 +13,7 @@ export function WorkContent({
   onProjectSave,
   onProjectDelete,
   onRetry,
+  onRegenerate,
   onSend
 }) {
   if (activeItem.type === "empty") {
@@ -63,6 +64,7 @@ export function WorkContent({
       onDraftChange={(value) => onDraftChange(activeItem.item.id, value)}
       onOpenProviders={onOpenProviders}
       onRetry={() => onRetry(activeItem.item.id)}
+      onRegenerate={() => onRegenerate(activeItem.item.id)}
       onSend={(content) => onSend(activeItem.item.id, content)}
       project={activeItem.project}
       value={draftsByConversationId[activeItem.item.id] ?? ""}

@@ -13,6 +13,7 @@ import {
   getSettings,
   pauseJiraProject as pauseJiraProjectRequest,
   pauseKnowledgeFolder as pauseKnowledgeFolderRequest,
+  regenerateConversationReply,
   renameConversation as renameConversationRequest,
   removeJiraProject as removeJiraProjectRequest,
   removeKnowledgeFolder as removeKnowledgeFolderRequest,
@@ -146,6 +147,10 @@ export default function App() {
     events.addEventListener("message-created", (event) => {
       const payload = JSON.parse(event.data);
       addMessageToConversation(payload.conversationId, payload.message);
+    });
+    events.addEventListener("message-deleted", (event) => {
+      const payload = JSON.parse(event.data);
+      removeMessageFromConversation(payload.conversationId, payload.message.id);
     });
     events.addEventListener("projects-updated", () => {
       refreshProjectsFromServer();
@@ -482,6 +487,21 @@ export default function App() {
     }
   }
 
+  // Regenerate the last (successful, persisted) reply. The backend deletes the
+  // existing assistant turn — emitting message-deleted, which drops it here —
+  // then streams a fresh reply in its place, so the turn is swapped rather than
+  // duplicated.
+  async function regenerateConversation(conversationId) {
+    if (!conversationsById[conversationId]) {
+      return;
+    }
+    try {
+      await regenerateConversationReply(conversationId);
+    } catch (error) {
+      setStatusText(error.message);
+    }
+  }
+
   function openProviderSettings() {
     setSettingsSection("providers");
     setActivePage("settings");
@@ -713,6 +733,22 @@ export default function App() {
     });
   }
 
+  function removeMessageFromConversation(conversationId, messageId) {
+    setConversationsById((currentConversations) => {
+      const conversation = currentConversations[conversationId];
+      if (!conversation) {
+        return currentConversations;
+      }
+      return {
+        ...currentConversations,
+        [conversationId]: {
+          ...conversation,
+          messages: conversation.messages.filter((message) => message.id !== messageId)
+        }
+      };
+    });
+  }
+
   function addMessageToConversation(conversationId, message) {
     setConversationsById((currentConversations) => {
       const conversation = currentConversations[conversationId];
@@ -860,6 +896,7 @@ export default function App() {
             onProjectSave={updateProject}
             onProjectDelete={deleteProject}
             onRetry={retryConversation}
+            onRegenerate={regenerateConversation}
             onSend={sendMessage}
           />
         </main>

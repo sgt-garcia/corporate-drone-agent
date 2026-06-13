@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -142,6 +143,56 @@ class WorkspaceDeletionServiceTests {
         Conversation conversation = saveConversation(project, "Prep");
 
         assertThatThrownBy(() -> conversationService.retryLastReply(conversation.getId()))
+                .isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void regeneratingReplacesThePersistedAssistantReplyInPlace() {
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+        conversationService.sendUserMessage(conversation.getId(), "Draft the kickoff note");
+        // Stand in for the reply the (mocked) push job would have appended.
+        conversationRepository.appendMessage(
+                conversation.getId(),
+                new Message(UUID.randomUUID(), "assistant", "Here is a draft", null));
+
+        conversationService.regenerateLastReply(conversation.getId());
+
+        // The stale reply is dropped — only the user turn remains; the fresh reply
+        // is appended asynchronously by the push job, which is mocked here.
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .extracting(Message::getContent)
+                .containsExactly("Draft the kickoff note");
+        verify(eventService).publish(eq("message-deleted"), any());
+        // Re-queued for the same user message: once on send, once on regenerate.
+        verify(messagePushJob, times(2))
+                .queueAssistantReply(eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"));
+    }
+
+    @Test
+    void regeneratingWithNoPersistedReplyRequeuesWithoutDeleting() {
+        // The previous reply errored, so it was never persisted — the last turn is
+        // still the user message. Regenerate has nothing to drop and just re-queues.
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+        conversationService.sendUserMessage(conversation.getId(), "Draft the kickoff note");
+
+        conversationService.regenerateLastReply(conversation.getId());
+
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .extracting(Message::getContent)
+                .containsExactly("Draft the kickoff note");
+        verify(eventService, never()).publish(eq("message-deleted"), any());
+        verify(messagePushJob, times(2))
+                .queueAssistantReply(eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"));
+    }
+
+    @Test
+    void regeneratingAConversationWithNoUserMessageIsRejected() {
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+
+        assertThatThrownBy(() -> conversationService.regenerateLastReply(conversation.getId()))
                 .isInstanceOf(ResponseStatusException.class);
     }
 

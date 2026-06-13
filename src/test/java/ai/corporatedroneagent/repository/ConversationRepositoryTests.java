@@ -81,6 +81,52 @@ class ConversationRepositoryTests {
     }
 
     @Test
+    void deleteMessageRemovesOnlyTheTargetedMessage() {
+        Project project = saveProject();
+        Conversation conversation = saveConversation(project);
+        Message userTurn = new Message(UUID.randomUUID(), "user", "ask", null);
+        Message assistantTurn = new Message(UUID.randomUUID(), "assistant", "answer", null);
+        conversationRepository.appendMessage(conversation.getId(), userTurn);
+        conversationRepository.appendMessage(conversation.getId(), assistantTurn);
+
+        assertThat(conversationRepository.deleteMessage(conversation.getId(), assistantTurn.getId())).isTrue();
+
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .extracting(Message::getContent)
+                .containsExactly("ask");
+    }
+
+    @Test
+    void deletingAMissingMessageReportsNoRowRemoved() {
+        Project project = saveProject();
+        Conversation conversation = saveConversation(project);
+
+        assertThat(conversationRepository.deleteMessage(conversation.getId(), UUID.randomUUID())).isFalse();
+    }
+
+    @Test
+    void appendingAfterDeletingTheLastReplyKeepsTheNewReplyAtTheEnd() {
+        // The regenerate flow deletes the old reply (leaving an index gap) and then
+        // appends a fresh one; nextMessageIndex is MAX + 1, so it still lands last.
+        Project project = saveProject();
+        Conversation conversation = saveConversation(project);
+        Message userTurn = new Message(UUID.randomUUID(), "user", "ask", null);
+        Message oldReply = new Message(UUID.randomUUID(), "assistant", "old answer", null);
+        conversationRepository.appendMessage(conversation.getId(), userTurn);
+        conversationRepository.appendMessage(conversation.getId(), oldReply);
+
+        conversationRepository.deleteMessage(conversation.getId(), oldReply.getId());
+        conversationRepository.appendMessage(
+                conversation.getId(),
+                new Message(UUID.randomUUID(), "assistant", "new answer", null)
+        );
+
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .extracting(Message::getContent)
+                .containsExactly("ask", "new answer");
+    }
+
+    @Test
     void concurrentAppendsAssignUniqueSequentialIndices() throws InterruptedException {
         Project project = saveProject();
         Conversation conversation = saveConversation(project);

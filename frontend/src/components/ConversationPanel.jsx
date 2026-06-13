@@ -11,6 +11,7 @@ export function ConversationPanel({
   onDraftChange,
   onOpenProviders,
   onRetry,
+  onRegenerate,
   onSend,
   project,
   value
@@ -45,9 +46,12 @@ export function ConversationPanel({
     }
   }, [conversation.id, messages, isEmpty]);
 
-  // The last agent turn owns the Retry affordance — only the most recent reply
-  // can be re-run, mirroring the design's error card.
+  // The last agent turn owns the Retry / Regenerate affordances — only the most
+  // recent reply can be re-run, mirroring the design's error card and toolbar.
   const lastAgentMessageId = findLastAgentMessageId(messages);
+  // A reply is in flight while the transient "status" turn (thinking dots) is up;
+  // Regenerate hides until it settles so we never stack reply requests.
+  const busy = messages.some((message) => message.role === "status");
 
   function submitMessage() {
     onSend(value);
@@ -63,7 +67,13 @@ export function ConversationPanel({
         {isEmpty ? (
           <EmptyGreeting projectName={project?.name} />
         ) : (
-          renderThread(messages, { echoMode, onRetry, lastAgentMessageId })
+          renderThread(messages, {
+            echoMode,
+            onRetry,
+            onRegenerate,
+            lastAgentMessageId,
+            busy
+          })
         )}
       </div>
 
@@ -91,13 +101,15 @@ function renderThread(messages, turnProps) {
       out.push(<DayDivider key={`day-${key}-${message.id}`} dayKey={key} />);
       lastKey = key;
     }
+    const isLastAgentTurn = message.id === turnProps.lastAgentMessageId;
     out.push(
       <Turn
         key={message.id}
         message={message}
         echoMode={turnProps.echoMode}
-        onRetry={
-          message.id === turnProps.lastAgentMessageId ? turnProps.onRetry : undefined
+        onRetry={isLastAgentTurn ? turnProps.onRetry : undefined}
+        onRegenerate={
+          isLastAgentTurn && !turnProps.busy ? turnProps.onRegenerate : undefined
         }
       />
     );
@@ -136,7 +148,7 @@ function DayDivider({ dayKey }) {
   );
 }
 
-function Turn({ message, echoMode = false, onRetry }) {
+function Turn({ message, echoMode = false, onRetry, onRegenerate }) {
   const timeLabel = formatTime(message.createdAt);
   const stamp = formatStamp(message.createdAt);
 
@@ -211,7 +223,10 @@ function Turn({ message, echoMode = false, onRetry }) {
                   <SourcePanel sources={message.sources} />
                 ) : null}
                 <div className="agent-meta-row">
-                  <AgentActions content={message.content} />
+                  <AgentActions
+                    content={message.content}
+                    onRegenerate={onRegenerate}
+                  />
                   <span className="agent-meta-spacer" />
                   {timeLabel && (
                     <span className="turn-time turn-time--inline" title={stamp}>
@@ -228,10 +243,9 @@ function Turn({ message, echoMode = false, onRetry }) {
   );
 }
 
-// Client-side reply actions. Copy is local-only; Regenerate is intentionally
-// absent — the backend's reply pipeline is append-only (a completed reply is
-// persisted), so re-running it would duplicate the turn rather than replace it.
-function AgentActions({ content }) {
+// Client-side reply toolbar: Copy is local-only; Regenerate (shown on the last
+// agent turn while idle) asks the backend to replace the reply in place.
+function AgentActions({ content, onRegenerate }) {
   const [copied, setCopied] = useState(false);
 
   function copy() {
@@ -257,6 +271,11 @@ function AgentActions({ content }) {
         />
         {copied ? "Copied" : "Copy"}
       </button>
+      {onRegenerate && (
+        <button type="button" className="agent-act" onClick={onRegenerate}>
+          <Icon name="refresh-cw" size={14} color="var(--gray-500)" /> Regenerate
+        </button>
+      )}
     </div>
   );
 }

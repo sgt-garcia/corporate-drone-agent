@@ -131,6 +131,23 @@ public class ConversationRepository {
         return Optional.of(message);
     }
 
+    // Delete a single message by id. Used to drop the persisted assistant reply
+    // before a regenerate re-queues a fresh one, so the turn is replaced rather
+    // than duplicated. Leaving a gap in message_index is harmless — nextMessageIndex
+    // is MAX + 1, so the regenerated reply still lands at the end.
+    @Transactional
+    public synchronized boolean deleteMessage(UUID conversationId, UUID messageId) {
+        int deleted = jdbcTemplate.update(
+                "DELETE FROM conversation_messages WHERE conversation_id = ? AND id = ?",
+                conversationId,
+                messageId
+        );
+        if (deleted > 0) {
+            touchConversation(conversationId);
+        }
+        return deleted > 0;
+    }
+
     private void prepareForAppend(Message message) {
         if (message.getId() == null) {
             message.setId(UUID.randomUUID());

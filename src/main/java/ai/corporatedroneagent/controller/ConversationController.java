@@ -59,4 +59,10 @@ public class ConversationController {
     public void retryLastReply(@PathVariable UUID conversationId) {
         conversationService.retryLastReply(conversationId);
     }
+
+    @PostMapping("/{conversationId}/regenerate")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void regenerateLastReply(@PathVariable UUID conversationId) {
+        conversationService.regenerateLastReply(conversationId);
+    }
 }
