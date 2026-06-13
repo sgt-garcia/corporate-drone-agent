@@ -3,6 +3,11 @@ import ReactMarkdown from "react-markdown";
 import { Icon } from "./Icon.jsx";
 import { Logomark } from "./Logomark.jsx";
 
+// How close to the bottom (px) still counts as "following" the conversation.
+// A short status turn scrolled to its top stays within this; a long reply does
+// not, so a late event won't yank a reader who's working through it.
+const NEAR_BOTTOM_PX = 80;
+
 export function ConversationPanel({
   conversation,
   echoMode = false,
@@ -17,11 +22,28 @@ export function ConversationPanel({
   value
 }) {
   const historyRef = useRef(null);
+  // Whether the reader is parked near the bottom. Updated on every user scroll;
+  // appending a turn doesn't move scrollTop (so doesn't fire scroll), so this
+  // holds their last intent. Defaults true so the first turn auto-scrolls.
+  const isNearBottomRef = useRef(true);
+  // The last turn we acted on, so we only auto-scroll when the tail turn is new
+  // (or replaced) — not on every messages identity change.
+  const lastTurnIdRef = useRef(null);
+  const lastConversationIdRef = useRef(null);
 
   // Show the design's greeting until the conversation has actually started —
   // i.e. until the user has sent a message. Gated on isLoaded so the greeting
   // never flashes while messages are still being fetched.
   const isEmpty = isLoaded && !messages.some((message) => message.role === "user");
+
+  function handleHistoryScroll() {
+    const container = historyRef.current;
+    if (!container) {
+      return;
+    }
+    isNearBottomRef.current =
+      container.scrollHeight - container.scrollTop - container.clientHeight <= NEAR_BOTTOM_PX;
+  }
 
   useEffect(() => {
     const container = historyRef.current;
@@ -29,13 +51,31 @@ export function ConversationPanel({
       return;
     }
     const last = messages[messages.length - 1];
+    const conversationChanged = lastConversationIdRef.current !== conversation.id;
+    const turnChanged = lastTurnIdRef.current !== last.id;
+    lastConversationIdRef.current = conversation.id;
+    lastTurnIdRef.current = last.id;
+
+    // Only auto-scroll for a genuinely new/replaced tail turn — never on an
+    // in-place messages update. A trailing user turn always scrolls (they just
+    // sent it); an agent turn (incl. the status indicator) follows only when the
+    // reader is near the bottom, so scrolling up to read a streaming reply isn't
+    // yanked. Opening a conversation always lands on the latest turn.
+    if (!conversationChanged && !turnChanged) {
+      return;
+    }
+    const trailingUserTurn = last.role === "user";
+    if (!conversationChanged && !trailingUserTurn && !isNearBottomRef.current) {
+      return;
+    }
+
     const lastEl = container.lastElementChild;
     // For agent replies (incl. while the status indicator is up), land the
     // reader at the TOP of the latest turn rather than the absolute bottom —
     // long replies are taller than the viewport, so bottom-scrolling drops you
     // mid-message and clips the tail behind the composer. Fall back to bottom
     // for a trailing user turn.
-    if (last.role !== "user" && lastEl) {
+    if (!trailingUserTurn && lastEl) {
       const top =
         lastEl.getBoundingClientRect().top -
         container.getBoundingClientRect().top +
@@ -68,6 +108,7 @@ export function ConversationPanel({
         className={isEmpty ? "thread is-empty" : "thread"}
         aria-label="Message history"
         ref={historyRef}
+        onScroll={handleHistoryScroll}
       >
         {isEmpty ? (
           <EmptyGreeting projectName={project?.name} />
