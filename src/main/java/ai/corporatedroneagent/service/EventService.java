@@ -5,6 +5,7 @@ import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
@@ -24,7 +25,15 @@ public class EventService {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventService.class);
     private static final int EVENT_THREADS = 2;
     private static final int EVENT_QUEUE_CAPACITY = 256;
-    private static final String MESSAGE_CREATED_EVENT = "message-created";
+    // Events that mutate persisted client state and must not be dropped under
+    // saturation — losing one corrupts the thread (a missed message-deleted
+    // leaves a duplicate reply; a missed conversation-status strands the status).
+    // High-frequency cosmetic events (scan-progress, refetch nudges) stay droppable.
+    private static final Set<String> CRITICAL_EVENTS = Set.of(
+            "message-created",
+            "message-deleted",
+            "conversation-status"
+    );
 
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
     private final ThreadPoolExecutor eventExecutor = new ThreadPoolExecutor(
@@ -113,8 +122,8 @@ public class EventService {
             delegate.run();
         }
 
-        boolean isMessageCreated() {
-            return MESSAGE_CREATED_EVENT.equals(event.type());
+        boolean isCritical() {
+            return CRITICAL_EVENTS.contains(event.type());
         }
 
         String type() {
@@ -129,7 +138,7 @@ public class EventService {
             if (executor.isShutdown()) {
                 return;
             }
-            if (runnable instanceof EventSendTask task && task.isMessageCreated()) {
+            if (runnable instanceof EventSendTask task && task.isCritical()) {
                 LOGGER.warn("SSE event executor is saturated; sending {} event on caller thread.", task.type());
                 task.run();
             }

@@ -32,6 +32,44 @@ class EventServiceTests {
     }
 
     @Test
+    void rejectedMessageDeletedEventRunsOnCallerThread() {
+        AtomicInteger sends = new AtomicInteger();
+        ThreadPoolExecutor executor = executor();
+        try {
+            new EventService.EventRejectionHandler().rejectedExecution(
+                    new EventService.EventSendTask(
+                            new ApiEvent("message-deleted", Map.of()),
+                            sends::incrementAndGet
+                    ),
+                    executor
+            );
+
+            assertThat(sends).hasValue(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void rejectedConversationStatusEventRunsOnCallerThread() {
+        AtomicInteger sends = new AtomicInteger();
+        ThreadPoolExecutor executor = executor();
+        try {
+            new EventService.EventRejectionHandler().rejectedExecution(
+                    new EventService.EventSendTask(
+                            new ApiEvent("conversation-status", Map.of()),
+                            sends::incrementAndGet
+                    ),
+                    executor
+            );
+
+            assertThat(sends).hasValue(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void rejectedRefetchNotificationIsDiscarded() {
         AtomicInteger sends = new AtomicInteger();
         ThreadPoolExecutor executor = executor();

@@ -417,7 +417,7 @@ public class MessagePushJob {
 
     private void publishLateAssistantReply(UUID conversationId, UUID userMessageId, ChatReply reply) {
         if (userMessageId == null) {
-            publishTransientMessage(conversationId, reply.role(), reply.content());
+            dropStaleLateReply(conversationId);
             return;
         }
         Message message = assistantMessage(reply.content(), reply.sources());
@@ -430,8 +430,20 @@ public class MessagePushJob {
                             );
                             setConversationStatus(conversationId, "review");
                         },
-                        () -> publishTransientMessage(conversationId, reply.role(), reply.content())
+                        () -> dropStaleLateReply(conversationId)
                 );
+    }
+
+    // The conversation already moved on (a newer turn was persisted, e.g. the
+    // user retried after a timeout), so this late reply can't be appended in
+    // order. Drop it: re-publishing would add a phantom assistant bubble, and it
+    // must NOT force an "error" status — that would clobber a conversation the
+    // user has already seen complete.
+    private void dropStaleLateReply(UUID conversationId) {
+        LOGGER.info(
+                "Dropping a stale late assistant reply for conversation {}; a newer turn already exists.",
+                conversationId
+        );
     }
 
     private Message assistantMessage(String content, List<MessageSourceDto> sources) {

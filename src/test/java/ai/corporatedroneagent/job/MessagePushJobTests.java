@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -252,7 +253,7 @@ class MessagePushJobTests {
     }
 
     @Test
-    void lateAssistantRepliesAreTransientWhenNewerTurnsWouldMakePersistenceOutOfOrder()
+    void lateAssistantRepliesAreDroppedWhenNewerTurnsWouldMakePersistenceOutOfOrder()
             throws InterruptedException {
         UUID conversationId = UUID.randomUUID();
         UUID userMessageId = UUID.randomUUID();
@@ -260,14 +261,14 @@ class MessagePushJobTests {
         EventService eventService = mock(EventService.class);
         AiChatService aiChatService = mock(AiChatService.class);
         CountDownLatch started = new CountDownLatch(1);
-        CountDownLatch lateReplyPublished = new CountDownLatch(1);
+        CountDownLatch lateAppendAttempted = new CountDownLatch(1);
         AtomicBoolean finishLate = new AtomicBoolean(false);
+        AtomicBoolean lateReplyPublished = new AtomicBoolean(false);
         AtomicInteger interrupts = new AtomicInteger();
         doAnswer(invocation -> {
             MessageEventDto event = invocation.getArgument(1, MessageEventDto.class);
-            if ("assistant".equals(event.message().role())
-                    && "late answer".equals(event.message().content())) {
-                lateReplyPublished.countDown();
+            if ("late answer".equals(event.message().content())) {
+                lateReplyPublished.set(true);
             }
             return null;
         }).when(eventService).publish(eq("message-created"), any());
@@ -286,7 +287,10 @@ class MessagePushJobTests {
                 eq(conversationId),
                 eq(userMessageId),
                 any(Message.class)
-        )).thenReturn(Optional.empty());
+        )).thenAnswer(invocation -> {
+            lateAppendAttempted.countDown();
+            return Optional.empty();
+        });
         MessagePushJob job = new MessagePushJob(
                 conversationRepository,
                 eventService,
@@ -301,12 +305,17 @@ class MessagePushJobTests {
 
             finishLate.set(true);
 
-            assertThat(lateReplyPublished.await(3, TimeUnit.SECONDS)).isTrue();
+            // The late reply tries to persist in order, can't, and is dropped: it is
+            // never re-published as an assistant turn (which would be a phantom
+            // duplicate) and never forces an "error" status onto the settled turn.
+            assertThat(lateAppendAttempted.await(3, TimeUnit.SECONDS)).isTrue();
             assertThat(interrupts.get()).isGreaterThanOrEqualTo(1);
-            verify(conversationRepository)
-                    .appendMessageIfLastUserMessageIs(eq(conversationId), eq(userMessageId), any(Message.class));
             verify(conversationRepository, after(200).never())
                     .appendMessage(eq(conversationId), any(Message.class));
+            assertThat(lateReplyPublished.get()).isFalse();
+            // Only the timeout sets "error"; the dropped late reply must not add a
+            // second status write that would re-clobber an already-settled turn.
+            verify(conversationRepository, times(1)).updateStatus(conversationId, "error");
         } finally {
             finishLate.set(true);
             job.shutdown();

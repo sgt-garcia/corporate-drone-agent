@@ -219,6 +219,13 @@ export default function App() {
           )
         }))
       );
+      // A settled reply (anything but "running") means no thinking indicator
+      // should linger. SSE has no ordering guarantee, so a reply's terminal
+      // message-created can arrive before its status turn — drop any stale status
+      // turn here so `busy` reconciles to server truth and can't stick.
+      if (status !== "running") {
+        dropStatusTurn(id);
+      }
     });
     events.addEventListener("settings-updated", () => {
       refreshSettingsFromServer();
@@ -494,9 +501,9 @@ export default function App() {
       setStatusText(error.message);
       // The send was rejected (e.g. a reply is already in flight from another
       // tab) — restore the draft so the typed message isn't lost, unless the
-      // user has already started a new one.
+      // user has already started a real new one (whitespace doesn't count).
       setDraftsByConversationId((currentDrafts) =>
-        currentDrafts[conversationId]
+        currentDrafts[conversationId]?.trim()
           ? currentDrafts
           : { ...currentDrafts, [conversationId]: content }
       );
@@ -803,6 +810,25 @@ export default function App() {
       const next = { ...current };
       delete next[id];
       return next;
+    });
+  }
+
+  // Drop any lingering "thinking" status turn from a loaded conversation. Used to
+  // reconcile `busy` to server truth when a terminal conversation-status arrives,
+  // since SSE delivery isn't ordered and a status turn can outlive its reply.
+  function dropStatusTurn(conversationId) {
+    setConversationsById((current) => {
+      const conversation = current[conversationId];
+      if (!conversation || !conversation.messages.some((message) => message.role === "status")) {
+        return current;
+      }
+      return {
+        ...current,
+        [conversationId]: {
+          ...conversation,
+          messages: conversation.messages.filter((message) => message.role !== "status")
+        }
+      };
     });
   }
 
