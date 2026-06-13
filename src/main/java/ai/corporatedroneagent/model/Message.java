@@ -1,6 +1,9 @@
 package ai.corporatedroneagent.model;
 
+import ai.corporatedroneagent.dto.MessageSourceDto;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 public class Message {
@@ -9,6 +12,7 @@ public class Message {
     private String role;
     private String content;
     private Instant createdAt;
+    private List<MessageSourceDto> sources = new ArrayList<>();
 
     public Message() {
     }
@@ -50,5 +54,13 @@ public class Message {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public List<MessageSourceDto> getSources() {
+        return sources;
+    }
+
+    public void setSources(List<MessageSourceDto> sources) {
+        this.sources = sources == null ? new ArrayList<>() : sources;
     }
 }

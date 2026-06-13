@@ -114,7 +114,12 @@ public class AiChatService {
         if (chatProvider == null) {
             return echoReply(userContent);
         }
-        return chatProvider.reply(new ChatRequest(settings, conversation, project, knowledgeContext));
+        ChatReply reply = chatProvider.reply(new ChatRequest(settings, conversation, project, knowledgeContext));
+        // Surface the knowledge the agent consulted as the reply's sources.
+        if (reply.assistant()) {
+            return ChatReply.assistant(reply.content(), MessageSourceMapper.toSources(knowledgeContext));
+        }
+        return reply;
     }
 
     private List<KnowledgeContextSnippet> knowledgeContext(String userContent) {

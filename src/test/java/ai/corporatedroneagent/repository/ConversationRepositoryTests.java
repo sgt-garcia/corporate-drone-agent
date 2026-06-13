@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.corporatedroneagent.TestDatabaseSupport;
+import ai.corporatedroneagent.dto.MessageSourceDto;
 import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.model.Project;
@@ -95,6 +96,41 @@ class ConversationRepositoryTests {
         assertThat(conversationRepository.findSummariesByProjectId(project.getId()))
                 .singleElement()
                 .satisfies(summary -> assertThat(summary.status()).isEqualTo("review"));
+    }
+
+    @Test
+    void assistantMessageSourcesRoundTripThroughJson() {
+        Project project = saveProject();
+        Conversation conversation = saveConversation(project);
+        Message assistant = new Message(UUID.randomUUID(), "assistant", "Here you go", null);
+        assistant.setSources(List.of(new MessageSourceDto(
+                "s0", "doc", "file-text", "plan.md", "Local folder · Q2 ops", "", "",
+                new MessageSourceDto.Preview("Spend is on track."))));
+        conversationRepository.appendMessage(conversation.getId(), assistant);
+
+        Message loaded = conversationRepository.findById(conversation.getId()).orElseThrow()
+                .getMessages().stream()
+                .filter(message -> "assistant".equals(message.getRole()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(loaded.getSources()).singleElement().satisfies(source -> {
+            assertThat(source.kind()).isEqualTo("doc");
+            assertThat(source.title()).isEqualTo("plan.md");
+            assertThat(source.preview().excerpt()).isEqualTo("Spend is on track.");
+        });
+    }
+
+    @Test
+    void messagesWithoutSourcesLoadAsAnEmptyList() {
+        Project project = saveProject();
+        Conversation conversation = saveConversation(project);
+        conversationRepository.appendMessage(
+                conversation.getId(),
+                new Message(UUID.randomUUID(), "user", "hi", null));
+
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .singleElement()
+                .satisfies(message -> assertThat(message.getSources()).isEmpty());
     }
 
     @Test

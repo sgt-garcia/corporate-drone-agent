@@ -390,28 +390,27 @@ function SourcePreview({ source, onClose }) {
           <div className="source-preview-excerpt">{preview.excerpt}</div>
         )}
       </div>
-      <div className="source-preview-foot">
-        {source.kind === "draft" && (
-          <span className="badge badge-warning">
-            <span className="dot" /> Not sent
-          </span>
-        )}
-        <span className="source-preview-foot-spacer" />
-        <a
-          className="source-link"
-          href={source.url || "#"}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(event) => {
-            if (!source.url) {
-              event.preventDefault();
-            }
-          }}
-        >
-          {source.actionLabel || "Open"}{" "}
-          <Icon name="external-link" size={13} color="var(--blue-600)" />
-        </a>
-      </div>
+      {(source.kind === "draft" || source.url) && (
+        <div className="source-preview-foot">
+          {source.kind === "draft" && (
+            <span className="badge badge-warning">
+              <span className="dot" /> Not sent
+            </span>
+          )}
+          <span className="source-preview-foot-spacer" />
+          {source.url && (
+            <a
+              className="source-link"
+              href={source.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {source.actionLabel || "Open"}{" "}
+              <Icon name="external-link" size={13} color="var(--blue-600)" />
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }

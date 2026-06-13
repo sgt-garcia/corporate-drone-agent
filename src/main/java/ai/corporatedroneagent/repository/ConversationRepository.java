@@ -1,8 +1,12 @@
 package ai.corporatedroneagent.repository;
 
 import ai.corporatedroneagent.dto.ConversationSummaryDto;
+import ai.corporatedroneagent.dto.MessageSourceDto;
 import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Message;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -26,7 +30,12 @@ public class ConversationRepository {
     // with a freshly recomputed index rather than surfacing it to the caller.
     private static final int MAX_APPEND_ATTEMPTS = 8;
 
+    private static final TypeReference<List<MessageSourceDto>> SOURCE_LIST =
+            new TypeReference<>() {
+            };
+
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ConversationRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -164,16 +173,17 @@ public class ConversationRepository {
             try {
                 jdbcTemplate.update("""
                         INSERT INTO conversation_messages (
-                            id, conversation_id, message_index, role, content, created_at
+                            id, conversation_id, message_index, role, content, created_at, sources
                         )
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
                         message.getId(),
                         conversationId,
                         nextMessageIndex(conversationId),
                         message.getRole(),
                         message.getContent(),
-                        timestamp(message.getCreatedAt())
+                        timestamp(message.getCreatedAt()),
+                        serializeSources(message.getSources())
                 );
                 touchConversation(conversationId);
                 return;
@@ -238,12 +248,37 @@ public class ConversationRepository {
     }
 
     private Message mapMessage(ResultSet resultSet, int rowNumber) throws SQLException {
-        return new Message(
+        Message message = new Message(
                 resultSet.getObject("id", UUID.class),
                 resultSet.getString("role"),
                 resultSet.getString("content"),
                 instant(resultSet, "created_at")
         );
+        message.setSources(deserializeSources(resultSet.getString("sources")));
+        return message;
+    }
+
+    private String serializeSources(List<MessageSourceDto> sources) {
+        if (sources == null || sources.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(sources);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize message sources", exception);
+        }
+    }
+
+    private List<MessageSourceDto> deserializeSources(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, SOURCE_LIST);
+        } catch (JsonProcessingException exception) {
+            // A malformed/legacy value shouldn't break loading a conversation.
+            return List.of();
+        }
     }
 
     private int nextSortOrder(UUID projectId) {

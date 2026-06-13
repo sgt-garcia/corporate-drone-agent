@@ -207,6 +207,11 @@ public class ConversationService {
     }
 
     private MessageDto toDto(Message message) {
-        return new MessageDto(message.getId(), message.getRole(), message.getContent(), message.getCreatedAt());
+        return new MessageDto(
+                message.getId(),
+                message.getRole(),
+                message.getContent(),
+                message.getCreatedAt(),
+                message.getSources());
     }
 }

@@ -3,6 +3,7 @@ package ai.corporatedroneagent.job;
 import ai.corporatedroneagent.dto.ConversationStatusDto;
 import ai.corporatedroneagent.dto.MessageDto;
 import ai.corporatedroneagent.dto.MessageEventDto;
+import ai.corporatedroneagent.dto.MessageSourceDto;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.service.AiChatService;
@@ -11,6 +12,7 @@ import ai.corporatedroneagent.service.EventService;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -292,7 +294,8 @@ public class MessagePushJob {
                 UUID.randomUUID(),
                 "status",
                 "...",
-                Instant.now()
+                Instant.now(),
+                List.of()
         );
         eventService.publish("message-created", new MessageEventDto(conversationId, status));
         setConversationStatus(conversationId, "running");
@@ -308,14 +311,14 @@ public class MessagePushJob {
 
     private void publishReply(UUID conversationId, ChatReply reply) {
         if (reply.assistant()) {
-            appendAssistantMessage(conversationId, reply.content());
+            appendAssistantMessage(conversationId, reply.content(), reply.sources());
             return;
         }
         publishTransientMessage(conversationId, reply.role(), reply.content());
     }
 
-    private void appendAssistantMessage(UUID conversationId, String content) {
-        Message message = assistantMessage(content);
+    private void appendAssistantMessage(UUID conversationId, String content, List<MessageSourceDto> sources) {
+        Message message = assistantMessage(content, sources);
 
         conversationRepository.appendMessage(conversationId, message)
                 .ifPresent(savedMessage -> {
@@ -332,7 +335,8 @@ public class MessagePushJob {
                 UUID.randomUUID(),
                 role,
                 content,
-                Instant.now()
+                Instant.now(),
+                List.of()
         );
         eventService.publish("message-created", new MessageEventDto(conversationId, message));
         // Transient messages are always failure replies (error/busy/saturated/
@@ -373,7 +377,7 @@ public class MessagePushJob {
             publishTransientMessage(conversationId, reply.role(), reply.content());
             return;
         }
-        Message message = assistantMessage(reply.content());
+        Message message = assistantMessage(reply.content(), reply.sources());
         conversationRepository.appendMessageIfLastUserMessageIs(conversationId, userMessageId, message)
                 .ifPresentOrElse(
                         savedMessage -> {
@@ -387,13 +391,15 @@ public class MessagePushJob {
                 );
     }
 
-    private Message assistantMessage(String content) {
-        return new Message(
+    private Message assistantMessage(String content, List<MessageSourceDto> sources) {
+        Message message = new Message(
                 UUID.randomUUID(),
                 "assistant",
                 content,
                 Instant.now()
         );
+        message.setSources(sources);
+        return message;
     }
 
     private static ThreadFactory namedThreadFactory(String prefix) {
@@ -418,7 +424,8 @@ public class MessagePushJob {
                 message.getId(),
                 message.getRole(),
                 message.getContent(),
-                message.getCreatedAt()
+                message.getCreatedAt(),
+                message.getSources()
         );
     }
 
