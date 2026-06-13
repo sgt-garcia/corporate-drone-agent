@@ -7,19 +7,23 @@ import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.model.Project;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 class ConversationRepositoryTests {
 
+    private JdbcTemplate jdbcTemplate;
     private ConversationRepository conversationRepository;
     private ProjectRepository projectRepository;
 
     @BeforeEach
     void setUp() {
-        JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
+        jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
         conversationRepository = new ConversationRepository(jdbcTemplate);
         projectRepository = new ProjectRepository(jdbcTemplate);
     }
@@ -70,6 +74,47 @@ class ConversationRepositoryTests {
         assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
                 .extracting(Message::getContent)
                 .containsExactly("slow", "already answered");
+    }
+
+    @Test
+    void concurrentAppendsAssignUniqueSequentialIndices() throws InterruptedException {
+        Project project = saveProject();
+        Conversation conversation = saveConversation(project);
+
+        int appenders = 16;
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(appenders);
+        List<Throwable> failures = new CopyOnWriteArrayList<>();
+        for (int index = 0; index < appenders; index++) {
+            String content = "message-" + index;
+            Thread thread = new Thread(() -> {
+                try {
+                    start.await();
+                    conversationRepository.appendMessage(
+                            conversation.getId(),
+                            new Message(UUID.randomUUID(), "user", content, null)
+                    );
+                } catch (Throwable failure) {
+                    failures.add(failure);
+                } finally {
+                    done.countDown();
+                }
+            });
+            thread.start();
+        }
+
+        start.countDown();
+        done.await();
+
+        assertThat(failures).isEmpty();
+        List<Integer> indices = jdbcTemplate.queryForList(
+                "SELECT message_index FROM conversation_messages WHERE conversation_id = ? ORDER BY message_index",
+                Integer.class,
+                conversation.getId()
+        );
+        assertThat(indices).hasSize(appenders).doesNotHaveDuplicates();
+        assertThat(indices.get(0)).isZero();
+        assertThat(indices.get(indices.size() - 1)).isEqualTo(appenders - 1);
     }
 
     private Project saveProject() {

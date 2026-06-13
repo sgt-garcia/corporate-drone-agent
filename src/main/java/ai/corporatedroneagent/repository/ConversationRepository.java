@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -17,6 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class ConversationRepository {
+
+    // A conversation's message_index is assigned as MAX(message_index) + 1. Two
+    // appends on different threads (e.g. a user message and an assistant reply)
+    // can read the same MAX before either row is visible to the other, colliding
+    // on uk_conversation_messages_conversation_index. We retry the rare conflict
+    // with a freshly recomputed index rather than surfacing it to the caller.
+    private static final int MAX_APPEND_ATTEMPTS = 8;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -92,7 +100,12 @@ public class ConversationRepository {
         return conversation;
     }
 
-    @Transactional
+    // Deliberately not @Transactional: the message INSERT must commit before the
+    // synchronized monitor is released, otherwise a concurrent appender computing
+    // MAX(message_index) in its own transaction would not see this row yet and
+    // would pick a colliding index. Running each statement in autocommit closes
+    // that window; insertMessage additionally retries on the unique-constraint
+    // conflict as a backstop.
     public synchronized Optional<Message> appendMessage(UUID conversationId, Message message) {
         if (!exists(conversationId)) {
             return Optional.empty();
@@ -102,7 +115,6 @@ public class ConversationRepository {
         return Optional.of(message);
     }
 
-    @Transactional
     public synchronized Optional<Message> appendMessageIfLastUserMessageIs(
             UUID conversationId,
             UUID expectedLastUserMessageId,
@@ -129,19 +141,32 @@ public class ConversationRepository {
     }
 
     private void insertMessage(UUID conversationId, Message message) {
-        jdbcTemplate.update("""
-                INSERT INTO conversation_messages (
-                    id, conversation_id, message_index, role, content, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                message.getId(),
-                conversationId,
-                nextMessageIndex(conversationId),
-                message.getRole(),
-                message.getContent(),
-                timestamp(message.getCreatedAt())
-        );
+        DuplicateKeyException lastConflict = null;
+        for (int attempt = 0; attempt < MAX_APPEND_ATTEMPTS; attempt++) {
+            try {
+                jdbcTemplate.update("""
+                        INSERT INTO conversation_messages (
+                            id, conversation_id, message_index, role, content, created_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        message.getId(),
+                        conversationId,
+                        nextMessageIndex(conversationId),
+                        message.getRole(),
+                        message.getContent(),
+                        timestamp(message.getCreatedAt())
+                );
+                touchConversation(conversationId);
+                return;
+            } catch (DuplicateKeyException conflict) {
+                lastConflict = conflict;
+            }
+        }
+        throw lastConflict;
+    }
+
+    private void touchConversation(UUID conversationId) {
         jdbcTemplate.update(
                 "UPDATE conversations SET updated_at = ? WHERE id = ?",
                 Timestamp.from(Instant.now()),
