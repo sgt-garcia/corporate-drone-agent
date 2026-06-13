@@ -49,6 +49,11 @@ export function ConversationPanel({
   // The last agent turn owns the Retry / Regenerate affordances — only the most
   // recent reply can be re-run, mirroring the design's error card and toolbar.
   const lastAgentMessageId = findLastAgentMessageId(messages);
+  // Regenerate is gated on the genuine last turn (not just the last agent turn):
+  // while a regenerate is mid-flight the old reply is dropped before the new one
+  // arrives, and gating on "last agent" would briefly surface the button on an
+  // earlier reply. Gating on the final message keeps it pinned to the live turn.
+  const lastMessageId = messages.length ? messages[messages.length - 1].id : null;
   // A reply is in flight while the transient "status" turn (thinking dots) is up;
   // Regenerate hides until it settles so we never stack reply requests.
   const busy = messages.some((message) => message.role === "status");
@@ -72,6 +77,7 @@ export function ConversationPanel({
             onRetry,
             onRegenerate,
             lastAgentMessageId,
+            lastMessageId,
             busy
           })
         )}
@@ -102,6 +108,7 @@ function renderThread(messages, turnProps) {
       lastKey = key;
     }
     const isLastAgentTurn = message.id === turnProps.lastAgentMessageId;
+    const isLastTurn = message.id === turnProps.lastMessageId;
     out.push(
       <Turn
         key={message.id}
@@ -109,7 +116,7 @@ function renderThread(messages, turnProps) {
         echoMode={turnProps.echoMode}
         onRetry={isLastAgentTurn ? turnProps.onRetry : undefined}
         onRegenerate={
-          isLastAgentTurn && !turnProps.busy ? turnProps.onRegenerate : undefined
+          isLastTurn && !turnProps.busy ? turnProps.onRegenerate : undefined
         }
       />
     );
