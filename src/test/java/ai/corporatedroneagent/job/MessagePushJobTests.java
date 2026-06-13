@@ -63,6 +63,56 @@ class MessagePushJobTests {
     }
 
     @Test
+    void movesConversationFromRunningToReviewWhenAReplyLands() {
+        UUID conversationId = UUID.randomUUID();
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        when(conversationRepository.updateStatus(eq(conversationId), any())).thenReturn(true);
+        when(conversationRepository.appendMessage(eq(conversationId), any(Message.class)))
+                .thenAnswer(invocation -> Optional.of(invocation.getArgument(1)));
+        EventService eventService = mock(EventService.class);
+        AiChatService aiChatService = mock(AiChatService.class);
+        when(aiChatService.reply(conversationId, "hi")).thenReturn(ChatReply.assistant("answer"));
+        MessagePushJob job = new MessagePushJob(conversationRepository, eventService, aiChatService);
+
+        try {
+            queueAssistantReply(job, conversationId, "hi");
+
+            // Gate on the reply landing (status + assistant message-created), then
+            // assert the status moved running → review and never errored.
+            verify(eventService, timeout(1000).times(2)).publish(eq("message-created"), any());
+            verify(conversationRepository).updateStatus(conversationId, "running");
+            verify(conversationRepository).updateStatus(conversationId, "review");
+            verify(conversationRepository, never()).updateStatus(conversationId, "error");
+        } finally {
+            job.shutdown();
+        }
+    }
+
+    @Test
+    void movesConversationFromRunningToErrorWhenAReplyFails() {
+        UUID conversationId = UUID.randomUUID();
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        when(conversationRepository.updateStatus(eq(conversationId), any())).thenReturn(true);
+        EventService eventService = mock(EventService.class);
+        AiChatService aiChatService = mock(AiChatService.class);
+        when(aiChatService.reply(conversationId, "hi")).thenReturn(ChatReply.error("boom"));
+        MessagePushJob job = new MessagePushJob(conversationRepository, eventService, aiChatService);
+
+        try {
+            queueAssistantReply(job, conversationId, "hi");
+
+            // Gate on the failure landing (status + error message-created), then
+            // assert the status moved running → error and never reached review.
+            verify(eventService, timeout(1000).times(2)).publish(eq("message-created"), any());
+            verify(conversationRepository).updateStatus(conversationId, "running");
+            verify(conversationRepository).updateStatus(conversationId, "error");
+            verify(conversationRepository, never()).updateStatus(conversationId, "review");
+        } finally {
+            job.shutdown();
+        }
+    }
+
+    @Test
     void appendFailuresArePublishedAsErrorMessages() {
         UUID conversationId = UUID.randomUUID();
         ConversationRepository conversationRepository = mock(ConversationRepository.class);

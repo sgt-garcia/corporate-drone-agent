@@ -81,6 +81,23 @@ class ConversationRepositoryTests {
     }
 
     @Test
+    void newConversationsDefaultToIdleAndUpdateStatusPersistsToReadsAndSummaries() {
+        Project project = saveProject();
+        Conversation conversation = saveConversation(project);
+
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getStatus())
+                .isEqualTo("idle");
+
+        assertThat(conversationRepository.updateStatus(conversation.getId(), "review")).isTrue();
+
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getStatus())
+                .isEqualTo("review");
+        assertThat(conversationRepository.findSummariesByProjectId(project.getId()))
+                .singleElement()
+                .satisfies(summary -> assertThat(summary.status()).isEqualTo("review"));
+    }
+
+    @Test
     void deleteMessageRemovesOnlyTheTargetedMessage() {
         Project project = saveProject();
         Conversation conversation = saveConversation(project);

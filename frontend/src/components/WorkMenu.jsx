@@ -1,4 +1,5 @@
 import { Icon } from "./Icon.jsx";
+import { STATUS_META, StatusShape, statusKey } from "./ConversationStatus.jsx";
 
 export function WorkMenu({
   activeItemId,
@@ -54,6 +55,7 @@ export function WorkMenu({
               <div className="conversation-list">
                 {project.conversations.map((conversation) => {
                   const isActive = conversation.id === activeItemId;
+                  const key = statusKey(conversation.status);
                   return (
                     <button
                       className={isActive ? "conversation-btn active" : "conversation-btn"}
@@ -62,8 +64,11 @@ export function WorkMenu({
                       aria-current={isActive ? "page" : undefined}
                       onClick={() => onSelect(conversation.id)}
                     >
-                      <span className="status-dot" aria-hidden="true" />
+                      <StatusShape status={conversation.status} />
                       <span className="conversation-name">{conversation.name}</span>
+                      <span className={`status-word status-word--${key}`}>
+                        {STATUS_META[key].word}
+                      </span>
                     </button>
                   );
                 })}

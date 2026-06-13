@@ -2,6 +2,7 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.dto.ConversationDto;
 import ai.corporatedroneagent.dto.ConversationRequest;
+import ai.corporatedroneagent.dto.ConversationStatusDto;
 import ai.corporatedroneagent.dto.ConversationSummaryDto;
 import ai.corporatedroneagent.dto.MessageDto;
 import ai.corporatedroneagent.dto.MessageEventDto;
@@ -42,7 +43,14 @@ public class ConversationService {
     }
 
     public synchronized ConversationDto get(UUID conversationId) {
-        return toDto(getConversation(conversationId));
+        Conversation conversation = getConversation(conversationId);
+        // Opening a freshly-completed conversation acknowledges it: review → success.
+        if ("review".equals(conversation.getStatus())) {
+            conversationRepository.updateStatus(conversationId, "success");
+            conversation.setStatus("success");
+            eventService.publish("conversation-status", new ConversationStatusDto(conversationId, "success"));
+        }
+        return toDto(conversation);
     }
 
     public synchronized ConversationDto create(UUID projectId, ConversationRequest request) {
@@ -61,7 +69,8 @@ public class ConversationService {
         eventService.publish("conversation-created", new ConversationSummaryDto(
                 conversation.getId(),
                 conversation.getProjectId(),
-                conversation.getName()
+                conversation.getName(),
+                conversation.getStatus()
         ));
         return dto;
     }
@@ -88,7 +97,8 @@ public class ConversationService {
         eventService.publish("conversation-deleted", new ConversationSummaryDto(
                 conversationId,
                 projectId,
-                conversation.getName()
+                conversation.getName(),
+                conversation.getStatus()
         ));
     }
 
@@ -184,6 +194,7 @@ public class ConversationService {
                 conversation.getId(),
                 conversation.getProjectId(),
                 conversation.getName(),
+                conversation.getStatus(),
                 conversation.getMessages().stream().map(this::toDto).toList()
         );
     }

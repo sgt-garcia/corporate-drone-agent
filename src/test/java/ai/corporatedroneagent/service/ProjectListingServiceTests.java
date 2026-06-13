@@ -87,7 +87,7 @@ class ProjectListingServiceTests {
         assertThat(projectService.listProjects())
                 .first()
                 .satisfies(projectDto -> assertThat(projectDto.conversations())
-                        .containsExactly(new ConversationSummaryDto(conversation.getId(), projectId, "Kickoff")));
+                        .containsExactly(new ConversationSummaryDto(conversation.getId(), projectId, "Kickoff", "idle")));
     }
 
     private UUID saveProjectAt(String name, Instant createdAt) {

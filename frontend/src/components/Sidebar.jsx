@@ -1,6 +1,9 @@
 import { Icon } from "./Icon.jsx";
 import { Logomark } from "./Logomark.jsx";
 import { WorkMenu } from "./WorkMenu.jsx";
+import { STATUS_META, StatusShape } from "./ConversationStatus.jsx";
+
+const LEGEND_STATUSES = ["running", "review", "success", "error"];
 
 export function Sidebar({
   projects,
@@ -44,6 +47,15 @@ export function Sidebar({
           onToggleProject={onToggleProject}
           projects={projects}
         />
+      </div>
+
+      <div className="status-legend" aria-label="Status key">
+        {LEGEND_STATUSES.map((status) => (
+          <span className="status-legend-item" key={status}>
+            <StatusShape status={status} />
+            <span className="status-legend-label">{STATUS_META[status].word}</span>
+          </span>
+        ))}
       </div>
 
       <div className="sidebar-footer">

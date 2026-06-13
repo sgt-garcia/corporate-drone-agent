@@ -186,6 +186,17 @@ export default function App() {
       refreshProjectsFromServer();
       refreshConversationFromServer(id);
     });
+    events.addEventListener("conversation-status", (event) => {
+      const { id, status } = JSON.parse(event.data);
+      setProjects((currentProjects) =>
+        currentProjects.map((project) => ({
+          ...project,
+          conversations: project.conversations.map((conversation) =>
+            conversation.id === id ? { ...conversation, status } : conversation
+          )
+        }))
+      );
+    });
     events.addEventListener("settings-updated", () => {
       refreshSettingsFromServer();
     });
@@ -293,7 +304,8 @@ export default function App() {
                 {
                   id: conversation.id,
                   projectId: conversation.projectId,
-                  name: conversation.name
+                  name: conversation.name,
+                  status: conversation.status ?? "idle"
                 },
                 { prepend: true }
               )

@@ -54,7 +54,7 @@ public class ConversationRepository {
 
     public List<ConversationSummaryDto> findSummariesByProjectId(UUID projectId) {
         return jdbcTemplate.query("""
-                SELECT id, project_id, name
+                SELECT id, project_id, name, status
                 FROM conversations
                 WHERE project_id = ?
                 ORDER BY sort_order, created_at, name
@@ -71,13 +71,14 @@ public class ConversationRepository {
         if (findById(conversation.getId()).isEmpty()) {
             jdbcTemplate.update("""
                     INSERT INTO conversations (
-                        id, project_id, name, sort_order, created_at, updated_at
+                        id, project_id, name, status, sort_order, created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     conversation.getId(),
                     conversation.getProjectId(),
                     conversation.getName(),
+                    conversation.getStatus(),
                     nextSortOrder(conversation.getProjectId()),
                     Timestamp.from(now),
                     Timestamp.from(now)
@@ -183,6 +184,17 @@ public class ConversationRepository {
         throw lastConflict;
     }
 
+    // Update only the run status (idle/running/review/success/error). Rename and
+    // status transitions stay independent so neither clobbers the other.
+    public synchronized boolean updateStatus(UUID conversationId, String status) {
+        return jdbcTemplate.update(
+                "UPDATE conversations SET status = ?, updated_at = ? WHERE id = ?",
+                status,
+                Timestamp.from(Instant.now()),
+                conversationId
+        ) > 0;
+    }
+
     private void touchConversation(UUID conversationId) {
         jdbcTemplate.update(
                 "UPDATE conversations SET updated_at = ? WHERE id = ?",
@@ -202,6 +214,7 @@ public class ConversationRepository {
         conversation.setId(conversationId);
         conversation.setProjectId(resultSet.getObject("project_id", UUID.class));
         conversation.setName(resultSet.getString("name"));
+        conversation.setStatus(resultSet.getString("status"));
         conversation.setMessages(messages(conversationId));
         return conversation;
     }
@@ -210,7 +223,8 @@ public class ConversationRepository {
         return new ConversationSummaryDto(
                 resultSet.getObject("id", UUID.class),
                 resultSet.getObject("project_id", UUID.class),
-                resultSet.getString("name")
+                resultSet.getString("name"),
+                resultSet.getString("status")
         );
     }
 

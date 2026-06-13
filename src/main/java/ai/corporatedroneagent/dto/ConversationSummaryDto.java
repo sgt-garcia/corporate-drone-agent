@@ -5,6 +5,7 @@ import java.util.UUID;
 public record ConversationSummaryDto(
         UUID id,
         UUID projectId,
-        String name
+        String name,
+        String status
 ) {
 }

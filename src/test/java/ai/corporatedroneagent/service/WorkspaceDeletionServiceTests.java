@@ -188,6 +188,32 @@ class WorkspaceDeletionServiceTests {
     }
 
     @Test
+    void openingAReviewConversationMarksItSeen() {
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+        conversationRepository.updateStatus(conversation.getId(), "review");
+
+        ConversationDto opened = conversationService.get(conversation.getId());
+
+        assertThat(opened.status()).isEqualTo("success");
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getStatus())
+                .isEqualTo("success");
+        verify(eventService).publish(eq("conversation-status"), any());
+    }
+
+    @Test
+    void openingANonReviewConversationLeavesItsStatusUnchanged() {
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+        conversationRepository.updateStatus(conversation.getId(), "running");
+
+        ConversationDto opened = conversationService.get(conversation.getId());
+
+        assertThat(opened.status()).isEqualTo("running");
+        verify(eventService, never()).publish(eq("conversation-status"), any());
+    }
+
+    @Test
     void regeneratingAConversationWithNoUserMessageIsRejected() {
         Project project = saveProject("Launch");
         Conversation conversation = saveConversation(project, "Prep");

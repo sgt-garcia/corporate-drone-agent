@@ -11,6 +11,7 @@ public class Conversation {
     private UUID id;
     private UUID projectId;
     private String name;
+    private String status = "idle";
     private List<Message> messages = new ArrayList<>();
 
     public UUID getId() {
@@ -35,6 +36,14 @@ public class Conversation {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status == null || status.isBlank() ? "idle" : status;
     }
 
     public List<Message> getMessages() {

@@ -7,6 +7,7 @@ public record ConversationDto(
         UUID id,
         UUID projectId,
         String name,
+        String status,
         List<MessageDto> messages
 ) {
 }

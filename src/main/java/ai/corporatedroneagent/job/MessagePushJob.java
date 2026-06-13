@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.job;
 
+import ai.corporatedroneagent.dto.ConversationStatusDto;
 import ai.corporatedroneagent.dto.MessageDto;
 import ai.corporatedroneagent.dto.MessageEventDto;
 import ai.corporatedroneagent.model.Message;
@@ -294,6 +295,15 @@ public class MessagePushJob {
                 Instant.now()
         );
         eventService.publish("message-created", new MessageEventDto(conversationId, status));
+        setConversationStatus(conversationId, "running");
+    }
+
+    // Persist the conversation's run status and notify the sidebar. States:
+    // running (reply in flight) → review (reply landed) | error (reply failed).
+    private void setConversationStatus(UUID conversationId, String status) {
+        if (conversationRepository.updateStatus(conversationId, status)) {
+            eventService.publish("conversation-status", new ConversationStatusDto(conversationId, status));
+        }
     }
 
     private void publishReply(UUID conversationId, ChatReply reply) {
@@ -308,10 +318,13 @@ public class MessagePushJob {
         Message message = assistantMessage(content);
 
         conversationRepository.appendMessage(conversationId, message)
-                .ifPresent(savedMessage -> eventService.publish(
-                        "message-created",
-                        new MessageEventDto(conversationId, toDto(savedMessage))
-                ));
+                .ifPresent(savedMessage -> {
+                    eventService.publish(
+                            "message-created",
+                            new MessageEventDto(conversationId, toDto(savedMessage))
+                    );
+                    setConversationStatus(conversationId, "review");
+                });
     }
 
     private void publishTransientMessage(UUID conversationId, String role, String content) {
@@ -322,6 +335,9 @@ public class MessagePushJob {
                 Instant.now()
         );
         eventService.publish("message-created", new MessageEventDto(conversationId, message));
+        // Transient messages are always failure replies (error/busy/saturated/
+        // shutting-down), so the conversation lands in the error state.
+        setConversationStatus(conversationId, "error");
     }
 
     private void publishPipelineFailure(UUID conversationId, Throwable error) {
@@ -360,10 +376,13 @@ public class MessagePushJob {
         Message message = assistantMessage(reply.content());
         conversationRepository.appendMessageIfLastUserMessageIs(conversationId, userMessageId, message)
                 .ifPresentOrElse(
-                        savedMessage -> eventService.publish(
-                                "message-created",
-                                new MessageEventDto(conversationId, toDto(savedMessage))
-                        ),
+                        savedMessage -> {
+                            eventService.publish(
+                                    "message-created",
+                                    new MessageEventDto(conversationId, toDto(savedMessage))
+                            );
+                            setConversationStatus(conversationId, "review");
+                        },
                         () -> publishTransientMessage(conversationId, reply.role(), reply.content())
                 );
     }
