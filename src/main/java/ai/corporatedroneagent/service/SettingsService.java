@@ -765,7 +765,10 @@ public class SettingsService {
                 .toList();
     }
 
-    private KnowledgeFolderDto knowledgeFolder(KnowledgeRoot root) {
+    // Canonical KnowledgeRoot -> folder-DTO mapper. KnowledgeFolderScanService
+    // delegates here so a scan's return DTO and the settings listing stay in sync
+    // (notably the "checked" freshness label, which a separate mapper kept dropping).
+    KnowledgeFolderDto knowledgeFolder(KnowledgeRoot root) {
         KnowledgeFolderDto folder = new KnowledgeFolderDto();
         folder.setId(root.getId());
         folder.setPath(root.getReference());

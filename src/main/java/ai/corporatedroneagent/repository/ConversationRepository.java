@@ -6,6 +6,7 @@ import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Message;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -35,7 +36,11 @@ public class ConversationRepository {
             };
 
     private final JdbcTemplate jdbcTemplate;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // Tolerate schema evolution: an old row may carry a field that a later
+    // MessageSourceDto no longer declares. Without this, deserialization throws,
+    // the catch below swallows it, and every source on that message silently drops.
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public ConversationRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;

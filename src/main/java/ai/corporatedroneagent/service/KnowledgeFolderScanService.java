@@ -24,9 +24,6 @@ public class KnowledgeFolderScanService {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeFolderScanService.class);
 
     private static final String STATUS_PAUSED = "paused";
-    private static final String STATUS_SCANNING = "scanning";
-    private static final String STATUS_SCANNED = "scanned";
-    private static final String STATUS_ERROR = "error";
     private static final String FOLDER_MISSING_MESSAGE =
             "Folder not found — it may have been moved, renamed, or unmounted.";
 
@@ -97,7 +94,14 @@ public class KnowledgeFolderScanService {
             LocalFolderKnowledgeScanService.ScanResult stats;
             try {
                 stats = scanKnowledgeFolder(folder, folderPath, folderId);
+            } catch (ResponseStatusException exception) {
+                // Settle the in-progress root as a failure so the folder doesn't
+                // stick at "scanning" forever; mirror the Jira scan's error path.
+                recordScanFailure(root, scanErrorMessage(exception));
+                publishSettingsUpdated();
+                throw exception;
             } catch (RuntimeException exception) {
+                recordScanFailure(root, "Could not scan folder");
                 publishSettingsUpdated();
                 throw exception;
             }
@@ -144,6 +148,11 @@ public class KnowledgeFolderScanService {
         return knowledgeRootRepository.save(root);
     }
 
+    private String scanErrorMessage(ResponseStatusException exception) {
+        String reason = exception.getReason();
+        return reason == null || reason.isBlank() ? "Could not scan folder" : reason;
+    }
+
     private Path folderPath(String path) {
         try {
             return Path.of(path);
@@ -174,38 +183,9 @@ public class KnowledgeFolderScanService {
     }
 
     private KnowledgeFolderDto knowledgeFolder(KnowledgeRoot root) {
-        KnowledgeFolderDto folder = new KnowledgeFolderDto();
-        folder.setId(root.getId());
-        folder.setPath(root.getReference());
-        folder.setStatus(folderStatus(root));
-        folder.setFiles(root.getTotalResources());
-        folder.setSize(root.getTotalSizeBytes() == 0 ? "" : formatBytes(root.getTotalSizeBytes()));
-        folder.setNextScan(nextScan(root));
-        folder.setMessage(STATUS_ERROR.equals(folder.getStatus()) ? root.getScanMessage() : "");
-        return folder;
-    }
-
-    private String folderStatus(KnowledgeRoot root) {
-        if (root.isPaused()) {
-            return STATUS_PAUSED;
-        }
-        if (root.getScanStatus() == WorkStatus.IN_PROGRESS) {
-            return STATUS_SCANNING;
-        }
-        // A settled scan that failed reports as an error; the reason is in scanMessage.
-        if (Boolean.FALSE.equals(root.getScanSuccess())) {
-            return STATUS_ERROR;
-        }
-        return STATUS_SCANNED;
-    }
-
-    private String nextScan(KnowledgeRoot root) {
-        if (!root.isPaused()
-                && root.getScanStatus() == WorkStatus.DONE
-                && Boolean.TRUE.equals(root.getScanSuccess())) {
-            return "~15 min";
-        }
-        return "";
+        // Single source of truth for the DTO mapping lives in SettingsService so the
+        // scan response and the settings listing can't drift (e.g. the "checked" label).
+        return settingsService.knowledgeFolder(root);
     }
 
     static String formatBytes(long bytes) {

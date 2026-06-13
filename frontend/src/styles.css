@@ -195,6 +195,15 @@ a {
   transform-origin: center;
 }
 
+/* Respect reduced-motion: drop the looping pulse/spin (streaming dots, running
+   indicator, spinners) — they read fine as static, fully-opaque marks. */
+@media (prefers-reduced-motion: reduce) {
+  .cda-pulse,
+  .cda-spin {
+    animation: none;
+  }
+}
+
 /* ---- Type helpers ---- */
 .ds-h1 {
   font-size: 30px;
@@ -663,15 +672,15 @@ select.input {
   color: var(--gray-500);
 }
 
-/* Persistent status key above the footer — one line, decodes the shapes. */
+/* Persistent status key above the footer — decodes the shapes. Wraps to a second
+   row rather than clipping when the 272px sidebar can't fit it on one line. */
 .status-legend {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px 11px;
   padding: 9px 16px 11px;
   border-top: 1px solid var(--border-divider);
-  white-space: nowrap;
-  overflow: hidden;
 }
 .status-legend-item {
   display: inline-flex;
