@@ -21,6 +21,7 @@ import ai.corporatedroneagent.util.Strings;
 import com.azure.ai.openai.OpenAIClientBuilder;
 import com.azure.core.credential.AzureKeyCredential;
 import com.google.genai.Client;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -59,7 +60,10 @@ import org.springframework.ai.openaisdk.OpenAiSdkChatOptions;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -72,6 +76,13 @@ public class AiChatService {
 
     private static final Logger log = LoggerFactory.getLogger(AiChatService.class);
     private static final int KNOWLEDGE_SEARCH_LIMIT = 5;
+    // Spring AI's RestClient-backed providers default to an infinite read timeout,
+    // so a provider that accepts the connection but never responds blocks the
+    // calling thread forever and holds an LLM permit until the app restarts. These
+    // timeouts are a hard backstop above the reply pipeline's own 60s timeout so a
+    // stuck call eventually fails and frees its permit.
+    private static final Duration LLM_HTTP_CONNECT_TIMEOUT = Duration.ofSeconds(15);
+    private static final Duration LLM_HTTP_READ_TIMEOUT = Duration.ofSeconds(120);
 
     private final SettingsService settingsService;
     private final ConversationRepository conversationRepository;
@@ -422,9 +433,20 @@ public class AiChatService {
         return Strings.defaultIfBlank(snippet.resourceReference(), snippet.resourceName());
     }
 
+    // A fresh builder per call: RestClient.Builder is not safe to share across the
+    // concurrent per-request model construction in the LLM executor.
+    private static RestClient.Builder timeoutRestClientBuilder() {
+        ClientHttpRequestFactorySettings settings = ClientHttpRequestFactorySettings.defaults()
+                .withConnectTimeout(LLM_HTTP_CONNECT_TIMEOUT)
+                .withReadTimeout(LLM_HTTP_READ_TIMEOUT);
+        return RestClient.builder()
+                .requestFactory(ClientHttpRequestFactoryBuilder.detect().build(settings));
+    }
+
     private static OpenAiChatModel buildOpenAiChatModel(OpenAiSettings settings) {
         OpenAiApi openAiApi = OpenAiApi.builder()
                 .apiKey(settings.getApiKey())
+                .restClientBuilder(timeoutRestClientBuilder())
                 .build();
 
         OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
@@ -461,6 +483,7 @@ public class AiChatService {
     private static OllamaChatModel buildOllamaChatModel(OllamaSettings settings) {
         OllamaApi ollamaApi = OllamaApi.builder()
                 .baseUrl(settings.getBaseUrl())
+                .restClientBuilder(timeoutRestClientBuilder())
                 .build();
 
         OllamaChatOptions chatOptions = OllamaChatOptions.builder()
@@ -476,6 +499,7 @@ public class AiChatService {
     private static MistralAiChatModel buildMistralChatModel(MistralSettings settings) {
         MistralAiApi mistralApi = MistralAiApi.builder()
                 .apiKey(settings.getApiKey())
+                .restClientBuilder(timeoutRestClientBuilder())
                 .build();
 
         MistralAiChatOptions chatOptions = MistralAiChatOptions.builder()
@@ -514,6 +538,7 @@ public class AiChatService {
     private static AnthropicChatModel buildAnthropicChatModel(AnthropicSettings settings) {
         AnthropicApi anthropicApi = AnthropicApi.builder()
                 .apiKey(settings.getApiKey())
+                .restClientBuilder(timeoutRestClientBuilder())
                 .build();
 
         AnthropicChatOptions chatOptions = AnthropicChatOptions.builder()
@@ -608,6 +633,7 @@ public class AiChatService {
         OpenAiApi openAiApi = OpenAiApi.builder()
                 .baseUrl("https://api.groq.com/openai")
                 .apiKey(settings.getApiKey())
+                .restClientBuilder(timeoutRestClientBuilder())
                 .build();
 
         OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
@@ -625,6 +651,7 @@ public class AiChatService {
                 .baseUrl("https://api.deepseek.com")
                 .completionsPath("/chat/completions")
                 .apiKey(settings.getApiKey())
+                .restClientBuilder(timeoutRestClientBuilder())
                 .build();
 
         OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
