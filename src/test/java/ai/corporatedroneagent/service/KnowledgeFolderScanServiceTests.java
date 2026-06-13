@@ -379,7 +379,9 @@ class KnowledgeFolderScanServiceTests {
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Could not scan folder");
 
-        assertThat(folder(configured.getId()).getStatus()).isEqualTo("scanned");
+        KnowledgeFolderDto erroredFolder = folder(configured.getId());
+        assertThat(erroredFolder.getStatus()).isEqualTo("error");
+        assertThat(erroredFolder.getMessage()).isEqualTo("Could not scan folder");
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
                 .orElseThrow();
@@ -391,6 +393,29 @@ class KnowledgeFolderScanServiceTests {
                     assertThat(scan.getStatus()).isEqualTo(WorkStatus.DONE);
                     assertThat(scan.getSuccess()).isFalse();
                 });
+    }
+
+    @Test
+    void scanFolderReportsErrorWhenTheFolderIsMissing() throws IOException {
+        Path folder = Files.createDirectory(root.resolve("vanishing"));
+        KnowledgeFolderDto configured =
+                settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
+        // The folder disappears (moved, renamed, or unmounted) before the scan runs.
+        Files.delete(folder);
+
+        assertThatThrownBy(() -> scanService.scanFolder(configured.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Folder path must be an existing folder");
+
+        KnowledgeFolderDto errored = folder(configured.getId());
+        assertThat(errored.getStatus()).isEqualTo("error");
+        assertThat(errored.getMessage())
+                .isEqualTo("Folder not found — it may have been moved, renamed, or unmounted.");
+        KnowledgeRoot knowledgeRoot = knowledgeRootRepository
+                .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
+                .orElseThrow();
+        assertThat(knowledgeRoot.getScanStatus()).isEqualTo(WorkStatus.DONE);
+        assertThat(knowledgeRoot.getScanSuccess()).isFalse();
     }
 
     @Test

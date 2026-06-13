@@ -26,6 +26,9 @@ public class KnowledgeFolderScanService {
     private static final String STATUS_PAUSED = "paused";
     private static final String STATUS_SCANNING = "scanning";
     private static final String STATUS_SCANNED = "scanned";
+    private static final String STATUS_ERROR = "error";
+    private static final String FOLDER_MISSING_MESSAGE =
+            "Folder not found — it may have been moved, renamed, or unmounted.";
 
     private final SettingsService settingsService;
     private final KnowledgeRootRepository knowledgeRootRepository;
@@ -79,6 +82,10 @@ public class KnowledgeFolderScanService {
 
             Path folderPath = folderPath(folder.getPath());
             if (!Files.isDirectory(folderPath)) {
+                // Persist the failure on the root (like a failed Jira scan) so the
+                // folder shows a sticky "error" row, then surface it to the caller.
+                recordScanFailure(root, FOLDER_MISSING_MESSAGE);
+                publishSettingsUpdated();
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path must be an existing folder");
             }
 
@@ -127,6 +134,16 @@ public class KnowledgeFolderScanService {
         return knowledgeRootRepository.save(root);
     }
 
+    // Mark a settled, failed scan with its reason — the folder DTO derives an
+    // "error" status from scanSuccess and surfaces scanMessage to the UI.
+    private KnowledgeRoot recordScanFailure(KnowledgeRoot root, String message) {
+        root.setScanStatus(WorkStatus.DONE);
+        root.setScanSuccess(false);
+        root.setScanMessage(message);
+        root.setScanFinishedAt(Instant.now());
+        return knowledgeRootRepository.save(root);
+    }
+
     private Path folderPath(String path) {
         try {
             return Path.of(path);
@@ -164,6 +181,7 @@ public class KnowledgeFolderScanService {
         folder.setFiles(root.getTotalResources());
         folder.setSize(root.getTotalSizeBytes() == 0 ? "" : formatBytes(root.getTotalSizeBytes()));
         folder.setNextScan(nextScan(root));
+        folder.setMessage(STATUS_ERROR.equals(folder.getStatus()) ? root.getScanMessage() : "");
         return folder;
     }
 
@@ -173,6 +191,10 @@ public class KnowledgeFolderScanService {
         }
         if (root.getScanStatus() == WorkStatus.IN_PROGRESS) {
             return STATUS_SCANNING;
+        }
+        // A settled scan that failed reports as an error; the reason is in scanMessage.
+        if (Boolean.FALSE.equals(root.getScanSuccess())) {
+            return STATUS_ERROR;
         }
         return STATUS_SCANNED;
     }

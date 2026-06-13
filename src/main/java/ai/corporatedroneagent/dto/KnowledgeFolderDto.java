@@ -11,6 +11,7 @@ public class KnowledgeFolderDto {
     private String size = "";
     private String nextScan = "";
     private String checked = "";
+    private String message = "";
 
     public UUID getId() {
         return id;
@@ -66,5 +67,13 @@ public class KnowledgeFolderDto {
 
     public void setChecked(String checked) {
         this.checked = checked == null ? "" : checked;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message == null ? "" : message;
     }
 }

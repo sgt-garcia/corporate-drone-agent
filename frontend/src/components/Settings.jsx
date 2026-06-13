@@ -944,7 +944,7 @@ function LocalFoldersConfig({
         metaScanned={folderMeta}
         metaPaused={(folder) => `Paused · ${folderMeta(folder)}`}
         metaError={(folder) =>
-          folder.reason ||
+          folder.message ||
           "Folder not found — it may have been moved, renamed, or unmounted."
         }
         addControl={

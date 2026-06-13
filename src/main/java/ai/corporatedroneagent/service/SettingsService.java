@@ -776,6 +776,7 @@ public class SettingsService {
                 : KnowledgeFolderScanService.formatBytes(root.getTotalSizeBytes()));
         folder.setNextScan(nextScan(root));
         folder.setChecked(checkedLabel(root));
+        folder.setMessage("error".equals(folder.getStatus()) ? root.getScanMessage() : "");
         return folder;
     }
 
@@ -815,6 +816,11 @@ public class SettingsService {
         }
         if (root.getScanStatus() == WorkStatus.IN_PROGRESS) {
             return "scanning";
+        }
+        // A settled scan that failed surfaces as an error, mirroring how a Jira
+        // project reports a failed scan. The reason rides along in scanMessage.
+        if (Boolean.FALSE.equals(root.getScanSuccess())) {
+            return "error";
         }
         return "scanned";
     }
@@ -919,7 +925,7 @@ public class SettingsService {
     private String sanitizeFolderStatus(String status) {
         String normalized = Strings.defaultIfBlank(status, "scanned");
         return switch (normalized) {
-            case "paused", "scanning" -> normalized;
+            case "paused", "scanning", "error" -> normalized;
             default -> "scanned";
         };
     }
