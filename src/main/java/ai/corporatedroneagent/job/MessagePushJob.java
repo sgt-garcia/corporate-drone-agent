@@ -41,6 +41,8 @@ public class MessagePushJob {
             "The model is already processing several replies. Please wait for one to finish and try again.";
     private static final String SATURATED_REPLY =
             "Several previous model requests are still stuck after timing out. Please wait a moment, or restart the app if the provider is not recovering.";
+    private static final String SHUTTING_DOWN_REPLY =
+            "The reply pipeline is shutting down. Please try again after the app finishes restarting.";
 
     private final ConversationRepository conversationRepository;
     private final EventService eventService;
@@ -51,6 +53,7 @@ public class MessagePushJob {
     private final Duration llmTimeout;
     private final Semaphore activeRequests;
     private final Semaphore physicalRequests;
+    private volatile boolean shuttingDown;
 
     @Autowired
     public MessagePushJob(
@@ -98,6 +101,10 @@ public class MessagePushJob {
 
     public void queueAssistantReply(UUID conversationId, String userContent) {
         publishStatus(conversationId);
+        if (shuttingDown) {
+            publishTransientMessage(conversationId, "error", SHUTTING_DOWN_REPLY);
+            return;
+        }
 
         requestReply(conversationId, userContent)
                 .exceptionally(error -> ChatReply.error("LLM request failed: " + rootMessage(error)))
@@ -110,6 +117,7 @@ public class MessagePushJob {
 
     @PreDestroy
     public void shutdown() {
+        shuttingDown = true;
         llmExecutor.shutdownNow();
         replyExecutor.shutdownNow();
         timeoutExecutor.shutdownNow();
@@ -117,6 +125,10 @@ public class MessagePushJob {
 
     private CompletableFuture<ChatReply> requestReply(UUID conversationId, String userContent) {
         CompletableFuture<ChatReply> replyFuture = new CompletableFuture<>();
+        if (shuttingDown) {
+            replyFuture.complete(ChatReply.error(SHUTTING_DOWN_REPLY));
+            return replyFuture;
+        }
         if (!physicalRequests.tryAcquire()) {
             replyFuture.complete(ChatReply.error(SATURATED_REPLY));
             return replyFuture;
@@ -128,9 +140,12 @@ public class MessagePushJob {
         }
 
         AtomicBoolean activePermitHeld = new AtomicBoolean(true);
+        AtomicBoolean physicalPermitHeld = new AtomicBoolean(true);
+        AtomicBoolean llmTaskStarted = new AtomicBoolean(false);
         Future<?> llmTask;
         try {
             llmTask = llmExecutor.submit(() -> {
+                llmTaskStarted.set(true);
                 try {
                     ChatReply reply = aiChatService.reply(conversationId, userContent);
                     if (!replyFuture.complete(reply)) {
@@ -145,12 +160,12 @@ public class MessagePushJob {
                         );
                     }
                 } finally {
-                    physicalRequests.release();
+                    releasePhysicalPermit(physicalPermitHeld);
                 }
             });
         } catch (RejectedExecutionException exception) {
             releaseActivePermit(activePermitHeld);
-            physicalRequests.release();
+            releasePhysicalPermit(physicalPermitHeld);
             replyFuture.completeExceptionally(exception);
             return replyFuture;
         }
@@ -166,6 +181,9 @@ public class MessagePushJob {
             llmTask.cancel(true);
             replyFuture.completeExceptionally(exception);
             releaseActivePermit(activePermitHeld);
+            if (!llmTaskStarted.get()) {
+                releasePhysicalPermit(physicalPermitHeld);
+            }
             return replyFuture;
         }
         replyFuture.whenComplete((reply, error) -> {
@@ -185,6 +203,12 @@ public class MessagePushJob {
     private void releaseActivePermit(AtomicBoolean activePermitHeld) {
         if (activePermitHeld.compareAndSet(true, false)) {
             activeRequests.release();
+        }
+    }
+
+    private void releasePhysicalPermit(AtomicBoolean physicalPermitHeld) {
+        if (physicalPermitHeld.compareAndSet(true, false)) {
+            physicalRequests.release();
         }
     }
 
@@ -249,7 +273,7 @@ public class MessagePushJob {
         LOGGER.info("Publishing late assistant reply for conversation {} after an earlier timeout.", conversationId);
         try {
             CompletableFuture
-                    .runAsync(() -> publishReply(conversationId, reply), replyExecutor)
+                    .runAsync(() -> publishTransientMessage(conversationId, reply.role(), reply.content()), replyExecutor)
                     .exceptionally(error -> {
                         publishPipelineFailure(conversationId, error);
                         return null;
