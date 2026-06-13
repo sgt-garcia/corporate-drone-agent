@@ -62,12 +62,6 @@ public class MessagePushJob {
     private final Semaphore physicalRequests;
     private volatile boolean shuttingDown;
 
-    private enum LlmRequestState {
-        WAITING_TO_START,
-        CALLING_PROVIDER,
-        TIMED_OUT_BEFORE_PROVIDER
-    }
-
     @Autowired
     public MessagePushJob(
             ConversationRepository conversationRepository,
@@ -181,32 +175,26 @@ public class MessagePushJob {
         AtomicBoolean activePermitHeld = new AtomicBoolean(true);
         AtomicBoolean physicalPermitHeld = new AtomicBoolean(true);
         AtomicBoolean taskStarted = new AtomicBoolean(false);
-        AtomicReference<LlmRequestState> requestState = new AtomicReference<>(LlmRequestState.WAITING_TO_START);
         AtomicReference<FutureTask<Void>> llmTask = new AtomicReference<>();
         AtomicReference<ScheduledFuture<?>> timeoutTask = new AtomicReference<>();
-        AtomicReference<Long> providerStartedAtNanos = new AtomicReference<>();
         Callable<Void> request = () -> {
-            queuedLlmTasks.remove(llmTask.get());
             taskStarted.set(true);
+            queuedLlmTasks.remove(llmTask.get());
             ScheduledFuture<?> scheduledTimeout = null;
             try {
-                if (!requestState.compareAndSet(
-                        LlmRequestState.WAITING_TO_START,
-                        LlmRequestState.CALLING_PROVIDER
-                ) || replyFuture.isDone()) {
+                if (replyFuture.isDone()) {
                     return null;
                 }
                 scheduledTimeout = scheduleTimeout(
                         conversationId,
                         replyFuture,
-                        llmTask.get(),
-                        requestState,
-                        providerStartedAtNanos,
-                        timeoutTask,
-                        Math.max(1L, llmTimeout.toMillis())
+                        llmTask.get()
                 );
                 timeoutTask.set(scheduledTimeout);
-                ChatReply reply = callProvider(conversationId, userContent, providerStartedAtNanos);
+                if (replyFuture.isDone()) {
+                    return null;
+                }
+                ChatReply reply = aiChatService.reply(conversationId, userContent);
                 if (!replyFuture.complete(reply)) {
                     publishLateReply(conversationId, userMessageId, reply);
                 }
@@ -265,66 +253,7 @@ public class MessagePushJob {
         return replyFuture;
     }
 
-    private ChatReply callProvider(
-            UUID conversationId,
-            String userContent,
-            AtomicReference<Long> providerStartedAtNanos
-    ) {
-        providerStartedAtNanos.compareAndSet(null, System.nanoTime());
-        return aiChatService.reply(conversationId, userContent);
-    }
-
-    private void timeoutReply(
-            UUID conversationId,
-            CompletableFuture<ChatReply> replyFuture,
-            Future<?> llmTask,
-            AtomicReference<LlmRequestState> requestState,
-            AtomicReference<Long> providerStartedAtNanos,
-            AtomicReference<ScheduledFuture<?>> timeoutTask
-    ) {
-        Long providerStartedAt = providerStartedAtNanos.get();
-        if (providerStartedAt == null) {
-            timeoutTask.set(scheduleTimeout(
-                    conversationId,
-                    replyFuture,
-                    llmTask,
-                    requestState,
-                    providerStartedAtNanos,
-                    timeoutTask,
-                    1L
-            )
-            );
-            return;
-        }
-        long timeoutNanos = TimeUnit.MILLISECONDS.toNanos(Math.max(1L, llmTimeout.toMillis()));
-        long elapsedNanos = System.nanoTime() - providerStartedAt;
-        if (elapsedNanos < timeoutNanos) {
-            long remainingMillis = Math.max(1L, TimeUnit.NANOSECONDS.toMillis(timeoutNanos - elapsedNanos));
-            timeoutTask.set(scheduleTimeout(
-                    conversationId,
-                    replyFuture,
-                    llmTask,
-                    requestState,
-                    providerStartedAtNanos,
-                    timeoutTask,
-                    remainingMillis
-            )
-            );
-            return;
-        }
-        while (true) {
-            LlmRequestState state = requestState.get();
-            if (state == LlmRequestState.TIMED_OUT_BEFORE_PROVIDER) {
-                return;
-            }
-            if (state != LlmRequestState.WAITING_TO_START
-                    || requestState.compareAndSet(
-                            LlmRequestState.WAITING_TO_START,
-                            LlmRequestState.TIMED_OUT_BEFORE_PROVIDER
-                    )) {
-                break;
-            }
-        }
+    private void timeoutReply(UUID conversationId, CompletableFuture<ChatReply> replyFuture, Future<?> llmTask) {
         if (replyFuture.complete(ChatReply.error(TIMEOUT_REPLY))) {
             if (llmTask != null) {
                 llmTask.cancel(true);
@@ -336,22 +265,11 @@ public class MessagePushJob {
     private ScheduledFuture<?> scheduleTimeout(
             UUID conversationId,
             CompletableFuture<ChatReply> replyFuture,
-            Future<?> llmTask,
-            AtomicReference<LlmRequestState> requestState,
-            AtomicReference<Long> providerStartedAtNanos,
-            AtomicReference<ScheduledFuture<?>> timeoutTask,
-            long delayMillis
+            Future<?> llmTask
     ) {
         return timeoutExecutor.schedule(
-                () -> timeoutReply(
-                        conversationId,
-                        replyFuture,
-                        llmTask,
-                        requestState,
-                        providerStartedAtNanos,
-                        timeoutTask
-                ),
-                delayMillis,
+                () -> timeoutReply(conversationId, replyFuture, llmTask),
+                Math.max(1L, llmTimeout.toMillis()),
                 TimeUnit.MILLISECONDS
         );
     }
