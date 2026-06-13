@@ -150,6 +150,33 @@ const JIRA_MAX = 10;
 
 const DEFAULT_AWS_REGION = "us-east-1";
 
+// Per-provider API-key prefix hints. Providers whose keys don't follow the
+// "sk-" convention (Gemini, Groq, Mistral) get their own hint rather than a
+// misleading "sk-…" placeholder.
+const KEY_HINTS = {
+  anthropic: "sk-ant-…",
+  openai: "sk-…",
+  "openai-sdk": "sk-…",
+  deepseek: "sk-…",
+  gemini: "AIza…",
+  groq: "gsk_…"
+};
+
+// Human-readable labels for the Bedrock region IDs the backend returns, so the
+// select reads "us-east-1 — US East (N. Virginia)" rather than a bare ID.
+const AWS_REGION_LABELS = {
+  "us-east-1": "US East (N. Virginia)",
+  "us-east-2": "US East (Ohio)",
+  "us-west-2": "US West (Oregon)",
+  "ca-central-1": "Canada (Central)",
+  "eu-central-1": "Europe (Frankfurt)",
+  "eu-west-1": "Europe (Ireland)",
+  "eu-west-3": "Europe (Paris)",
+  "ap-northeast-1": "Asia Pacific (Tokyo)",
+  "ap-southeast-1": "Asia Pacific (Singapore)",
+  "ap-southeast-2": "Asia Pacific (Sydney)"
+};
+
 // Stable module-level loaders. ProviderModelSelect keeps `loadModels` in its
 // effect deps, so these must NOT be inline closures or the effect re-runs every
 // render and polls the model endpoint in a loop. Varying values (Ollama base
@@ -482,7 +509,15 @@ function SourceStats({ items }) {
     <div className="source-stats">
       {items.map((stat) => (
         <div className="source-stat" key={stat.label}>
-          <div className="source-stat-value">{stat.value}</div>
+          <div
+            className={
+              stat.tone === "danger"
+                ? "source-stat-value danger"
+                : "source-stat-value"
+            }
+          >
+            {stat.value}
+          </div>
           <div className="ds-overline">{stat.label}</div>
         </div>
       ))}
@@ -734,6 +769,7 @@ function LocalFoldersConfig({
   const totalFiles = folders.reduce((total, folder) => total + Number(folder.files ?? 0), 0);
   const scanningCount = folders.filter((folder) => folder.status === "scanning").length;
   const pausedCount = folders.filter((folder) => folder.status === "paused").length;
+  const errorCount = folders.filter((folder) => folder.status === "error").length;
 
   async function addFolder() {
     const path = draft.trim();
@@ -822,7 +858,11 @@ function LocalFoldersConfig({
                 ? `${scanningCount} scanning`
                 : pausedCount
                   ? `${pausedCount} paused`
-                  : "Up to date"
+                  : errorCount
+                    ? `${errorCount} error${errorCount === 1 ? "" : "s"}`
+                    : "Up to date",
+              tone:
+                !scanningCount && !pausedCount && errorCount ? "danger" : undefined
             }
           ]}
         />
@@ -1210,7 +1250,9 @@ function JiraConfig({
                   ? `${pausedCount} paused`
                   : errorCount
                     ? `${errorCount} error${errorCount === 1 ? "" : "s"}`
-                    : "Ready"
+                    : "Ready",
+              tone:
+                !scanningCount && !pausedCount && errorCount ? "danger" : undefined
             }
           ]}
         />
@@ -1816,7 +1858,7 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
     <>
       <ApiKeyField
         label={`${provider.name} API key`}
-        placeholder="sk-…"
+        placeholder={KEY_HINTS[provider.id] ?? "Paste your API key"}
         config={config}
         onChange={(apiKey) =>
           updateProviderConfig(settingsKey, { apiKey, clearApiKey: false })
@@ -2165,7 +2207,9 @@ function ProviderRegionSelect({ value, onChange }) {
         ) : (
           options.map((region) => (
             <option key={region} value={region}>
-              {region}
+              {AWS_REGION_LABELS[region]
+                ? `${region} — ${AWS_REGION_LABELS[region]}`
+                : region}
             </option>
           ))
         )}

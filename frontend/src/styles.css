@@ -513,6 +513,11 @@ select.input {
 .project-head .tree-add:hover {
   background: var(--gray-150);
 }
+/* The per-project "+" stays faint until the project row/group is hovered,
+   then rises to full — matching the design's reveal-on-hover affordance. */
+.project-group:hover .tree-add {
+  opacity: 1;
+}
 
 .project-group {
   margin-bottom: 2px;
@@ -810,6 +815,10 @@ select.input {
 }
 .turn-text--markdown {
   white-space: normal;
+  /* Agent prose runs slightly larger than the 14px user text, matching the
+     design's Markdown styling. */
+  font-size: 15px;
+  line-height: 1.6;
 }
 .turn-text > :first-child {
   margin-top: 0;
@@ -828,23 +837,62 @@ select.input {
 .turn-text ol {
   padding-left: 22px;
 }
+.turn-text h1,
+.turn-text h2,
+.turn-text h3,
+.turn-text h4 {
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--gray-900);
+}
+.turn-text h1,
+.turn-text h2 {
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  margin: 4px 0 10px;
+}
+.turn-text h3 {
+  font-size: 16px;
+  margin: 2px 0 8px;
+}
+.turn-text h4 {
+  font-size: 14px;
+  margin: 2px 0 6px;
+}
+.turn-text blockquote {
+  margin: 0 0 12px;
+  padding: 4px 0 4px 14px;
+  border-left: 3px solid var(--blue-200);
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--gray-600);
+}
 .turn-text code {
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: 0.88em;
+  font-weight: 500;
+  color: var(--gray-900);
   background: var(--gray-100);
-  border-radius: 4px;
-  padding: 2px 5px;
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
 }
 .turn-text pre {
   overflow-x: auto;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--gray-900);
-  color: var(--gray-50);
-  padding: 12px 14px;
+  border: 1px solid var(--gray-800);
+  color: #d5dce8;
+  padding: 13px 15px;
 }
 .turn-text pre code {
   background: transparent;
+  border: none;
   padding: 0;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.65;
+  color: inherit;
 }
 .turn-text a {
   color: var(--fg-link);
@@ -1757,6 +1805,9 @@ select.input {
   font-weight: 600;
   color: var(--gray-900);
   white-space: nowrap;
+}
+.source-stat-value.danger {
+  color: var(--danger-700);
 }
 .source-stat .ds-overline {
   margin: 3px 0 0;
