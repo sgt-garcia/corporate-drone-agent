@@ -10,6 +10,7 @@ import ai.corporatedroneagent.service.EventService;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
@@ -18,6 +19,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -55,6 +57,7 @@ public class MessagePushJob {
     private final ExecutorService replyExecutor;
     private final ScheduledExecutorService timeoutExecutor;
     private final Duration llmTimeout;
+    private final Set<FutureTask<?>> queuedLlmTasks = ConcurrentHashMap.newKeySet();
     private final Semaphore activeRequests;
     private final Semaphore physicalRequests;
     private volatile boolean shuttingDown;
@@ -152,7 +155,9 @@ public class MessagePushJob {
     @PreDestroy
     public void shutdown() {
         shuttingDown = true;
+        queuedLlmTasks.forEach(task -> task.cancel(true));
         llmExecutor.shutdownNow();
+        queuedLlmTasks.forEach(task -> task.cancel(true));
         replyExecutor.shutdownNow();
         timeoutExecutor.shutdownNow();
     }
@@ -179,23 +184,29 @@ public class MessagePushJob {
         AtomicReference<LlmRequestState> requestState = new AtomicReference<>(LlmRequestState.WAITING_TO_START);
         AtomicReference<FutureTask<Void>> llmTask = new AtomicReference<>();
         AtomicReference<ScheduledFuture<?>> timeoutTask = new AtomicReference<>();
+        AtomicReference<Long> providerStartedAtNanos = new AtomicReference<>();
         Callable<Void> request = () -> {
+            queuedLlmTasks.remove(llmTask.get());
             taskStarted.set(true);
             ScheduledFuture<?> scheduledTimeout = null;
             try {
-                scheduledTimeout = timeoutExecutor.schedule(
-                        () -> timeoutReply(conversationId, replyFuture, llmTask.get(), requestState),
-                        Math.max(1L, llmTimeout.toMillis()),
-                        TimeUnit.MILLISECONDS
-                );
-                timeoutTask.set(scheduledTimeout);
                 if (!requestState.compareAndSet(
                         LlmRequestState.WAITING_TO_START,
                         LlmRequestState.CALLING_PROVIDER
                 ) || replyFuture.isDone()) {
                     return null;
                 }
-                ChatReply reply = aiChatService.reply(conversationId, userContent);
+                scheduledTimeout = scheduleTimeout(
+                        conversationId,
+                        replyFuture,
+                        llmTask.get(),
+                        requestState,
+                        providerStartedAtNanos,
+                        timeoutTask,
+                        Math.max(1L, llmTimeout.toMillis())
+                );
+                timeoutTask.set(scheduledTimeout);
+                ChatReply reply = callProvider(conversationId, userContent, providerStartedAtNanos);
                 if (!replyFuture.complete(reply)) {
                     publishLateReply(conversationId, userMessageId, reply);
                 }
@@ -220,6 +231,7 @@ public class MessagePushJob {
             public boolean cancel(boolean mayInterruptIfRunning) {
                 boolean cancelled = super.cancel(mayInterruptIfRunning);
                 if (cancelled && !taskStarted.get()) {
+                    queuedLlmTasks.remove(this);
                     releasePhysicalPermit(physicalPermitHeld);
                     replyFuture.completeExceptionally(
                             new CancellationException("LLM request was cancelled before starting")
@@ -229,12 +241,14 @@ public class MessagePushJob {
             }
         };
         llmTask.set(task);
+        queuedLlmTasks.add(task);
         try {
             llmExecutor.execute(task);
             if (replyFuture.isDone()) {
                 task.cancel(true);
             }
         } catch (RejectedExecutionException exception) {
+            queuedLlmTasks.remove(task);
             releaseActivePermit(activePermitHeld);
             releasePhysicalPermit(physicalPermitHeld);
             replyFuture.completeExceptionally(exception);
@@ -251,12 +265,53 @@ public class MessagePushJob {
         return replyFuture;
     }
 
+    private ChatReply callProvider(
+            UUID conversationId,
+            String userContent,
+            AtomicReference<Long> providerStartedAtNanos
+    ) {
+        providerStartedAtNanos.compareAndSet(null, System.nanoTime());
+        return aiChatService.reply(conversationId, userContent);
+    }
+
     private void timeoutReply(
             UUID conversationId,
             CompletableFuture<ChatReply> replyFuture,
             Future<?> llmTask,
-            AtomicReference<LlmRequestState> requestState
+            AtomicReference<LlmRequestState> requestState,
+            AtomicReference<Long> providerStartedAtNanos,
+            AtomicReference<ScheduledFuture<?>> timeoutTask
     ) {
+        Long providerStartedAt = providerStartedAtNanos.get();
+        if (providerStartedAt == null) {
+            timeoutTask.set(scheduleTimeout(
+                    conversationId,
+                    replyFuture,
+                    llmTask,
+                    requestState,
+                    providerStartedAtNanos,
+                    timeoutTask,
+                    1L
+            )
+            );
+            return;
+        }
+        long timeoutNanos = TimeUnit.MILLISECONDS.toNanos(Math.max(1L, llmTimeout.toMillis()));
+        long elapsedNanos = System.nanoTime() - providerStartedAt;
+        if (elapsedNanos < timeoutNanos) {
+            long remainingMillis = Math.max(1L, TimeUnit.NANOSECONDS.toMillis(timeoutNanos - elapsedNanos));
+            timeoutTask.set(scheduleTimeout(
+                    conversationId,
+                    replyFuture,
+                    llmTask,
+                    requestState,
+                    providerStartedAtNanos,
+                    timeoutTask,
+                    remainingMillis
+            )
+            );
+            return;
+        }
         while (true) {
             LlmRequestState state = requestState.get();
             if (state == LlmRequestState.TIMED_OUT_BEFORE_PROVIDER) {
@@ -276,6 +331,29 @@ public class MessagePushJob {
             }
             LOGGER.warn("LLM request timed out after {} ms for conversation {}.", llmTimeout.toMillis(), conversationId);
         }
+    }
+
+    private ScheduledFuture<?> scheduleTimeout(
+            UUID conversationId,
+            CompletableFuture<ChatReply> replyFuture,
+            Future<?> llmTask,
+            AtomicReference<LlmRequestState> requestState,
+            AtomicReference<Long> providerStartedAtNanos,
+            AtomicReference<ScheduledFuture<?>> timeoutTask,
+            long delayMillis
+    ) {
+        return timeoutExecutor.schedule(
+                () -> timeoutReply(
+                        conversationId,
+                        replyFuture,
+                        llmTask,
+                        requestState,
+                        providerStartedAtNanos,
+                        timeoutTask
+                ),
+                delayMillis,
+                TimeUnit.MILLISECONDS
+        );
     }
 
     private void releaseActivePermit(AtomicBoolean activePermitHeld) {

@@ -31,6 +31,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -401,6 +402,40 @@ class MessagePushJobTests {
         } finally {
             job.shutdown();
         }
+    }
+
+    @Test
+    void shutdownCancelsQueuedLlmTasksThatNeverStarted() {
+        UUID conversationId = UUID.randomUUID();
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        EventService eventService = mock(EventService.class);
+        AiChatService aiChatService = mock(AiChatService.class);
+        ExecutorService llmExecutor = mock(ExecutorService.class);
+        ExecutorService replyExecutor = Executors.newSingleThreadExecutor();
+        ScheduledExecutorService timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
+        AtomicReference<Runnable> queuedTask = new AtomicReference<>();
+        doAnswer(invocation -> {
+            queuedTask.set(invocation.getArgument(0, Runnable.class));
+            return null;
+        }).when(llmExecutor).execute(any(Runnable.class));
+        MessagePushJob job = new MessagePushJob(
+                conversationRepository,
+                eventService,
+                aiChatService,
+                Duration.ofSeconds(5),
+                1,
+                0,
+                llmExecutor,
+                replyExecutor,
+                timeoutExecutor
+        );
+
+        queueAssistantReply(job, conversationId, "queued");
+        job.shutdown();
+
+        assertThat(queuedTask.get()).isInstanceOf(java.util.concurrent.Future.class);
+        assertThat(((java.util.concurrent.Future<?>) queuedTask.get()).isCancelled()).isTrue();
+        verify(aiChatService, after(200).never()).reply(eq(conversationId), any(String.class));
     }
 
     @Test
