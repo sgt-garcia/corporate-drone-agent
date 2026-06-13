@@ -1,11 +1,14 @@
 package ai.corporatedroneagent.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.corporatedroneagent.TestDatabaseSupport;
 import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.model.Project;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -13,6 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 class ConversationRepositoryTests {
@@ -115,6 +119,34 @@ class ConversationRepositoryTests {
         assertThat(indices).hasSize(appenders).doesNotHaveDuplicates();
         assertThat(indices.get(0)).isZero();
         assertThat(indices.get(indices.size() - 1)).isEqualTo(appenders - 1);
+    }
+
+    @Test
+    void duplicateMessageIndexSurfacesAsDuplicateKeyException() {
+        // insertMessage's retry backstop relies on the unique-index violation
+        // translating to DuplicateKeyException; guard that contract here since the
+        // synchronized happy path never actually collides in-process.
+        Project project = saveProject();
+        Conversation conversation = saveConversation(project);
+        conversationRepository.appendMessage(
+                conversation.getId(),
+                new Message(UUID.randomUUID(), "user", "first", null)
+        );
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                """
+                INSERT INTO conversation_messages (
+                    id, conversation_id, message_index, role, content, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                UUID.randomUUID(),
+                conversation.getId(),
+                0,
+                "user",
+                "colliding index",
+                Timestamp.from(Instant.now())
+        )).isInstanceOf(DuplicateKeyException.class);
     }
 
     private Project saveProject() {

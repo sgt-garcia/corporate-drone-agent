@@ -62,6 +62,7 @@ import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -433,14 +434,18 @@ public class AiChatService {
         return Strings.defaultIfBlank(snippet.resourceReference(), snippet.resourceName());
     }
 
-    // A fresh builder per call: RestClient.Builder is not safe to share across the
-    // concurrent per-request model construction in the LLM executor.
+    // Built once and shared: the detected factory (Apache HttpComponents is on the
+    // classpath) owns a pooled connection manager, so a fresh factory per reply
+    // would leak a connection pool every message. The factory is thread-safe;
+    // only the lightweight RestClient.Builder is created per call.
+    private static final ClientHttpRequestFactory LLM_HTTP_REQUEST_FACTORY =
+            ClientHttpRequestFactoryBuilder.detect().build(
+                    ClientHttpRequestFactorySettings.defaults()
+                            .withConnectTimeout(LLM_HTTP_CONNECT_TIMEOUT)
+                            .withReadTimeout(LLM_HTTP_READ_TIMEOUT));
+
     private static RestClient.Builder timeoutRestClientBuilder() {
-        ClientHttpRequestFactorySettings settings = ClientHttpRequestFactorySettings.defaults()
-                .withConnectTimeout(LLM_HTTP_CONNECT_TIMEOUT)
-                .withReadTimeout(LLM_HTTP_READ_TIMEOUT);
-        return RestClient.builder()
-                .requestFactory(ClientHttpRequestFactoryBuilder.detect().build(settings));
+        return RestClient.builder().requestFactory(LLM_HTTP_REQUEST_FACTORY);
     }
 
     private static OpenAiChatModel buildOpenAiChatModel(OpenAiSettings settings) {
