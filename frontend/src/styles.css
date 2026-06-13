@@ -748,10 +748,22 @@ select.input {
 .thread {
   flex: 1;
   overflow-y: auto;
-  padding: 28px 24px 8px;
+  /* The 56px bottom pad keeps the last line clear of the 44px fade once
+     scrolled to the bottom, so real text never reads as faded. */
+  padding: 28px 24px 56px;
+  /* Soft fade so a long reply dissolves into the composer ("scroll for more")
+     instead of being sliced mid-line. */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 44px),
+    transparent
+  );
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
 }
 .thread.is-empty {
   padding: 0 24px;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 .turn {
   display: flex;
@@ -768,8 +780,8 @@ select.input {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--coffee-500);
-  color: #fff;
+  background: var(--gray-150);
+  color: var(--gray-500);
 }
 .turn-body {
   flex: 1;
@@ -840,6 +852,13 @@ select.input {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--gray-500);
+  cursor: default;
+}
+/* In the agent meta row the time sits inline beside the actions, so it drops
+   its own top margin and never wraps. */
+.turn-time--inline {
+  margin-top: 0;
+  white-space: nowrap;
 }
 .streaming-dots {
   display: flex;
@@ -851,7 +870,241 @@ select.input {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--blue-400);
+  background: var(--coffee-500);
+}
+
+/* ---- Agent reply actions (Copy) ---- */
+.agent-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.agent-meta-spacer {
+  flex: 1;
+}
+.agent-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.agent-act {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--gray-600);
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.agent-act:hover {
+  background: var(--gray-100);
+  color: var(--gray-900);
+}
+
+/* ---- Day divider ---- */
+.day-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 760px;
+  margin: 4px auto 22px;
+  width: 100%;
+}
+.day-divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border-divider);
+}
+.day-divider-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--gray-500);
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* ---- Sources panel (agent provenance) ---- */
+.sources {
+  margin-top: 16px;
+}
+.sources-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+}
+.source-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.source-pill {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border-default);
+  background: var(--white);
+  cursor: pointer;
+  padding: 6px 9px 6px 7px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  transition: background var(--dur-fast), border-color var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+.source-pill:hover {
+  background: var(--gray-50);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+.source-pill.is-open {
+  border-color: var(--blue-300);
+  background: var(--blue-50);
+}
+.source-pill-icon {
+  display: flex;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-md);
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.source-pill-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  text-align: left;
+}
+.source-pill-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gray-800);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+.source-pill-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--gray-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+  margin-top: 1px;
+}
+.source-pill-caret {
+  transition: transform var(--dur-fast);
+}
+.source-pill-caret.is-open {
+  transform: rotate(180deg);
+}
+.source-preview {
+  margin-top: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.source-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 13px;
+  border-bottom: 1px solid var(--border-divider);
+  background: var(--gray-50);
+}
+.source-preview-id {
+  flex: 1;
+  min-width: 0;
+}
+.source-preview-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.source-preview-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-500);
+}
+.source-preview-body {
+  padding: 13px 15px;
+}
+.source-preview-excerpt {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--gray-700);
+}
+.source-preview-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  align-items: baseline;
+  margin-bottom: 11px;
+}
+.source-preview-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray-500);
+}
+.source-preview-field-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--gray-700);
+}
+.source-preview-subject {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+.source-preview-draft-body {
+  border-top: 1px solid var(--border-divider);
+  padding-top: 12px;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--gray-700);
+}
+.source-preview-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px 9px 13px;
+  border-top: 1px solid var(--border-divider);
+  background: var(--gray-50);
+}
+.source-preview-foot-spacer {
+  flex: 1;
+}
+.source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--blue-600);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  transition: background var(--dur-fast);
+}
+.source-link:hover {
+  background: var(--blue-50);
 }
 
 /* ---- Agent error turn ---- */
@@ -906,11 +1159,32 @@ select.input {
   padding: 7vh 0 0;
   text-align: center;
 }
-.empty-greeting .logomark {
-  margin: 0 auto 18px;
+.empty-greeting-logo {
+  position: relative;
+  display: inline-flex;
+  margin-bottom: 18px;
+}
+/* Warm coffee halo behind the mark — the design's single human touch. */
+.empty-greeting-glow {
+  position: absolute;
+  inset: -22px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 50%,
+    var(--coffee-100),
+    rgba(243, 231, 218, 0) 70%
+  );
+  z-index: 0;
+}
+.empty-greeting-logo .logomark {
+  position: relative;
+  z-index: 1;
 }
 .empty-greeting h1 {
   margin: 0 0 8px;
+}
+.greeting-accent {
+  color: var(--coffee-500);
 }
 .empty-greeting p {
   margin: 0 0 30px;

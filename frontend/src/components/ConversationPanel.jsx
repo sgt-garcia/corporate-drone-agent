@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Icon } from "./Icon.jsx";
 import { Logomark } from "./Logomark.jsx";
@@ -17,16 +17,33 @@ export function ConversationPanel({
 }) {
   const historyRef = useRef(null);
 
-  useEffect(() => {
-    if (historyRef.current) {
-      historyRef.current.scrollTop = historyRef.current.scrollHeight;
-    }
-  }, [conversation.id, messages]);
-
   // Show the design's greeting until the conversation has actually started —
   // i.e. until the user has sent a message. Gated on isLoaded so the greeting
   // never flashes while messages are still being fetched.
   const isEmpty = isLoaded && !messages.some((message) => message.role === "user");
+
+  useEffect(() => {
+    const container = historyRef.current;
+    if (!container || isEmpty || messages.length === 0) {
+      return;
+    }
+    const last = messages[messages.length - 1];
+    const lastEl = container.lastElementChild;
+    // For agent replies (incl. while the status indicator is up), land the
+    // reader at the TOP of the latest turn rather than the absolute bottom —
+    // long replies are taller than the viewport, so bottom-scrolling drops you
+    // mid-message and clips the tail behind the composer. Fall back to bottom
+    // for a trailing user turn.
+    if (last.role !== "user" && lastEl) {
+      const top =
+        lastEl.getBoundingClientRect().top -
+        container.getBoundingClientRect().top +
+        container.scrollTop;
+      container.scrollTop = Math.max(0, top - 20);
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [conversation.id, messages, isEmpty]);
 
   // The last agent turn owns the Retry affordance — only the most recent reply
   // can be re-run, mirroring the design's error card.
@@ -46,14 +63,7 @@ export function ConversationPanel({
         {isEmpty ? (
           <EmptyGreeting projectName={project?.name} />
         ) : (
-          messages.map((message) => (
-            <Turn
-              key={message.id}
-              message={message}
-              echoMode={echoMode}
-              onRetry={message.id === lastAgentMessageId ? onRetry : undefined}
-            />
-          ))
+          renderThread(messages, { echoMode, onRetry, lastAgentMessageId })
         )}
       </div>
 
@@ -68,6 +78,31 @@ export function ConversationPanel({
       </div>
     </section>
   );
+}
+
+// Interleave day dividers between turns, once per calendar day, so a lived-in
+// thread reads chronologically (Today / Yesterday / weekday / full date).
+function renderThread(messages, turnProps) {
+  const out = [];
+  let lastKey = null;
+  messages.forEach((message) => {
+    const key = toDayKey(message.createdAt);
+    if (key && key !== lastKey) {
+      out.push(<DayDivider key={`day-${key}-${message.id}`} dayKey={key} />);
+      lastKey = key;
+    }
+    out.push(
+      <Turn
+        key={message.id}
+        message={message}
+        echoMode={turnProps.echoMode}
+        onRetry={
+          message.id === turnProps.lastAgentMessageId ? turnProps.onRetry : undefined
+        }
+      />
+    );
+  });
+  return out;
 }
 
 // No model provider connected: the backend silently echoes the user's message,
@@ -91,19 +126,34 @@ function NoProviderBanner({ onOpenProviders }) {
   );
 }
 
+function DayDivider({ dayKey }) {
+  return (
+    <div className="day-divider" title={dayKey}>
+      <span className="day-divider-line" />
+      <span className="day-divider-label">{dayLabel(dayKey)}</span>
+      <span className="day-divider-line" />
+    </div>
+  );
+}
+
 function Turn({ message, echoMode = false, onRetry }) {
-  const timestamp = formatTimestamp(message.createdAt);
+  const timeLabel = formatTime(message.createdAt);
+  const stamp = formatStamp(message.createdAt);
 
   if (message.role === "user") {
     return (
       <article className="turn turn--user">
         <span className="avatar-user" aria-hidden="true">
-          <Icon name="user" size={16} color="#fff" />
+          <Icon name="user" size={17} color="var(--gray-500)" />
         </span>
         <div className="turn-body">
           <div className="turn-author">You</div>
           <div className="turn-text turn-text--plain">{message.content}</div>
-          {timestamp && <div className="turn-time">{timestamp}</div>}
+          {timeLabel && (
+            <div className="turn-time" title={stamp}>
+              {timeLabel}
+            </div>
+          )}
         </div>
       </article>
     );
@@ -134,23 +184,230 @@ function Turn({ message, echoMode = false, onRetry }) {
             <div className="turn-text turn-text--markdown">
               <ReactMarkdown>{message.content}</ReactMarkdown>
             </div>
-            {echoMode && (
-              <div className="echo-note">
-                <span className="badge badge-warning">
-                  <Icon name="alert-triangle" size={12} color="var(--warning-700)" />
-                  Echo mode
-                </span>
-                <span className="echo-note-text">
-                  No model connected — your message was echoed back.
-                </span>
-              </div>
+            {echoMode ? (
+              <>
+                <div className="echo-note">
+                  <span className="badge badge-warning">
+                    <Icon
+                      name="alert-triangle"
+                      size={12}
+                      color="var(--warning-700)"
+                    />
+                    Echo mode
+                  </span>
+                  <span className="echo-note-text">
+                    No model connected — your message was echoed back.
+                  </span>
+                </div>
+                {timeLabel && (
+                  <div className="turn-time" title={stamp}>
+                    {timeLabel}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {message.sources?.length ? (
+                  <SourcePanel sources={message.sources} />
+                ) : null}
+                <div className="agent-meta-row">
+                  <AgentActions content={message.content} />
+                  <span className="agent-meta-spacer" />
+                  {timeLabel && (
+                    <span className="turn-time turn-time--inline" title={stamp}>
+                      {timeLabel}
+                    </span>
+                  )}
+                </div>
+              </>
             )}
-            {timestamp && <div className="turn-time">{timestamp}</div>}
           </>
         )}
       </div>
     </article>
   );
+}
+
+// Client-side reply actions. Copy is local-only; Regenerate is intentionally
+// absent — the backend's reply pipeline is append-only (a completed reply is
+// persisted), so re-running it would duplicate the turn rather than replace it.
+function AgentActions({ content }) {
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    if (!navigator.clipboard) {
+      return;
+    }
+    navigator.clipboard
+      .writeText(content)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1600);
+      })
+      .catch(() => {});
+  }
+
+  return (
+    <div className="agent-actions">
+      <button type="button" className="agent-act" onClick={copy}>
+        <Icon
+          name={copied ? "check" : "copy"}
+          size={14}
+          color={copied ? "var(--success-600)" : "var(--gray-500)"}
+        />
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+// The agent's provenance surface: clickable pills for everything it read and
+// every draft it produced, each expanding into an inline preview. Renders only
+// when a reply carries a `sources` array — dormant until the backend supplies
+// per-message provenance.
+function SourcePanel({ sources }) {
+  const [openId, setOpenId] = useState(null);
+  if (!sources || !sources.length) {
+    return null;
+  }
+  const draftCount = sources.filter((source) => source.kind === "draft").length;
+  const active = sources.find((source) => source.id === openId) ?? null;
+
+  return (
+    <div className="sources">
+      <div className="sources-head">
+        <Icon name="shield-check" size={14} color="var(--gray-500)" />
+        <span className="ds-overline">
+          Sources
+          {draftCount ? ` · ${draftCount} draft${draftCount > 1 ? "s" : ""}` : ""}
+        </span>
+      </div>
+      <div className="source-pills">
+        {sources.map((source) => (
+          <SourcePill
+            key={source.id}
+            source={source}
+            open={openId === source.id}
+            onToggle={() =>
+              setOpenId((current) => (current === source.id ? null : source.id))
+            }
+          />
+        ))}
+      </div>
+      {active && (
+        <SourcePreview source={active} onClose={() => setOpenId(null)} />
+      )}
+    </div>
+  );
+}
+
+function SourcePill({ source, open, onToggle }) {
+  return (
+    <button
+      type="button"
+      className={open ? "source-pill is-open" : "source-pill"}
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      <span
+        className="source-pill-icon"
+        style={{ background: tintForKind(source.kind) }}
+        aria-hidden="true"
+      >
+        <Icon name={source.icon} size={14} color={accentForKind(source.kind)} />
+      </span>
+      <span className="source-pill-id">
+        <span className="source-pill-title">{source.title}</span>
+        <span className="source-pill-meta">{source.meta}</span>
+      </span>
+      <Icon
+        name="chevron-down"
+        size={14}
+        color="var(--gray-400)"
+        className={open ? "source-pill-caret is-open" : "source-pill-caret"}
+      />
+    </button>
+  );
+}
+
+function SourcePreview({ source, onClose }) {
+  const preview = source.preview ?? {};
+  return (
+    <div className="source-preview">
+      <div className="source-preview-head">
+        <Icon name={source.icon} size={15} color={accentForKind(source.kind)} />
+        <div className="source-preview-id">
+          <div className="source-preview-title">{source.title}</div>
+          <div className="source-preview-meta">{source.meta}</div>
+        </div>
+        <button
+          className="iconbtn"
+          type="button"
+          onClick={onClose}
+          aria-label="Close source preview"
+        >
+          <Icon name="x" size={15} color="var(--gray-500)" />
+        </button>
+      </div>
+      <div className="source-preview-body">
+        {source.kind === "draft" ? (
+          <>
+            <div className="source-preview-fields">
+              <span className="source-preview-field-label">To</span>
+              <span className="source-preview-field-value">{preview.to}</span>
+              <span className="source-preview-field-label">Subject</span>
+              <span className="source-preview-subject">{preview.subject}</span>
+            </div>
+            <div className="source-preview-draft-body">{preview.body}</div>
+          </>
+        ) : (
+          <div className="source-preview-excerpt">{preview.excerpt}</div>
+        )}
+      </div>
+      <div className="source-preview-foot">
+        {source.kind === "draft" && (
+          <span className="badge badge-warning">
+            <span className="dot" /> Not sent
+          </span>
+        )}
+        <span className="source-preview-foot-spacer" />
+        <a
+          className="source-link"
+          href={source.url || "#"}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => {
+            if (!source.url) {
+              event.preventDefault();
+            }
+          }}
+        >
+          {source.actionLabel || "Open"}{" "}
+          <Icon name="external-link" size={13} color="var(--blue-600)" />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function accentForKind(kind) {
+  if (kind === "draft") {
+    return "var(--coffee-500)";
+  }
+  if (kind === "doc") {
+    return "var(--blue-600)";
+  }
+  return "var(--gray-500)";
+}
+
+function tintForKind(kind) {
+  if (kind === "draft") {
+    return "var(--coffee-100)";
+  }
+  if (kind === "doc") {
+    return "var(--blue-50)";
+  }
+  return "var(--gray-100)";
 }
 
 function AgentError({ errorText, onRetry }) {
@@ -186,9 +443,64 @@ function findLastAgentMessageId(messages) {
   return null;
 }
 
-// ISO date + 24-hour time (e.g. "2026-05-31 09:00"), per the design's
-// metric/ISO convention. A single space separates the date and time.
-function formatTimestamp(createdAt) {
+// ISO date key (YYYY-MM-DD, local) used to group a thread into calendar days.
+function toDayKey(createdAt) {
+  if (!createdAt) {
+    return "";
+  }
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleDateString("en-CA");
+}
+
+// Friendly label for a day divider: Today / Yesterday / weekday / full date.
+function dayLabel(key) {
+  if (!key) {
+    return "";
+  }
+  const date = new Date(`${key}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return key;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((today - date) / 86400000);
+  if (diff === 0) {
+    return "Today";
+  }
+  if (diff === 1) {
+    return "Yesterday";
+  }
+  if (diff > 1 && diff < 7) {
+    return date.toLocaleDateString("en-US", { weekday: "long" });
+  }
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric"
+  });
+}
+
+// 24-hour HH:MM, per the design's metric/ISO convention. The full
+// "YYYY-MM-DD HH:MM" stamp rides along as a hover title.
+function formatTime(createdAt) {
+  if (!createdAt) {
+    return "";
+  }
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+}
+
+function formatStamp(createdAt) {
   if (!createdAt) {
     return "";
   }
@@ -197,12 +509,7 @@ function formatTimestamp(createdAt) {
     return "";
   }
   const day = date.toLocaleDateString("en-CA");
-  const time = date.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  });
-  return `${day} ${time}`;
+  return `${day} ${formatTime(createdAt)}`;
 }
 
 function EmptyGreeting({ projectName }) {
@@ -212,8 +519,14 @@ function EmptyGreeting({ projectName }) {
 
   return (
     <div className="empty-greeting">
-      <Logomark size={46} radius={11} className="logomark" />
-      <h1 className="ds-h1">{greeting}.</h1>
+      <span className="empty-greeting-logo">
+        <span className="empty-greeting-glow" aria-hidden="true" />
+        <Logomark size={46} radius={11} className="logomark" />
+      </span>
+      <h1 className="ds-h1">
+        {greeting}
+        <span className="greeting-accent">.</span>
+      </h1>
       <p className="ds-body-lg">
         {projectName ? (
           <>
