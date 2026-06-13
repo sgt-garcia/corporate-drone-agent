@@ -18,6 +18,7 @@ import ai.corporatedroneagent.service.AiChatService;
 import ai.corporatedroneagent.service.ChatReply;
 import ai.corporatedroneagent.service.EventService;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -100,7 +101,7 @@ class MessagePushJobTests {
             hungCallsStarted.countDown();
             while (keepBlocking.get()) {
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(10);
                 } catch (InterruptedException exception) {
                     interrupts.incrementAndGet();
                 }
@@ -119,11 +120,120 @@ class MessagePushJobTests {
                 job.queueAssistantReply(conversationId, "hang-" + index);
             }
             assertThat(hungCallsStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            assertEventually(() -> assertThat(interrupts.get()).isGreaterThanOrEqualTo(4));
 
             job.queueAssistantReply(conversationId, "after");
 
             verify(aiChatService, timeout(1000)).reply(conversationId, "after");
-            assertEventually(() -> assertThat(interrupts.get()).isGreaterThanOrEqualTo(4));
+        } finally {
+            keepBlocking.set(false);
+            job.shutdown();
+        }
+    }
+
+    @Test
+    void lateAssistantRepliesArePublishedAfterTimeoutInsteadOfDropped() throws InterruptedException {
+        UUID conversationId = UUID.randomUUID();
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        EventService eventService = mock(EventService.class);
+        AiChatService aiChatService = mock(AiChatService.class);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch appended = new CountDownLatch(1);
+        AtomicBoolean finishLate = new AtomicBoolean(false);
+        AtomicInteger interrupts = new AtomicInteger();
+        when(aiChatService.reply(conversationId, "slow")).thenAnswer(invocation -> {
+            started.countDown();
+            while (!finishLate.get()) {
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException exception) {
+                    interrupts.incrementAndGet();
+                }
+            }
+            return ChatReply.assistant("late answer");
+        });
+        when(conversationRepository.appendMessage(eq(conversationId), any(Message.class)))
+                .thenAnswer(invocation -> {
+                    appended.countDown();
+                    return Optional.of(invocation.getArgument(1, Message.class));
+                });
+        MessagePushJob job = new MessagePushJob(
+                conversationRepository,
+                eventService,
+                aiChatService,
+                Duration.ofMillis(50)
+        );
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+
+        try {
+            job.queueAssistantReply(conversationId, "slow");
+            assertThat(started.await(1, TimeUnit.SECONDS)).isTrue();
+            verify(eventService, timeout(1000).atLeast(2)).publish(eq("message-created"), any());
+
+            finishLate.set(true);
+
+            assertThat(appended.await(3, TimeUnit.SECONDS)).isTrue();
+            verify(conversationRepository)
+                    .appendMessage(eq(conversationId), messageCaptor.capture());
+            assertThat(interrupts.get()).isGreaterThanOrEqualTo(1);
+            assertThat(messageCaptor.getValue().getRole()).isEqualTo("assistant");
+            assertThat(messageCaptor.getValue().getContent()).isEqualTo("late answer");
+        } finally {
+            finishLate.set(true);
+            job.shutdown();
+        }
+    }
+
+    @Test
+    void interruptResistantTimedOutCallsAreCappedWithVisibleSaturationError() throws InterruptedException {
+        UUID conversationId = UUID.randomUUID();
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        EventService eventService = mock(EventService.class);
+        AiChatService aiChatService = mock(AiChatService.class);
+        CountDownLatch hungCallsStarted = new CountDownLatch(2);
+        AtomicBoolean keepBlocking = new AtomicBoolean(true);
+        when(aiChatService.reply(eq(conversationId), any(String.class))).thenAnswer(invocation -> {
+            String content = invocation.getArgument(1, String.class);
+            if ("overflow".equals(content)) {
+                return ChatReply.assistant("should not run");
+            }
+            hungCallsStarted.countDown();
+            while (keepBlocking.get()) {
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException exception) {
+                    // Keep simulating a provider call that ignores Java task interruption.
+                }
+            }
+            return ChatReply.assistant("late");
+        });
+        MessagePushJob job = new MessagePushJob(
+                conversationRepository,
+                eventService,
+                aiChatService,
+                Duration.ofMillis(50),
+                1,
+                1
+        );
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+
+        try {
+            job.queueAssistantReply(conversationId, "hang-1");
+            assertEventually(() -> assertThat(hungCallsStarted.getCount()).isEqualTo(1));
+            verify(eventService, timeout(1000).atLeast(2)).publish(eq("message-created"), any());
+
+            job.queueAssistantReply(conversationId, "hang-2");
+            assertEventually(() -> assertThat(hungCallsStarted.getCount()).isZero());
+            verify(eventService, timeout(1000).atLeast(4)).publish(eq("message-created"), any());
+
+            job.queueAssistantReply(conversationId, "overflow");
+
+            verify(aiChatService, after(200).never()).reply(conversationId, "overflow");
+            verify(eventService, timeout(1000).atLeast(6)).publish(eq("message-created"), eventCaptor.capture());
+            assertThat(eventCaptor.getAllValues())
+                    .map(MessageEventDto.class::cast)
+                    .extracting(event -> event.message().content())
+                    .anyMatch(content -> content.contains("previous model requests are still stuck"));
         } finally {
             keepBlocking.set(false);
             job.shutdown();

@@ -18,8 +18,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,8 +33,14 @@ public class MessagePushJob {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MessagePushJob.class);
     private static final Duration LLM_TIMEOUT = Duration.ofSeconds(60);
+    private static final int MAX_ACTIVE_LLM_REQUESTS = 4;
+    private static final int MAX_TIMED_OUT_LLM_REQUESTS = 4;
     private static final String TIMEOUT_REPLY =
             "The model did not respond within 60 seconds. Please try again, or check whether the selected provider is running.";
+    private static final String BUSY_REPLY =
+            "The model is already processing several replies. Please wait for one to finish and try again.";
+    private static final String SATURATED_REPLY =
+            "Several previous model requests are still stuck after timing out. Please wait a moment, or restart the app if the provider is not recovering.";
 
     private final ConversationRepository conversationRepository;
     private final EventService eventService;
@@ -41,6 +49,8 @@ public class MessagePushJob {
     private final ExecutorService replyExecutor;
     private final ScheduledExecutorService timeoutExecutor;
     private final Duration llmTimeout;
+    private final Semaphore activeRequests;
+    private final Semaphore physicalRequests;
 
     @Autowired
     public MessagePushJob(
@@ -57,6 +67,24 @@ public class MessagePushJob {
             AiChatService aiChatService,
             Duration llmTimeout
     ) {
+        this(
+                conversationRepository,
+                eventService,
+                aiChatService,
+                llmTimeout,
+                MAX_ACTIVE_LLM_REQUESTS,
+                MAX_TIMED_OUT_LLM_REQUESTS
+        );
+    }
+
+    MessagePushJob(
+            ConversationRepository conversationRepository,
+            EventService eventService,
+            AiChatService aiChatService,
+            Duration llmTimeout,
+            int maxActiveRequests,
+            int maxTimedOutRequests
+    ) {
         this.conversationRepository = conversationRepository;
         this.eventService = eventService;
         this.aiChatService = aiChatService;
@@ -64,6 +92,8 @@ public class MessagePushJob {
         this.replyExecutor = Executors.newSingleThreadExecutor(namedThreadFactory("cda-reply"));
         this.timeoutExecutor = Executors.newSingleThreadScheduledExecutor(namedThreadFactory("cda-llm-timeout"));
         this.llmTimeout = llmTimeout;
+        this.activeRequests = new Semaphore(maxActiveRequests);
+        this.physicalRequests = new Semaphore(maxActiveRequests + maxTimedOutRequests);
     }
 
     public void queueAssistantReply(UUID conversationId, String userContent) {
@@ -87,26 +117,61 @@ public class MessagePushJob {
 
     private CompletableFuture<ChatReply> requestReply(UUID conversationId, String userContent) {
         CompletableFuture<ChatReply> replyFuture = new CompletableFuture<>();
+        if (!physicalRequests.tryAcquire()) {
+            replyFuture.complete(ChatReply.error(SATURATED_REPLY));
+            return replyFuture;
+        }
+        if (!activeRequests.tryAcquire()) {
+            physicalRequests.release();
+            replyFuture.complete(ChatReply.error(BUSY_REPLY));
+            return replyFuture;
+        }
+
+        AtomicBoolean activePermitHeld = new AtomicBoolean(true);
         Future<?> llmTask;
         try {
             llmTask = llmExecutor.submit(() -> {
                 try {
-                    replyFuture.complete(aiChatService.reply(conversationId, userContent));
+                    ChatReply reply = aiChatService.reply(conversationId, userContent);
+                    if (!replyFuture.complete(reply)) {
+                        publishLateReply(conversationId, reply);
+                    }
                 } catch (Throwable error) {
-                    replyFuture.completeExceptionally(error);
+                    if (!replyFuture.completeExceptionally(error)) {
+                        LOGGER.warn(
+                                "LLM request completed with an error after the reply pipeline moved on for conversation {}.",
+                                conversationId,
+                                error
+                        );
+                    }
+                } finally {
+                    physicalRequests.release();
                 }
             });
         } catch (RejectedExecutionException exception) {
+            releaseActivePermit(activePermitHeld);
+            physicalRequests.release();
             replyFuture.completeExceptionally(exception);
             return replyFuture;
         }
 
-        ScheduledFuture<?> timeoutTask = timeoutExecutor.schedule(
-                () -> timeoutReply(conversationId, replyFuture, llmTask),
-                Math.max(1L, llmTimeout.toMillis()),
-                TimeUnit.MILLISECONDS
-        );
-        replyFuture.whenComplete((reply, error) -> timeoutTask.cancel(false));
+        ScheduledFuture<?> timeoutTask;
+        try {
+            timeoutTask = timeoutExecutor.schedule(
+                    () -> timeoutReply(conversationId, replyFuture, llmTask),
+                    Math.max(1L, llmTimeout.toMillis()),
+                    TimeUnit.MILLISECONDS
+            );
+        } catch (RejectedExecutionException exception) {
+            llmTask.cancel(true);
+            replyFuture.completeExceptionally(exception);
+            releaseActivePermit(activePermitHeld);
+            return replyFuture;
+        }
+        replyFuture.whenComplete((reply, error) -> {
+            releaseActivePermit(activePermitHeld);
+            timeoutTask.cancel(false);
+        });
         return replyFuture;
     }
 
@@ -114,6 +179,12 @@ public class MessagePushJob {
         if (replyFuture.complete(ChatReply.error(TIMEOUT_REPLY))) {
             llmTask.cancel(true);
             LOGGER.warn("LLM request timed out after {} ms for conversation {}.", llmTimeout.toMillis(), conversationId);
+        }
+    }
+
+    private void releaseActivePermit(AtomicBoolean activePermitHeld) {
+        if (activePermitHeld.compareAndSet(true, false)) {
+            activeRequests.release();
         }
     }
 
@@ -166,6 +237,25 @@ public class MessagePushJob {
             publishTransientMessage(conversationId, "error", "Reply pipeline failed: " + rootMessage(error));
         } catch (RuntimeException publishError) {
             LOGGER.error("Failed to publish reply pipeline failure for conversation {}.", conversationId, publishError);
+        }
+    }
+
+    private void publishLateReply(UUID conversationId, ChatReply reply) {
+        if (!reply.assistant()) {
+            LOGGER.warn("LLM request returned a late {} reply for conversation {} after the pipeline moved on.",
+                    reply.role(), conversationId);
+            return;
+        }
+        LOGGER.info("Publishing late assistant reply for conversation {} after an earlier timeout.", conversationId);
+        try {
+            CompletableFuture
+                    .runAsync(() -> publishReply(conversationId, reply), replyExecutor)
+                    .exceptionally(error -> {
+                        publishPipelineFailure(conversationId, error);
+                        return null;
+                    });
+        } catch (RejectedExecutionException exception) {
+            LOGGER.warn("Late assistant reply could not be published because the reply executor is shutting down.");
         }
     }
 
