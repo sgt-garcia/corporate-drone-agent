@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Icon } from "./Icon.jsx";
+import { useServerSync } from "../hooks/useServerSync.js";
 
 export function ProjectSettingsPanel({ onSave, onDelete, project }) {
   const [draft, setDraft] = useState(project);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  useEffect(() => {
-    setDraft(project);
+  useServerSync(project, (next) => {
+    setDraft(next);
     setConfirmingDelete(false);
-  }, [project]);
+  });
 
   return (
     <div className="project-settings">

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon.jsx";
+import { useServerSync } from "../hooks/useServerSync.js";
 import {
   getAnthropicModels,
   getAzureOpenAiDeployments,
@@ -233,9 +234,7 @@ export function Settings({
   const [knowledgeView, setKnowledgeView] = useState(null); // null | "local-folders" | "jira"
   const [openToolId, setOpenToolId] = useState(null); // null | toolId
 
-  useEffect(() => {
-    setDraft(settings);
-  }, [settings]);
+  useServerSync(settings, setDraft);
 
   const openProvider = PROVIDERS.find((p) => p.id === openProviderId) ?? null;
   const openTool = TOOLS.find((t) => t.id === openToolId) ?? null;
@@ -934,21 +933,21 @@ function JiraConfig({
   const [scanningProjectIds, setScanningProjectIds] = useState(() => new Set());
   const pickerRef = useRef(null);
 
-  useEffect(() => {
+  useServerSync(config, (next) => {
     const nextCfg = {
-      instanceUrl: config.instanceUrl ?? "",
-      email: config.email ?? "",
-      connected: Boolean(config.connected),
-      apiVersion: config.apiVersion ?? "3",
-      tokenConfigured: Boolean(config.tokenConfigured),
-      tokenLastFour: config.tokenLastFour ?? "",
-      tokenExpiresDays: config.tokenExpiresDays ?? null,
-      projects: config.projects ?? []
+      instanceUrl: next.instanceUrl ?? "",
+      email: next.email ?? "",
+      connected: Boolean(next.connected),
+      apiVersion: next.apiVersion ?? "3",
+      tokenConfigured: Boolean(next.tokenConfigured),
+      tokenLastFour: next.tokenLastFour ?? "",
+      tokenExpiresDays: next.tokenExpiresDays ?? null,
+      projects: next.projects ?? []
     };
     setCfg(nextCfg);
     setInstanceUrl(nextCfg.instanceUrl);
     setEmail(nextCfg.email);
-  }, [config]);
+  });
 
   const hasSaved = cfg.tokenConfigured;
   const projects = cfg.projects;
