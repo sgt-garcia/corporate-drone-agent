@@ -97,11 +97,14 @@ public class KnowledgeFolderScanService {
             } catch (ResponseStatusException exception) {
                 // Settle the in-progress root as a failure so the folder doesn't
                 // stick at "scanning" forever; mirror the Jira scan's error path.
-                recordScanFailure(root, scanErrorMessage(exception));
+                // Reload first (like the success path below) so we flip the row the
+                // scan persisted instead of re-saving our stale pre-scan copy, which
+                // would revert the totals the scan recorded.
+                recordScanFailure(findRoot(folderId), scanErrorMessage(exception));
                 publishSettingsUpdated();
                 throw exception;
             } catch (RuntimeException exception) {
-                recordScanFailure(root, "Could not scan folder");
+                recordScanFailure(findRoot(folderId), "Could not scan folder");
                 publishSettingsUpdated();
                 throw exception;
             }
