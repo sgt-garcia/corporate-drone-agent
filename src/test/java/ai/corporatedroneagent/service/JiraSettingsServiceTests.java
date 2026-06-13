@@ -17,6 +17,7 @@ import ai.corporatedroneagent.dto.JiraProjectRequest;
 import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
+import ai.corporatedroneagent.model.knowledge.WorkStatus;
 import ai.corporatedroneagent.repository.KnowledgeResourceRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.SettingsRepository;
@@ -24,6 +25,8 @@ import ai.corporatedroneagent.security.SecretStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.JiraSettings;
+import java.lang.reflect.Modifier;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -44,6 +47,14 @@ class JiraSettingsServiceTests {
     void setUp() {
         secretStore = new InMemorySecretStore();
         settingsService = serviceWith(validValidator(), fakeDiscovery());
+    }
+
+    @Test
+    void settingsGetAndSaveAreSynchronized() throws NoSuchMethodException {
+        assertThat(Modifier.isSynchronized(SettingsService.class.getMethod("get").getModifiers())).isTrue();
+        assertThat(Modifier.isSynchronized(
+                SettingsService.class.getMethod("save", ApplicationSettings.class).getModifiers()
+        )).isTrue();
     }
 
     @Test
@@ -272,7 +283,38 @@ class JiraSettingsServiceTests {
     }
 
     @Test
-    void readingSettingsSyncsExistingSavedJiraProjectsToKnowledgeRoots() {
+    void savingSettingsSyncsExistingSavedJiraProjectsToKnowledgeRoots() {
+        ApplicationSettings settings = settingsRepository.get();
+        JiraSettings jira = new JiraSettings();
+        jira.setConnected(true);
+        jira.setInstanceUrl("https://example.atlassian.net");
+        jira.setEmail("me@example.com");
+        jira.setProjects(java.util.List.of(project("10001", "DEV", "Software Development", 42)));
+        settings.setJira(jira);
+
+        settingsService.save(settings);
+
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
+                .singleElement()
+                .satisfies(root -> {
+                    assertThat(root.getReference()).isEqualTo("jira://example.atlassian.net/project/10001");
+                    assertThat(root.getDisplayName()).isEqualTo("DEV - Software Development");
+                });
+    }
+
+    @Test
+    void readingSettingsDoesNotResetActiveJiraKnowledgeRoot() {
+        Instant startedAt = Instant.parse("2026-06-13T12:00:00Z");
+        KnowledgeRoot root = new KnowledgeRoot();
+        root.setSource(KnowledgeSource.JIRA);
+        root.setReference("jira://example.atlassian.net/project/10001");
+        root.setDisplayName("DEV - Software Development");
+        root.setScanStatus(WorkStatus.IN_PROGRESS);
+        root.setScanSuccess(null);
+        root.setScanMessage("");
+        root.setScanStartedAt(startedAt);
+        root = knowledgeRootRepository.save(root);
+
         ApplicationSettings settings = settingsRepository.get();
         JiraSettings jira = new JiraSettings();
         jira.setConnected(true);
@@ -281,15 +323,16 @@ class JiraSettingsServiceTests {
         jira.setProjects(java.util.List.of(project("10001", "DEV", "Software Development", 42)));
         settings.setJira(jira);
         settingsRepository.save(settings);
-        secretStore.put("settings.jira.token", "token-1234");
 
         settingsService.get();
 
-        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
-                .singleElement()
-                .satisfies(root -> {
-                    assertThat(root.getReference()).isEqualTo("jira://example.atlassian.net/project/10001");
-                    assertThat(root.getDisplayName()).isEqualTo("DEV - Software Development");
+        assertThat(knowledgeRootRepository.findByIdAndSource(root.getId(), KnowledgeSource.JIRA))
+                .get()
+                .satisfies(savedRoot -> {
+                    assertThat(savedRoot.getScanStatus()).isEqualTo(WorkStatus.IN_PROGRESS);
+                    assertThat(savedRoot.getScanStartedAt()).isEqualTo(startedAt);
+                    assertThat(savedRoot.getScanFinishedAt()).isNull();
+                    assertThat(savedRoot.getScanSuccess()).isNull();
                 });
     }
 
@@ -335,9 +378,7 @@ class JiraSettingsServiceTests {
         assertThat(sanitized.getProjects().get(1).getStatus()).isEqualTo("paused");
         assertThat(sanitized.getProjects().get(2).getStatus()).isEqualTo("error");
         assertThat(sanitized.getProjects().get(2).getMessage()).isEqualTo("Could not scan Jira project");
-        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
-                .extracting(KnowledgeRoot::getDisplayName)
-                .containsExactly("dev - Software Development", "OPS - Operations", "SUP - Support");
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).isEmpty();
     }
 
     @Test

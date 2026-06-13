@@ -97,14 +97,13 @@ public class SettingsService {
         this.jiraKnowledgeScanService = jiraKnowledgeScanService;
     }
 
-    public ApplicationSettings get() {
+    public synchronized ApplicationSettings get() {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         attachKnowledgeFolders(settings);
         settings.setJira(sanitizeJira(settings.getJira()));
         settingsSecretsService.clearSecretValues(settings);
         settingsSecretsService.applySecretStatus(settings);
-        syncJiraKnowledgeRoots(settings.getJira());
         return settings;
     }
 
@@ -116,7 +115,7 @@ public class SettingsService {
         return settings;
     }
 
-    public ApplicationSettings save(ApplicationSettings settings) {
+    public synchronized ApplicationSettings save(ApplicationSettings settings) {
         ApplicationSettings current = settingsRepository.get();
         migratePlaintextSecrets(current);
         migrateLegacyKnowledgeFolders(current);
@@ -140,6 +139,7 @@ public class SettingsService {
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);
+        syncJiraKnowledgeRoots(current.getJira());
         ApplicationSettings savedSettings = get();
         eventService.publish("settings-updated");
         return savedSettings;
@@ -469,7 +469,6 @@ public class SettingsService {
         migrateLegacyKnowledgeFolders(settings);
         settings.setJira(sanitizeJira(settings.getJira()));
         settingsSecretsService.applySecretStatus(settings);
-        syncJiraKnowledgeRoots(settings.getJira());
         return settings.getJira();
     }
 
@@ -566,13 +565,6 @@ public class SettingsService {
             root.setTotalResources(project.getIssues());
             if (newRoot) {
                 root.setTotalSizeBytes(0);
-            }
-            if (root.getScanStatus() == WorkStatus.IN_PROGRESS) {
-                root.setScanStatus(WorkStatus.TO_DO);
-                root.setScanSuccess(null);
-                root.setScanMessage("");
-                root.setScanStartedAt(null);
-                root.setScanFinishedAt(null);
             }
             knowledgeRootRepository.save(root);
         }
