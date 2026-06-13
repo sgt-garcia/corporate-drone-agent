@@ -247,6 +247,15 @@ class WorkspaceDeletionServiceTests {
     }
 
     @Test
+    void markingAnUnknownConversationSeenIsASilentNoOp() {
+        // Fired on every open and best-effort on the client, so a stale/missing id
+        // must not error — the compare-and-set simply matches no row.
+        conversationService.markSeen(UUID.randomUUID());
+
+        verify(eventService, never()).publish(eq("conversation-status"), any());
+    }
+
+    @Test
     void regeneratingAConversationWithNoUserMessageIsRejected() {
         Project project = saveProject("Launch");
         Conversation conversation = saveConversation(project, "Prep");

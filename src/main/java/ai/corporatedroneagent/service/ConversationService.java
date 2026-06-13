@@ -52,12 +52,13 @@ public class ConversationService {
      * it on every open without checking first.
      */
     public synchronized void markSeen(UUID conversationId) {
-        Conversation conversation = getConversation(conversationId);
-        if (!"review".equals(conversation.getStatus())) {
-            return;
+        // Compare-and-set review → success in a single statement, so the only
+        // residual race (a late, post-timeout reply writing while status is
+        // review) resolves atomically rather than via a read-then-write. Publish
+        // only when this call is the one that moved the row.
+        if (conversationRepository.updateStatusIf(conversationId, "review", "success")) {
+            eventService.publish("conversation-status", new ConversationStatusDto(conversationId, "success"));
         }
-        conversationRepository.updateStatus(conversationId, "success");
-        eventService.publish("conversation-status", new ConversationStatusDto(conversationId, "success"));
     }
 
     public synchronized ConversationDto create(UUID projectId, ConversationRequest request) {

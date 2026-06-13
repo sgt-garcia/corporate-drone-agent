@@ -205,6 +205,20 @@ public class ConversationRepository {
         ) > 0;
     }
 
+    // Flip the status only while it still matches expectedStatus (compare-and-set),
+    // returning whether the row moved. Lets markSeen do review → success in one
+    // atomic statement instead of a read-then-write that could race a late status
+    // write across the service and repository monitors.
+    public synchronized boolean updateStatusIf(UUID conversationId, String expectedStatus, String newStatus) {
+        return jdbcTemplate.update(
+                "UPDATE conversations SET status = ?, updated_at = ? WHERE id = ? AND status = ?",
+                newStatus,
+                Timestamp.from(Instant.now()),
+                conversationId,
+                expectedStatus
+        ) > 0;
+    }
+
     private void touchConversation(UUID conversationId) {
         jdbcTemplate.update(
                 "UPDATE conversations SET updated_at = ? WHERE id = ?",
