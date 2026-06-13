@@ -178,6 +178,9 @@ public class MessagePushJob {
                         TimeUnit.MILLISECONDS
                 );
                 timeoutTask.set(scheduledTimeout);
+                if (replyFuture.isDone()) {
+                    return null;
+                }
                 ChatReply reply = aiChatService.reply(conversationId, userContent);
                 if (!replyFuture.complete(reply)) {
                     publishLateReply(conversationId, userMessageId, reply);
@@ -314,7 +317,7 @@ public class MessagePushJob {
             return;
         }
         Message message = assistantMessage(reply.content());
-        conversationRepository.appendMessageIfLastMessageIs(conversationId, userMessageId, message)
+        conversationRepository.appendMessageIfLastUserMessageIs(conversationId, userMessageId, message)
                 .ifPresentOrElse(
                         savedMessage -> eventService.publish(
                                 "message-created",

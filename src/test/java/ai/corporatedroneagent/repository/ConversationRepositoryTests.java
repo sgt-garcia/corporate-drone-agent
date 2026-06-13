@@ -25,7 +25,7 @@ class ConversationRepositoryTests {
     }
 
     @Test
-    void guardedAppendOnlyPersistsWhenExpectedMessageIsStillLast() {
+    void guardedAppendOnlyPersistsWhenExpectedUserMessageIsStillLast() {
         Project project = saveProject();
         Conversation conversation = saveConversation(project);
         Message originalUserTurn = new Message(UUID.randomUUID(), "user", "slow", null);
@@ -34,13 +34,13 @@ class ConversationRepositoryTests {
         conversationRepository.appendMessage(conversation.getId(), originalUserTurn);
         conversationRepository.appendMessage(conversation.getId(), newerUserTurn);
 
-        assertThat(conversationRepository.appendMessageIfLastMessageIs(
+        assertThat(conversationRepository.appendMessageIfLastUserMessageIs(
                 conversation.getId(),
                 originalUserTurn.getId(),
                 new Message(UUID.randomUUID(), "assistant", "late original", null)
         )).isEmpty();
 
-        assertThat(conversationRepository.appendMessageIfLastMessageIs(
+        assertThat(conversationRepository.appendMessageIfLastUserMessageIs(
                 conversation.getId(),
                 newerUserTurn.getId(),
                 new Message(UUID.randomUUID(), "assistant", "late newer", null)
@@ -49,6 +49,27 @@ class ConversationRepositoryTests {
         assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
                 .extracting(Message::getContent)
                 .containsExactly("slow", "newer", "late newer");
+    }
+
+    @Test
+    void guardedAppendRejectsExpectedMessageWhenLastMessageIsNotUserAuthored() {
+        Project project = saveProject();
+        Conversation conversation = saveConversation(project);
+        Message userTurn = new Message(UUID.randomUUID(), "user", "slow", null);
+        Message assistantTurn = new Message(UUID.randomUUID(), "assistant", "already answered", null);
+
+        conversationRepository.appendMessage(conversation.getId(), userTurn);
+        conversationRepository.appendMessage(conversation.getId(), assistantTurn);
+
+        assertThat(conversationRepository.appendMessageIfLastUserMessageIs(
+                conversation.getId(),
+                assistantTurn.getId(),
+                new Message(UUID.randomUUID(), "assistant", "late assistant", null)
+        )).isEmpty();
+
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .extracting(Message::getContent)
+                .containsExactly("slow", "already answered");
     }
 
     private Project saveProject() {

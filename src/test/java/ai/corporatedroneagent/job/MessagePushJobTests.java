@@ -27,6 +27,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -160,7 +161,7 @@ class MessagePushJobTests {
             }
             return ChatReply.assistant("late answer");
         });
-        when(conversationRepository.appendMessageIfLastMessageIs(
+        when(conversationRepository.appendMessageIfLastUserMessageIs(
                 eq(conversationId),
                 eq(userMessageId),
                 any(Message.class)
@@ -185,7 +186,7 @@ class MessagePushJobTests {
 
             assertThat(lateReplyAppended.await(3, TimeUnit.SECONDS)).isTrue();
             assertThat(interrupts.get()).isGreaterThanOrEqualTo(1);
-            verify(conversationRepository).appendMessageIfLastMessageIs(
+            verify(conversationRepository).appendMessageIfLastUserMessageIs(
                     eq(conversationId),
                     eq(userMessageId),
                     messageCaptor.capture()
@@ -229,7 +230,7 @@ class MessagePushJobTests {
             }
             return ChatReply.assistant("late answer");
         });
-        when(conversationRepository.appendMessageIfLastMessageIs(
+        when(conversationRepository.appendMessageIfLastUserMessageIs(
                 eq(conversationId),
                 eq(userMessageId),
                 any(Message.class)
@@ -251,7 +252,7 @@ class MessagePushJobTests {
             assertThat(lateReplyPublished.await(3, TimeUnit.SECONDS)).isTrue();
             assertThat(interrupts.get()).isGreaterThanOrEqualTo(1);
             verify(conversationRepository)
-                    .appendMessageIfLastMessageIs(eq(conversationId), eq(userMessageId), any(Message.class));
+                    .appendMessageIfLastUserMessageIs(eq(conversationId), eq(userMessageId), any(Message.class));
             verify(conversationRepository, after(200).never())
                     .appendMessage(eq(conversationId), any(Message.class));
         } finally {
@@ -313,6 +314,41 @@ class MessagePushJobTests {
                     .map(MessageEventDto.class::cast)
                     .extracting(event -> event.message().content())
                     .anyMatch(content -> content.contains("scheduler closed"));
+        } finally {
+            job.shutdown();
+        }
+    }
+
+    @Test
+    void immediateTimeoutBeforeProviderCallDoesNotCallProvider() {
+        UUID conversationId = UUID.randomUUID();
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        EventService eventService = mock(EventService.class);
+        AiChatService aiChatService = mock(AiChatService.class);
+        ExecutorService llmExecutor = Executors.newSingleThreadExecutor();
+        ExecutorService replyExecutor = Executors.newSingleThreadExecutor();
+        ScheduledExecutorService timeoutExecutor = mock(ScheduledExecutorService.class);
+        when(timeoutExecutor.schedule(any(Runnable.class), anyLong(), eq(TimeUnit.MILLISECONDS)))
+                .thenAnswer(invocation -> {
+                    invocation.getArgument(0, Runnable.class).run();
+                    return mock(ScheduledFuture.class);
+                });
+        MessagePushJob job = new MessagePushJob(
+                conversationRepository,
+                eventService,
+                aiChatService,
+                Duration.ofMillis(50),
+                1,
+                1,
+                llmExecutor,
+                replyExecutor,
+                timeoutExecutor
+        );
+
+        try {
+            queueAssistantReply(job, conversationId, "hello");
+
+            verify(aiChatService, after(200).never()).reply(eq(conversationId), any(String.class));
         } finally {
             job.shutdown();
         }

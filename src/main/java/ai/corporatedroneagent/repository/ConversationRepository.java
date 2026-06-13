@@ -103,17 +103,15 @@ public class ConversationRepository {
     }
 
     @Transactional
-    public synchronized Optional<Message> appendMessageIfLastMessageIs(
+    public synchronized Optional<Message> appendMessageIfLastUserMessageIs(
             UUID conversationId,
-            UUID expectedLastMessageId,
+            UUID expectedLastUserMessageId,
             Message message
     ) {
-        if (expectedLastMessageId == null || !exists(conversationId)) {
+        if (expectedLastUserMessageId == null || !exists(conversationId)) {
             return Optional.empty();
         }
-        if (lastMessageId(conversationId)
-                .filter(expectedLastMessageId::equals)
-                .isEmpty()) {
+        if (!lastMessageMatches(conversationId, expectedLastUserMessageId, "user")) {
             return Optional.empty();
         }
         prepareForAppend(message);
@@ -210,17 +208,22 @@ public class ConversationRepository {
         return next == null ? 0 : next;
     }
 
-    private Optional<UUID> lastMessageId(UUID conversationId) {
+    private boolean lastMessageMatches(UUID conversationId, UUID expectedMessageId, String expectedRole) {
         try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject("""
-                    SELECT id
+            Boolean matches = jdbcTemplate.queryForObject("""
+                    SELECT id, role
                     FROM conversation_messages
                     WHERE conversation_id = ?
                     ORDER BY message_index DESC, created_at DESC
                     LIMIT 1
-                    """, UUID.class, conversationId));
+                    """,
+                    (resultSet, rowNumber) -> expectedMessageId.equals(resultSet.getObject("id", UUID.class))
+                            && expectedRole.equals(resultSet.getString("role")),
+                    conversationId
+            );
+            return Boolean.TRUE.equals(matches);
         } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
+            return false;
         }
     }
 
