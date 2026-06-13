@@ -50,8 +50,10 @@ class JiraSettingsServiceTests {
     }
 
     @Test
-    void settingsGetAndSaveAreSynchronized() throws NoSuchMethodException {
+    void settingsRowReadWriteMethodsAreSynchronized() throws NoSuchMethodException {
         assertThat(Modifier.isSynchronized(SettingsService.class.getMethod("get").getModifiers())).isTrue();
+        assertThat(Modifier.isSynchronized(SettingsService.class.getMethod("getWithSecrets").getModifiers()))
+                .isTrue();
         assertThat(Modifier.isSynchronized(
                 SettingsService.class.getMethod("save", ApplicationSettings.class).getModifiers()
         )).isTrue();

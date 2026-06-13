@@ -107,7 +107,7 @@ public class SettingsService {
         return settings;
     }
 
-    public ApplicationSettings getWithSecrets() {
+    public synchronized ApplicationSettings getWithSecrets() {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         attachKnowledgeFolders(settings);
