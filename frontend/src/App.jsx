@@ -492,6 +492,14 @@ export default function App() {
       addMessageToConversation(conversationId, message);
     } catch (error) {
       setStatusText(error.message);
+      // The send was rejected (e.g. a reply is already in flight from another
+      // tab) — restore the draft so the typed message isn't lost, unless the
+      // user has already started a new one.
+      setDraftsByConversationId((currentDrafts) =>
+        currentDrafts[conversationId]
+          ? currentDrafts
+          : { ...currentDrafts, [conversationId]: content }
+      );
     }
   }
 

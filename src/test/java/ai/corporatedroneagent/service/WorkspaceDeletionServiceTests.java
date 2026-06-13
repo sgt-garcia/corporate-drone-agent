@@ -121,6 +121,19 @@ class WorkspaceDeletionServiceTests {
     }
 
     @Test
+    void sendingWhileAReplyIsInFlightIsRejected() {
+        Project project = saveProject("Launch");
+        Conversation conversation = saveConversation(project, "Prep");
+        conversationRepository.updateStatus(conversation.getId(), "running");
+
+        assertThatThrownBy(() -> conversationService.sendUserMessage(conversation.getId(), "another"))
+                .isInstanceOf(ResponseStatusException.class);
+        // The message must not be appended while a reply is generating.
+        assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
+                .isEmpty();
+    }
+
+    @Test
     void retryingRegeneratesTheReplyForTheLastUserMessageWithoutAddingATurn() {
         Project project = saveProject("Launch");
         Conversation conversation = saveConversation(project, "Prep");

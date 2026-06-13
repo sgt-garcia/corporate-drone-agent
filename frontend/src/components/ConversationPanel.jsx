@@ -131,6 +131,7 @@ export function ConversationPanel({
           value={value}
           onChange={onDraftChange}
           onSend={submitMessage}
+          disabled={busy}
         />
       </div>
     </section>
@@ -605,9 +606,11 @@ function EmptyGreeting({ projectName }) {
   );
 }
 
-function Composer({ placeholder, value, onChange, onSend }) {
+function Composer({ placeholder, value, onChange, onSend, disabled = false }) {
   const ref = useRef(null);
-  const canSend = Boolean(value.trim());
+  // Block sending while a reply is in flight (one reply at a time), but keep the
+  // field editable so the next message can be drafted in the meantime.
+  const canSend = Boolean(value.trim()) && !disabled;
 
   useEffect(() => {
     if (ref.current) {
@@ -619,7 +622,9 @@ function Composer({ placeholder, value, onChange, onSend }) {
   function handleKeyDown(event) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      onSend();
+      if (canSend) {
+        onSend();
+      }
     }
   }
 

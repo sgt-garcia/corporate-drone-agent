@@ -416,6 +416,9 @@ export function Settings({
 // distinguishes two similar paths — so we pin the leaf and clip the head.
 // Handles both POSIX ("/") and Windows ("\\") separators.
 function MiddlePath({ path }) {
+  if (!path) {
+    return null;
+  }
   const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   if (cut < 0) {
     return path;
@@ -2399,9 +2402,13 @@ function ProviderModelSelect({
           className="btn btn-secondary btn-sm model-select-retry"
           type="button"
           onClick={() => {
-            // Flip to loading immediately so the click registers visibly; the
-            // effect (keyed on retryNonce) then re-runs the lookup.
-            setStatus("loading");
+            // Flip to loading immediately so the click registers visibly, but
+            // only when a lookup will actually run — mirror the effect's gate so
+            // we never strand the box on "loading" when there's nothing to fetch;
+            // the effect (keyed on retryNonce) then re-runs the lookup.
+            if (lookupReady ?? Boolean(lookupValue || useSavedKey)) {
+              setStatus("loading");
+            }
             setRetryNonce((nonce) => nonce + 1);
           }}
         >

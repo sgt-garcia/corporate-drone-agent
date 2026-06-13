@@ -122,6 +122,13 @@ public class ConversationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Message content is required");
         }
 
+        // One reply at a time: reject a new message while a reply is still being
+        // generated, so a send can't interleave a second reply or reorder turns.
+        if (replyInFlight(getConversation(conversationId))) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "A reply is already being generated for this conversation");
+        }
+
         conversationRepository.appendMessage(conversationId, message)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
         MessageDto dto = toDto(message);
