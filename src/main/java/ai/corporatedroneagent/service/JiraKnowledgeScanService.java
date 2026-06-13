@@ -36,6 +36,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class JiraKnowledgeScanService {
 
     private static final Logger log = LoggerFactory.getLogger(JiraKnowledgeScanService.class);
+    private static final String CONFIG_LEGACY_LAST_FULL_SCAN_FINISHED_AT = "lastFullScanFinishedAt";
     private static final String CONFIG_LAST_SUCCESSFUL_SCAN_STARTED_AT = "lastSuccessfulScanStartedAt";
 
     private final KnowledgeRootRepository rootRepository;
@@ -80,7 +81,7 @@ public class JiraKnowledgeScanService {
             String token,
             Consumer<String> onProgress
     ) {
-        return scanProject(jira, project, token, onProgress, false);
+        return scanProjectInternal(jira, project, token, onProgress);
     }
 
     public ScanResult scanScheduledProject(JiraSettings jira, JiraProjectDto project, String token) {
@@ -93,19 +94,18 @@ public class JiraKnowledgeScanService {
             String token,
             Consumer<String> onProgress
     ) {
-        return scanProject(jira, project, token, onProgress, false);
+        return scanProjectInternal(jira, project, token, onProgress);
     }
 
-    private ScanResult scanProject(
+    private ScanResult scanProjectInternal(
             JiraSettings jira,
             JiraProjectDto project,
             String token,
-            Consumer<String> onProgress,
-            boolean forceFull
+            Consumer<String> onProgress
     ) {
         Instant startedAt = Instant.now();
         KnowledgeRoot root = knowledgeRoot(jira, project);
-        Instant updatedSince = forceFull ? null : updatedSince(root);
+        Instant updatedSince = updatedSince(root);
         boolean incrementalScan = updatedSince != null;
         root = startRootScan(root, startedAt);
         KnowledgeRootScan scan = startScan(root.getId(), startedAt);
@@ -113,7 +113,7 @@ public class JiraKnowledgeScanService {
         if (incrementalScan) {
             log.info("Started incremental Jira project scan for {} since {}.", project.getKey(), updatedSince);
         } else {
-            log.info("Started initial Jira project scan for {}.", project.getKey());
+            log.info("Started Jira project partial scan for {} without a cursor.", project.getKey());
         }
 
         try {
@@ -131,7 +131,7 @@ public class JiraKnowledgeScanService {
             completeScan(root, scan, totals, null);
             log.info(
                     "Completed {} Jira project scan for {} with {} fetched issue manifests, {} indexed issues, and {} bytes.",
-                    incrementalScan ? "incremental" : "initial",
+                    incrementalScan ? "incremental" : "partial",
                     project.getKey(),
                     stats.resources(),
                     totals.resources(),
@@ -397,6 +397,7 @@ public class JiraKnowledgeScanService {
         if (startedAt != null) {
             config.put(CONFIG_LAST_SUCCESSFUL_SCAN_STARTED_AT, startedAt.toString());
         }
+        config.remove(CONFIG_LEGACY_LAST_FULL_SCAN_FINISHED_AT);
         return config.toString();
     }
 

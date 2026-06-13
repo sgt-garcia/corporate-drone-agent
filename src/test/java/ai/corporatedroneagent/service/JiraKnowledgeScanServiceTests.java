@@ -197,6 +197,80 @@ class JiraKnowledgeScanServiceTests {
     }
 
     @Test
+    void scheduledScanUsesLastSuccessfulCursorAndDoesNotReconcileDeletions() {
+        JiraSettings jira = jira();
+        JiraProjectDto project = project();
+        JiraIssueFetchService.JiraIssueManifest stale = manifest(jira, "10100", "DEV-7", "Issue 10100");
+        JiraIssueFetchService.JiraIssueManifest changed = manifest(jira, "10101", "DEV-8", "Issue 10101");
+        issueFetchService.setManifests(List.of(stale, changed));
+        issueFetchService.putDocument(document(jira, "10100", "DEV-7", "Issue 10100", "staletoken"));
+        issueFetchService.putDocument(document(jira, "10101", "DEV-8", "Issue 10101", "changedtoken"));
+        scanService.scanProject(jira, project, "token-1234");
+
+        KnowledgeRoot root = rootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+        ).orElseThrow();
+        Instant firstScanStartedAt = root.getScanStartedAt();
+        JiraIssueFetchService.JiraIssueManifest changedAgain = manifest(
+                jira,
+                "10101",
+                "DEV-8",
+                "Issue 10101",
+                Instant.parse("2026-06-10T12:34:56Z")
+        );
+        issueFetchService.setManifests(List.of(changedAgain));
+        issueFetchService.putDocument(document(
+                jira,
+                "10101",
+                "DEV-8",
+                "Issue 10101",
+                "changedtoken2",
+                Instant.parse("2026-06-10T12:34:56Z")
+        ));
+
+        JiraKnowledgeScanService.ScanResult result = scanService.scanScheduledProject(jira, project, "token-1234");
+
+        assertThat(issueFetchService.updatedSince.get().toEpochMilli()).isEqualTo(firstScanStartedAt.toEpochMilli());
+        assertThat(result.issues()).isEqualTo(2);
+        assertThat(resourceRepository.findByRootIdAndReference(root.getId(), stale.reference()))
+                .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
+        assertThat(indexingService.searchTerm("staletoken", 10)).hasSize(1);
+        assertThat(indexingService.searchTerm("changedtoken2", 10)).hasSize(1);
+    }
+
+    @Test
+    void scanMetadataDropsLegacyFullReconciliationCursor() throws IOException {
+        JiraSettings jira = jira();
+        JiraProjectDto project = project();
+        JiraIssueFetchService.JiraIssueManifest issue = manifest(jira, "10100", "DEV-7", "Issue 10100");
+        issueFetchService.setManifests(List.of(issue));
+        issueFetchService.putDocument(document(jira, "10100", "DEV-7", "Issue 10100", "firsttoken"));
+        scanService.scanProject(jira, project, "token-1234");
+
+        KnowledgeRoot root = rootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+        ).orElseThrow();
+        root.setConfigJson("""
+                {
+                  "lastFullScanFinishedAt": "2026-06-12T00:00:00Z",
+                  "kept": "value"
+                }
+                """);
+        rootRepository.save(root);
+        issueFetchService.setManifests(List.of());
+
+        scanService.scanProject(jira, project, "token-1234");
+
+        KnowledgeRoot updatedRoot = rootRepository.findById(root.getId()).orElseThrow();
+        JsonNode config = objectMapper.readTree(updatedRoot.getConfigJson());
+        assertThat(config.has("lastFullScanFinishedAt")).isFalse();
+        assertThat(config.path("lastSuccessfulScanStartedAt").asText()).isNotBlank();
+        assertThat(config.path("kept").asText()).isEqualTo("value");
+    }
+
+    @Test
     void failedScanDoesNotAdvanceLastSuccessfulCursor() {
         JiraSettings jira = jira();
         JiraProjectDto project = project();
