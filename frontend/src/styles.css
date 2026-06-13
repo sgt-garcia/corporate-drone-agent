@@ -1596,6 +1596,24 @@ select.input {
   font-size: 12px;
   color: var(--gray-500);
 }
+/* Model-fetch failure: a red box (in place of the select) plus a Retry. */
+.model-select-error-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.model-select-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--danger-700);
+  border-color: var(--danger-500);
+  background: var(--danger-50);
+  cursor: default;
+}
+.model-select-retry {
+  align-self: flex-start;
+}
 
 /* =====================================================================
    KNOWLEDGE — Local Folders
@@ -1695,6 +1713,31 @@ select.input {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* An errored source explains itself in red and is allowed to wrap, since the
+   reason is more important than keeping the row to one line. */
+.folder-meta.error {
+  color: var(--danger-700);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+/* Path display that keeps the leaf folder visible, ellipsizing the head when
+   space is tight (plain ellipsis would drop the leaf that identifies it). */
+.middle-path {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+.middle-path-head {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.middle-path-tail {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .folder-row-controls,
 .folder-confirm {
@@ -1825,6 +1868,12 @@ select.input {
   border-radius: var(--radius-sm);
   padding: 2px 7px;
   flex-shrink: 0;
+}
+/* An unreachable Jira project flags its key chip red to match the error row. */
+.jira-key.error {
+  color: var(--danger-700);
+  background: var(--danger-50);
+  border-color: color-mix(in srgb, var(--danger-500) 45%, transparent);
 }
 .jira-expiry {
   display: flex;

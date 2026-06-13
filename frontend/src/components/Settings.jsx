@@ -406,6 +406,23 @@ export function Settings({
   );
 }
 
+// Path display that keeps the leaf folder visible, ellipsizing the head when
+// space is tight. Plain CSS ellipsis truncates the tail — exactly the leaf that
+// distinguishes two similar paths — so we pin the leaf and clip the head.
+// Handles both POSIX ("/") and Windows ("\\") separators.
+function MiddlePath({ path }) {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (cut < 0) {
+    return path;
+  }
+  return (
+    <span className="middle-path">
+      <span className="middle-path-head">{path.slice(0, cut + 1)}</span>
+      <span className="middle-path-tail">{path.slice(cut + 1)}</span>
+    </span>
+  );
+}
+
 // Scan-status pill shared by Local Folders and Jira projects.
 function ScanStatus({ status }) {
   if (status === "scanning") {
@@ -456,6 +473,14 @@ function JiraProjectStatus({ status }) {
   }
   if (status === "paused") {
     return <span className="badge badge-neutral">Paused</span>;
+  }
+  if (status === "error") {
+    return (
+      <span className="badge badge-danger">
+        <Icon name="alert-triangle" size={12} color="var(--danger-600)" />
+        Error
+      </span>
+    );
   }
   return (
     <span className="badge badge-success">
@@ -546,6 +571,7 @@ function KnowledgeSourceList({
   tickerItems,
   metaScanned,
   metaPaused,
+  metaError,
   scanActionLabel = "Scan now",
   pauseActionLabel = "Pause scanning",
   resumeActionLabel = "Resume scanning",
@@ -575,11 +601,19 @@ function KnowledgeSourceList({
             {renderLeading(item)}
             <div className="folder-row-id">
               <div className="folder-path">{renderTitle(item)}</div>
-              <div className="folder-meta">
+              <div
+                className={
+                  item.status === "error" ? "folder-meta error" : "folder-meta"
+                }
+              >
                 {item.status === "scanning" ? (
                   <ScanningTicker items={tickerItems(item)} />
                 ) : item.status === "paused" ? (
                   metaPaused(item)
+                ) : item.status === "error" ? (
+                  metaError
+                    ? metaError(item)
+                    : "Source unavailable — last scan failed."
                 ) : (
                   metaScanned(item)
                 )}
@@ -612,26 +646,46 @@ function KnowledgeSourceList({
                 <button
                   className="iconbtn"
                   type="button"
-                  title={scanActionLabel}
-                  aria-label={scanActionLabel}
+                  title={item.status === "error" ? "Retry scan" : scanActionLabel}
+                  aria-label={item.status === "error" ? "Retry scan" : scanActionLabel}
                   onClick={() => onScanNow(item.id)}
                   disabled={item.status === "paused" || item.status === "scanning"}
                 >
-                  <Icon name="refresh-cw" size={16} color="var(--gray-500)" />
-                </button>
-                <button
-                  className="iconbtn"
-                  type="button"
-                  title={item.status === "paused" ? resumeActionLabel : pauseActionLabel}
-                  aria-label={item.status === "paused" ? resumeActionLabel : pauseActionLabel}
-                  onClick={() => onTogglePause(item.id)}
-                >
                   <Icon
-                    name={item.status === "paused" ? "play" : "pause"}
+                    name="refresh-cw"
                     size={16}
-                    color="var(--gray-500)"
+                    color={
+                      item.status === "error"
+                        ? "var(--danger-600)"
+                        : "var(--gray-500)"
+                    }
                   />
                 </button>
+                {item.status === "error" ? (
+                  <button
+                    className="iconbtn"
+                    type="button"
+                    title="Pause unavailable while the source can't be reached"
+                    aria-label={pauseActionLabel}
+                    disabled
+                  >
+                    <Icon name="pause" size={16} color="var(--gray-500)" />
+                  </button>
+                ) : (
+                  <button
+                    className="iconbtn"
+                    type="button"
+                    title={item.status === "paused" ? resumeActionLabel : pauseActionLabel}
+                    aria-label={item.status === "paused" ? resumeActionLabel : pauseActionLabel}
+                    onClick={() => onTogglePause(item.id)}
+                  >
+                    <Icon
+                      name={item.status === "paused" ? "play" : "pause"}
+                      size={16}
+                      color="var(--gray-500)"
+                    />
+                  </button>
+                )}
                 <button
                   className="iconbtn"
                   type="button"
@@ -878,11 +932,21 @@ function LocalFoldersConfig({
         onScanNow={scanNow}
         onTogglePause={togglePause}
         onRemove={removeFolder}
-        renderLeading={() => <Icon name="folder" size={18} color="var(--gray-500)" />}
-        renderTitle={(folder) => folder.path}
+        renderLeading={(folder) => (
+          <Icon
+            name="folder"
+            size={18}
+            color={folder.status === "error" ? "var(--danger-600)" : "var(--gray-500)"}
+          />
+        )}
+        renderTitle={(folder) => <MiddlePath path={folder.path} />}
         tickerItems={(folder) => scanProgressById?.[folder.id] ?? []}
         metaScanned={folderMeta}
         metaPaused={(folder) => `Paused · ${folderMeta(folder)}`}
+        metaError={(folder) =>
+          folder.reason ||
+          "Folder not found — it may have been moved, renamed, or unmounted."
+        }
         addControl={
           <div className="folder-add-controls">
             <span className="input-icon">
@@ -1413,17 +1477,25 @@ function JiraConfig({
           onScanNow={scanNow}
           onTogglePause={togglePause}
           onRemove={removeProject}
-          renderLeading={(project) => <span className="jira-key">{project.key}</span>}
+          renderLeading={(project) => (
+            <span
+              className={project.status === "error" ? "jira-key error" : "jira-key"}
+            >
+              {project.key}
+            </span>
+          )}
           renderTitle={(project) => project.name}
           renderStatus={(project) => <JiraProjectStatus status={project.status} />}
           tickerItems={(project) => scanProgressById?.[project.id] ?? []}
           metaScanned={(project) =>
-            project.status === "error"
-              ? `${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues - ${project.message || "Last scan failed"}`
-              : `${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues - scanned ${project.checked || "just now"}`
+            `${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues - scanned ${project.checked || "just now"}`
           }
           metaPaused={(project) =>
             `Paused - ${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues`
+          }
+          metaError={(project) =>
+            project.message ||
+            "Couldn’t reach this project — check your access and retry."
           }
           scanActionLabel="Scan now"
           pauseActionLabel="Pause saved project"
@@ -2240,6 +2312,8 @@ function ProviderModelSelect({
   const [models, setModels] = useState([]);
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
+  // Bumped by the Retry button to re-run the load effect after a failure.
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     let isActive = true;
@@ -2295,6 +2369,7 @@ function ProviderModelSelect({
     lookupReady,
     lookupValue,
     provider,
+    retryNonce,
     secretValue,
     useSavedKey,
     useSavedSecretKey
@@ -2302,6 +2377,26 @@ function ProviderModelSelect({
 
   const options = [...models];
   const selectedValue = options.includes(value) ? value : "";
+
+  // A failed fetch replaces the (empty) select with a red box + Retry, rather
+  // than a disabled dropdown beside a gray error line.
+  if (status === "error") {
+    return (
+      <div className="model-select-error-wrap">
+        <div className="input model-select-error">
+          <Icon name="alert-circle" size={15} color="var(--danger-600)" />
+          <span>{message || errorLabel}</span>
+        </div>
+        <button
+          className="btn btn-secondary btn-sm model-select-retry"
+          type="button"
+          onClick={() => setRetryNonce((nonce) => nonce + 1)}
+        >
+          <Icon name="refresh-cw" size={14} color="var(--gray-700)" /> Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -2322,7 +2417,6 @@ function ProviderModelSelect({
       {status === "idle" && idleHint && (
         <p className="model-select-status">{idleHint}</p>
       )}
-      {message && <p className="model-select-status">{message}</p>}
     </>
   );
 }
