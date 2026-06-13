@@ -1818,6 +1818,14 @@ select.input {
 .folder-confirm {
   gap: 8px;
 }
+/* Fixed-width, centered status slot so the trailing scan/pause/remove icons
+   line up column-to-column regardless of which status pill a row shows. */
+.folder-status-slot {
+  display: flex;
+  justify-content: center;
+  width: 104px;
+  flex-shrink: 0;
+}
 .folder-confirm-prompt {
   font-size: 12px;
   font-weight: 500;

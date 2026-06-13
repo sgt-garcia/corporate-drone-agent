@@ -177,6 +177,11 @@ const AWS_REGION_LABELS = {
   "ap-southeast-2": "Asia Pacific (Sydney)"
 };
 
+// Locale-pinned integer grouping so counts read the same for everyone. An
+// unpinned toLocaleString() renders "2.123" in some locales, which reads like a
+// decimal; the rest of the app pins time/dates the same way.
+const fmtNum = (value) => Number(value ?? 0).toLocaleString("en-GB");
+
 // Stable module-level loaders. ProviderModelSelect keeps `loadModels` in its
 // effect deps, so these must NOT be inline closures or the effect re-runs every
 // render and polls the model endpoint in a loop. Varying values (Ollama base
@@ -444,7 +449,7 @@ function ScanStatus({ status }) {
   if (status === "error") {
     return (
       <span className="badge badge-danger">
-        <Icon name="alert-triangle" size={12} color="var(--danger-600)" />
+        <Icon name="alert-triangle" size={12} color="var(--danger-700)" />
         Error
       </span>
     );
@@ -477,7 +482,7 @@ function JiraProjectStatus({ status }) {
   if (status === "error") {
     return (
       <span className="badge badge-danger">
-        <Icon name="alert-triangle" size={12} color="var(--danger-600)" />
+        <Icon name="alert-triangle" size={12} color="var(--danger-700)" />
         Error
       </span>
     );
@@ -642,7 +647,9 @@ function KnowledgeSourceList({
               </div>
             ) : (
               <div className="folder-row-controls">
-                {renderStatus ? renderStatus(item) : <ScanStatus status={item.status} />}
+                <span className="folder-status-slot">
+                  {renderStatus ? renderStatus(item) : <ScanStatus status={item.status} />}
+                </span>
                 <button
                   className="iconbtn"
                   type="button"
@@ -871,7 +878,7 @@ function LocalFoldersConfig({
   }
 
   function folderMeta(folder) {
-    const files = Number(folder.files ?? 0).toLocaleString();
+    const files = fmtNum(folder.files);
     const size = folder.size || "not scanned yet";
     const checked = folder.checked ? ` · checked ${folder.checked}` : "";
     return `${files} files · ${size}${checked}`;
@@ -904,19 +911,20 @@ function LocalFoldersConfig({
       {folders.length > 0 && (
         <SourceStats
           items={[
-            { label: "Files indexed", value: totalFiles.toLocaleString() },
+            { label: "Files indexed", value: fmtNum(totalFiles) },
             { label: "Folders", value: `${folders.length} / ${KNOWLEDGE_MAX}` },
             {
+              // Errors take precedence over scanning/paused so a failure is never
+              // hidden behind an in-progress scan, matching the design.
               label: "Status",
-              value: scanningCount
-                ? `${scanningCount} scanning`
-                : pausedCount
-                  ? `${pausedCount} paused`
-                  : errorCount
-                    ? `${errorCount} error${errorCount === 1 ? "" : "s"}`
+              value: errorCount
+                ? `${errorCount} error${errorCount === 1 ? "" : "s"}`
+                : scanningCount
+                  ? `${scanningCount} scanning`
+                  : pausedCount
+                    ? `${pausedCount} paused`
                     : "Up to date",
-              tone:
-                !scanningCount && !pausedCount && errorCount ? "danger" : undefined
+              tone: errorCount ? "danger" : undefined
             }
           ]}
         />
@@ -1304,19 +1312,19 @@ function JiraConfig({
       {cfg.connected && projects.length > 0 && (
         <SourceStats
           items={[
-            { label: "Jira issues", value: totalIssues.toLocaleString() },
+            { label: "Jira issues", value: fmtNum(totalIssues) },
             { label: "Projects", value: `${projects.length} / ${JIRA_MAX}` },
             {
+              // Errors take precedence over scanning/paused, matching the design.
               label: "Status",
-              value: scanningCount
-                ? `${scanningCount} scanning`
-                : pausedCount
-                  ? `${pausedCount} paused`
-                  : errorCount
-                    ? `${errorCount} error${errorCount === 1 ? "" : "s"}`
+              value: errorCount
+                ? `${errorCount} error${errorCount === 1 ? "" : "s"}`
+                : scanningCount
+                  ? `${scanningCount} scanning`
+                  : pausedCount
+                    ? `${pausedCount} paused`
                     : "Ready",
-              tone:
-                !scanningCount && !pausedCount && errorCount ? "danger" : undefined
+              tone: errorCount ? "danger" : undefined
             }
           ]}
         />
@@ -1488,10 +1496,10 @@ function JiraConfig({
           renderStatus={(project) => <JiraProjectStatus status={project.status} />}
           tickerItems={(project) => scanProgressById?.[project.id] ?? []}
           metaScanned={(project) =>
-            `${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues - scanned ${project.checked || "just now"}`
+            `${fmtNum(project.issues)} indexed Jira issues · scanned ${project.checked || "just now"}`
           }
           metaPaused={(project) =>
-            `Paused - ${Number(project.issues ?? 0).toLocaleString()} indexed Jira issues`
+            `Paused · ${fmtNum(project.issues)} indexed Jira issues`
           }
           metaError={(project) =>
             project.message ||
@@ -1536,7 +1544,7 @@ function JiraConfig({
                     className="input"
                     type="text"
                     autoFocus
-                    placeholder="Search Jira projects..."
+                    placeholder="Search projects in this instance…"
                     value={pickerSearch}
                     onChange={(event) => setPickerSearch(event.target.value)}
                   />
@@ -1758,7 +1766,7 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
         <AwsSecretField
           label="Access key ID"
           type="text"
-          placeholder="AKIA..."
+          placeholder="AKIA…"
           hint="An IAM key with Bedrock model-list and invoke permissions."
           value={config.accessKey ?? ""}
           configured={Boolean(config.accessKeyConfigured)}
