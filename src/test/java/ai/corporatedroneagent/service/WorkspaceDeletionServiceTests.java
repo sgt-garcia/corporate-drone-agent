@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -147,32 +148,36 @@ class WorkspaceDeletionServiceTests {
     }
 
     @Test
-    void regeneratingReplacesThePersistedAssistantReplyInPlace() {
+    void regeneratingHandsThePersistedAssistantReplyToThePushJobToReplace() {
         Project project = saveProject("Launch");
         Conversation conversation = saveConversation(project, "Prep");
         conversationService.sendUserMessage(conversation.getId(), "Draft the kickoff note");
         // Stand in for the reply the (mocked) push job would have appended.
+        UUID replyId = UUID.randomUUID();
         conversationRepository.appendMessage(
                 conversation.getId(),
-                new Message(UUID.randomUUID(), "assistant", "Here is a draft", null));
+                new Message(replyId, "assistant", "Here is a draft", null));
 
         conversationService.regenerateLastReply(conversation.getId());
 
-        // The stale reply is dropped — only the user turn remains; the fresh reply
-        // is appended asynchronously by the push job, which is mocked here.
+        // The existing reply is NOT dropped up front. Its id is handed to the push
+        // job, which deletes it only once the replacement has been persisted — so a
+        // failed regenerate cannot wipe the original. Nothing is removed here (the
+        // push job is mocked) and no message-deleted is published by the service.
         assertThat(conversationRepository.findById(conversation.getId()).orElseThrow().getMessages())
                 .extracting(Message::getContent)
-                .containsExactly("Draft the kickoff note");
-        verify(eventService).publish(eq("message-deleted"), any());
-        // Re-queued for the same user message: once on send, once on regenerate.
-        verify(messagePushJob, times(2))
-                .queueAssistantReply(eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"));
+                .containsExactly("Draft the kickoff note", "Here is a draft");
+        verify(eventService, never()).publish(eq("message-deleted"), any());
+        // Re-queued for the same user message, carrying the reply to replace.
+        verify(messagePushJob).queueAssistantReply(
+                eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"), eq(replyId));
     }
 
     @Test
-    void regeneratingWithNoPersistedReplyRequeuesWithoutDeleting() {
+    void regeneratingWithNoPersistedReplyRequeuesWithNothingToReplace() {
         // The previous reply errored, so it was never persisted — the last turn is
-        // still the user message. Regenerate has nothing to drop and just re-queues.
+        // still the user message. Regenerate has no reply to replace, so it re-queues
+        // with a null replacement id.
         Project project = saveProject("Launch");
         Conversation conversation = saveConversation(project, "Prep");
         conversationService.sendUserMessage(conversation.getId(), "Draft the kickoff note");
@@ -183,8 +188,8 @@ class WorkspaceDeletionServiceTests {
                 .extracting(Message::getContent)
                 .containsExactly("Draft the kickoff note");
         verify(eventService, never()).publish(eq("message-deleted"), any());
-        verify(messagePushJob, times(2))
-                .queueAssistantReply(eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"));
+        verify(messagePushJob).queueAssistantReply(
+                eq(conversation.getId()), any(UUID.class), eq("Draft the kickoff note"), isNull());
     }
 
     @Test

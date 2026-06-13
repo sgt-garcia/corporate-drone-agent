@@ -506,10 +506,11 @@ export default function App() {
     }
   }
 
-  // Regenerate the last (successful, persisted) reply. The backend deletes the
-  // existing assistant turn — emitting message-deleted, which drops it here —
-  // then streams a fresh reply in its place, so the turn is swapped rather than
-  // duplicated.
+  // Regenerate the last (successful, persisted) reply. The backend keeps the
+  // existing assistant turn visible while it streams a fresh reply, then drops
+  // the old one — emitting message-deleted, which removes it here — only once
+  // the replacement has landed. So the turn is swapped rather than duplicated,
+  // and a failed regenerate leaves the original reply intact.
   async function regenerateConversation(conversationId) {
     if (!conversationsById[conversationId]) {
       return;

@@ -134,6 +134,21 @@ public class MessagePushJob {
     }
 
     public void queueAssistantReply(UUID conversationId, UUID userMessageId, String userContent) {
+        queueAssistantReply(conversationId, userMessageId, userContent, null);
+    }
+
+    /**
+     * Queue an assistant reply, optionally replacing an existing persisted reply
+     * (a regenerate). The reply being replaced is dropped only once its
+     * replacement has been persisted, so a failed regenerate leaves the original
+     * reply intact rather than wiping it. Pass {@code null} for a plain reply.
+     */
+    public void queueAssistantReply(
+            UUID conversationId,
+            UUID userMessageId,
+            String userContent,
+            UUID replacedAssistantMessageId
+    ) {
         if (shuttingDown) {
             publishTransientMessage(conversationId, "error", SHUTTING_DOWN_REPLY);
             return;
@@ -142,7 +157,7 @@ public class MessagePushJob {
 
         requestReply(conversationId, userMessageId, userContent)
                 .exceptionally(error -> ChatReply.error("LLM request failed: " + rootMessage(error)))
-                .thenAcceptAsync(reply -> publishReply(conversationId, reply), replyExecutor)
+                .thenAcceptAsync(reply -> publishReply(conversationId, reply, replacedAssistantMessageId), replyExecutor)
                 .exceptionally(error -> {
                     publishPipelineFailure(conversationId, error);
                     return null;
@@ -309,25 +324,53 @@ public class MessagePushJob {
         }
     }
 
-    private void publishReply(UUID conversationId, ChatReply reply) {
+    private void publishReply(UUID conversationId, ChatReply reply, UUID replacedAssistantMessageId) {
         if (reply.assistant()) {
-            appendAssistantMessage(conversationId, reply.content(), reply.sources());
+            appendAssistantMessage(conversationId, reply.content(), reply.sources(), replacedAssistantMessageId);
             return;
         }
+        // A failed reply is never persisted, so a regenerate's original reply
+        // (replacedAssistantMessageId) is deliberately left in place here.
         publishTransientMessage(conversationId, reply.role(), reply.content());
     }
 
-    private void appendAssistantMessage(UUID conversationId, String content, List<MessageSourceDto> sources) {
+    private void appendAssistantMessage(
+            UUID conversationId,
+            String content,
+            List<MessageSourceDto> sources,
+            UUID replacedAssistantMessageId
+    ) {
         Message message = assistantMessage(content, sources);
 
         conversationRepository.appendMessage(conversationId, message)
                 .ifPresent(savedMessage -> {
+                    removeReplacedReply(conversationId, replacedAssistantMessageId);
                     eventService.publish(
                             "message-created",
                             new MessageEventDto(conversationId, toDto(savedMessage))
                     );
                     setConversationStatus(conversationId, "review");
                 });
+    }
+
+    // Drop the assistant reply a regenerate is replacing, now that its
+    // replacement has been persisted. Publishes message-deleted so connected
+    // clients swap the turn rather than show both. A no-op for a plain reply
+    // (null id) or if the reply was already gone.
+    private void removeReplacedReply(UUID conversationId, UUID replacedAssistantMessageId) {
+        if (replacedAssistantMessageId == null) {
+            return;
+        }
+        if (conversationRepository.deleteMessage(conversationId, replacedAssistantMessageId)) {
+            MessageDto deleted = new MessageDto(
+                    replacedAssistantMessageId,
+                    "assistant",
+                    "",
+                    Instant.now(),
+                    List.of()
+            );
+            eventService.publish("message-deleted", new MessageEventDto(conversationId, deleted));
+        }
     }
 
     private void publishTransientMessage(UUID conversationId, String role, String content) {

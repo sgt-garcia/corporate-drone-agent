@@ -22,6 +22,7 @@ import ai.corporatedroneagent.service.EventService;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -559,6 +560,117 @@ class MessagePushJobTests {
         if (lastError != null) {
             throw lastError;
         }
+    }
+
+    @Test
+    void regenerateDropsTheReplacedReplyOnlyAfterTheReplacementPersists() {
+        UUID conversationId = UUID.randomUUID();
+        UUID replacedReplyId = UUID.randomUUID();
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        when(conversationRepository.updateStatus(eq(conversationId), any())).thenReturn(true);
+        when(conversationRepository.appendMessage(eq(conversationId), any(Message.class)))
+                .thenAnswer(invocation -> Optional.of(invocation.getArgument(1)));
+        when(conversationRepository.deleteMessage(conversationId, replacedReplyId)).thenReturn(true);
+        EventService eventService = mock(EventService.class);
+        AiChatService aiChatService = mock(AiChatService.class);
+        when(aiChatService.reply(conversationId, "hi")).thenReturn(ChatReply.assistant("fresh answer"));
+        MessagePushJob job = jobWithSynchronousPipeline(conversationRepository, eventService, aiChatService);
+
+        try {
+            job.queueAssistantReply(conversationId, UUID.randomUUID(), "hi", replacedReplyId);
+
+            // The replacement is persisted first, then the old reply is dropped.
+            verify(conversationRepository).appendMessage(eq(conversationId), any(Message.class));
+            verify(conversationRepository).deleteMessage(conversationId, replacedReplyId);
+            verify(eventService).publish(eq("message-deleted"), any());
+            verify(conversationRepository).updateStatus(conversationId, "review");
+        } finally {
+            job.shutdown();
+        }
+    }
+
+    @Test
+    void regenerateLeavesTheOriginalReplyIntactWhenTheReplacementFails() {
+        UUID conversationId = UUID.randomUUID();
+        UUID replacedReplyId = UUID.randomUUID();
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        when(conversationRepository.updateStatus(eq(conversationId), any())).thenReturn(true);
+        EventService eventService = mock(EventService.class);
+        AiChatService aiChatService = mock(AiChatService.class);
+        when(aiChatService.reply(conversationId, "hi")).thenReturn(ChatReply.error("boom"));
+        MessagePushJob job = jobWithSynchronousPipeline(conversationRepository, eventService, aiChatService);
+
+        try {
+            job.queueAssistantReply(conversationId, UUID.randomUUID(), "hi", replacedReplyId);
+
+            // The failure lands, and the original reply is neither deleted nor
+            // announced as deleted — it survives.
+            verify(conversationRepository).updateStatus(conversationId, "error");
+            verify(conversationRepository, never()).deleteMessage(conversationId, replacedReplyId);
+            verify(conversationRepository, never()).appendMessage(eq(conversationId), any(Message.class));
+            verify(eventService, never()).publish(eq("message-deleted"), any());
+        } finally {
+            job.shutdown();
+        }
+    }
+
+    // Run the reply pipeline synchronously on the calling thread so these tests
+    // are deterministic and don't depend on thread scheduling, which other tests
+    // in this class can leave under load by hanging the provider until shutdown.
+    // The reply has fully landed by the time queueAssistantReply returns.
+    private static MessagePushJob jobWithSynchronousPipeline(
+            ConversationRepository conversationRepository,
+            EventService eventService,
+            AiChatService aiChatService
+    ) {
+        return new MessagePushJob(
+                conversationRepository,
+                eventService,
+                aiChatService,
+                Duration.ofSeconds(60),
+                4,
+                4,
+                directExecutor(),
+                directExecutor(),
+                Executors.newSingleThreadScheduledExecutor()
+        );
+    }
+
+    private static ExecutorService directExecutor() {
+        return new AbstractExecutorService() {
+            private volatile boolean shutdown;
+
+            @Override
+            public void execute(Runnable command) {
+                command.run();
+            }
+
+            @Override
+            public void shutdown() {
+                shutdown = true;
+            }
+
+            @Override
+            public java.util.List<Runnable> shutdownNow() {
+                shutdown = true;
+                return java.util.List.of();
+            }
+
+            @Override
+            public boolean isShutdown() {
+                return shutdown;
+            }
+
+            @Override
+            public boolean isTerminated() {
+                return shutdown;
+            }
+
+            @Override
+            public boolean awaitTermination(long timeout, TimeUnit unit) {
+                return true;
+            }
+        };
     }
 
     private static void queueAssistantReply(MessagePushJob job, UUID conversationId, String userContent) {
