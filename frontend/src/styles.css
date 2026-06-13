@@ -151,6 +151,9 @@ a {
 .provider-card:focus-visible,
 .config-back:focus-visible,
 .iconbtn:focus-visible,
+.agent-act:focus-visible,
+.source-pill:focus-visible,
+.source-link:focus-visible,
 .composer-send:focus-visible {
   box-shadow: var(--ring-focus);
 }
