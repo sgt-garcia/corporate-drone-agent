@@ -8,6 +8,7 @@ import ai.corporatedroneagent.config.StorageProperties;
 import ai.corporatedroneagent.dto.JiraProjectDto;
 import ai.corporatedroneagent.model.JiraSettings;
 import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
+import ai.corporatedroneagent.model.knowledge.JiraKnowledgeRootConfig;
 import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
@@ -36,6 +37,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -50,7 +52,7 @@ class JiraKnowledgeScanServiceTests {
     private KnowledgeResourceRepository resourceRepository;
     private KnowledgeResourcePipelineRepository pipelineRepository;
     private KnowledgeIndexingService indexingService;
-    private JiraKnowledgeScanService scanService;
+    private KnowledgeScanEngine engine;
     private FakeJiraIssueFetchService issueFetchService;
     private ObjectMapper objectMapper;
 
@@ -67,7 +69,7 @@ class JiraKnowledgeScanServiceTests {
         indexingService = new KnowledgeIndexingService(pipelineRepository, storageProperties);
         objectMapper = new ObjectMapper();
         issueFetchService = new FakeJiraIssueFetchService(objectMapper);
-        KnowledgeScanEngine engine = new KnowledgeScanEngine(
+        engine = new KnowledgeScanEngine(
                 rootRepository,
                 scanRepository,
                 resourceRepository,
@@ -77,7 +79,40 @@ class JiraKnowledgeScanServiceTests {
                 mock(EventService.class),
                 objectMapper
         );
-        scanService = new JiraKnowledgeScanService(engine, rootRepository, issueFetchService);
+    }
+
+    // Drives the generic engine with a JiraSourceAdapter, the way the ingestion service does —
+    // resolving the connection from a stub and the project identity from the root's config.
+    private KnowledgeScanEngine.ScanOutcome scan(JiraSettings jira, JiraProjectDto project, String token) {
+        return scan(jira, project, token, item -> {}, () -> false);
+    }
+
+    private KnowledgeScanEngine.ScanOutcome scan(
+            JiraSettings jira,
+            JiraProjectDto project,
+            String token,
+            Consumer<String> onProgress,
+            BooleanSupplier isCancelled
+    ) {
+        return engine.scan(jiraRoot(jira, project), jiraAdapter(issueFetchService, jira, token), isCancelled, onProgress);
+    }
+
+    private KnowledgeRoot jiraRoot(JiraSettings jira, JiraProjectDto project) {
+        String reference = JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId());
+        KnowledgeRoot root = rootRepository.findBySourceAndReference(KnowledgeSource.JIRA, reference)
+                .orElseGet(KnowledgeRoot::new);
+        root.setSource(KnowledgeSource.JIRA);
+        root.setReference(reference);
+        root.setDisplayName(project.getKey() + " - " + project.getName());
+        root.setConfigJson(JiraKnowledgeRootConfig.withIdentity(
+                root.getConfigJson(), project.getId(), project.getKey(), project.getName()));
+        return root;
+    }
+
+    private JiraSourceAdapter jiraAdapter(JiraIssueFetchService fetchService, JiraSettings jira, String token) {
+        return new JiraSourceAdapter(
+                fetchService,
+                root -> new JiraConnection(jira.getInstanceUrl(), jira.getEmail(), jira.getApiVersion(), token));
     }
 
     @Test
@@ -89,9 +124,9 @@ class JiraKnowledgeScanServiceTests {
         issueFetchService.setManifests(List.of(manifest));
         issueFetchService.putDocument(document);
 
-        JiraKnowledgeScanService.ScanResult result = scanService.scanProject(jira, project, "token-1234");
+        KnowledgeScanEngine.ScanOutcome result = scan(jira, project, "token-1234");
 
-        assertThat(result.issues()).isEqualTo(1);
+        assertThat(result.resources()).isEqualTo(1);
         assertThat(result.bytes()).isEqualTo(document.sizeBytes());
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
@@ -141,11 +176,11 @@ class JiraKnowledgeScanServiceTests {
         AtomicInteger checks = new AtomicInteger();
         BooleanSupplier isCancelled = () -> checks.getAndIncrement() >= 1;
 
-        JiraKnowledgeScanService.ScanResult result =
-                scanService.scanProject(jira, project, "token-1234", item -> {}, isCancelled);
+        KnowledgeScanEngine.ScanOutcome result =
+                scan(jira, project, "token-1234", item -> {}, isCancelled);
 
         // Only the first issue was indexed before cancellation.
-        assertThat(result.issues()).isEqualTo(1);
+        assertThat(result.resources()).isEqualTo(1);
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
                 JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
@@ -167,8 +202,8 @@ class JiraKnowledgeScanServiceTests {
 
         // A single item's conversion failure no longer aborts the scan; it records a failed
         // conversion and the scan completes, keeping the native read so nothing is lost.
-        JiraKnowledgeScanService.ScanResult result = scanService.scanProject(jira, project, "token-1234");
-        assertThat(result.issues()).isEqualTo(1);
+        KnowledgeScanEngine.ScanOutcome result = scan(jira, project, "token-1234");
+        assertThat(result.resources()).isEqualTo(1);
 
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
@@ -201,7 +236,7 @@ class JiraKnowledgeScanServiceTests {
         issueFetchService.setManifests(List.of(stale, changed));
         issueFetchService.putDocument(document(jira, "10100", "DEV-7", "Issue 10100", "staletoken"));
         issueFetchService.putDocument(document(jira, "10101", "DEV-8", "Issue 10101", "changedtoken"));
-        scanService.scanProject(jira, project, "token-1234");
+        scan(jira, project, "token-1234");
 
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
@@ -225,10 +260,10 @@ class JiraKnowledgeScanServiceTests {
                 Instant.parse("2026-06-10T12:34:56Z")
         ));
 
-        JiraKnowledgeScanService.ScanResult result = scanService.scanProject(jira, project, "token-1234");
+        KnowledgeScanEngine.ScanOutcome result = scan(jira, project, "token-1234");
 
         assertThat(issueFetchService.updatedSince.get().toEpochMilli()).isEqualTo(firstScanStartedAt.toEpochMilli());
-        assertThat(result.issues()).isEqualTo(2);
+        assertThat(result.resources()).isEqualTo(2);
         assertThat(resourceRepository.findByRootIdAndReference(root.getId(), stale.reference()))
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
         assertThat(indexingService.searchTerm("staletoken", 10)).hasSize(1);
@@ -244,7 +279,7 @@ class JiraKnowledgeScanServiceTests {
         issueFetchService.setManifests(List.of(stale, changed));
         issueFetchService.putDocument(document(jira, "10100", "DEV-7", "Issue 10100", "staletoken"));
         issueFetchService.putDocument(document(jira, "10101", "DEV-8", "Issue 10101", "changedtoken"));
-        scanService.scanProject(jira, project, "token-1234");
+        scan(jira, project, "token-1234");
 
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
@@ -268,10 +303,10 @@ class JiraKnowledgeScanServiceTests {
                 Instant.parse("2026-06-10T12:34:56Z")
         ));
 
-        JiraKnowledgeScanService.ScanResult result = scanService.scanScheduledProject(jira, project, "token-1234");
+        KnowledgeScanEngine.ScanOutcome result = scan(jira, project, "token-1234");
 
         assertThat(issueFetchService.updatedSince.get().toEpochMilli()).isEqualTo(firstScanStartedAt.toEpochMilli());
-        assertThat(result.issues()).isEqualTo(2);
+        assertThat(result.resources()).isEqualTo(2);
         assertThat(resourceRepository.findByRootIdAndReference(root.getId(), stale.reference()))
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
         assertThat(indexingService.searchTerm("staletoken", 10)).hasSize(1);
@@ -285,7 +320,7 @@ class JiraKnowledgeScanServiceTests {
         JiraIssueFetchService.JiraIssueManifest issue = manifest(jira, "10100", "DEV-7", "Issue 10100");
         issueFetchService.setManifests(List.of(issue));
         issueFetchService.putDocument(document(jira, "10100", "DEV-7", "Issue 10100", "firsttoken"));
-        scanService.scanProject(jira, project, "token-1234");
+        scan(jira, project, "token-1234");
 
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
@@ -300,7 +335,7 @@ class JiraKnowledgeScanServiceTests {
         rootRepository.save(root);
         issueFetchService.setManifests(List.of());
 
-        scanService.scanProject(jira, project, "token-1234");
+        scan(jira, project, "token-1234");
 
         KnowledgeRoot updatedRoot = rootRepository.findById(root.getId()).orElseThrow();
         JsonNode config = objectMapper.readTree(updatedRoot.getConfigJson());
@@ -316,7 +351,7 @@ class JiraKnowledgeScanServiceTests {
         JiraIssueFetchService.JiraIssueManifest issue = manifest(jira, "10100", "DEV-7", "Issue 10100");
         issueFetchService.setManifests(List.of(issue));
         issueFetchService.putDocument(document(jira, "10100", "DEV-7", "Issue 10100", "firsttoken"));
-        scanService.scanProject(jira, project, "token-1234");
+        scan(jira, project, "token-1234");
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
                 JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
@@ -325,13 +360,13 @@ class JiraKnowledgeScanServiceTests {
 
         issueFetchService.throwOnManifest = true;
         org.junit.jupiter.api.Assertions.assertThrows(
-                JiraKnowledgeScanService.JiraScanException.class,
-                () -> scanService.scanProject(jira, project, "token-1234")
+                KnowledgeScanEngine.KnowledgeScanException.class,
+                () -> scan(jira, project, "token-1234")
         );
         issueFetchService.throwOnManifest = false;
         issueFetchService.setManifests(List.of());
 
-        scanService.scanProject(jira, project, "token-1234");
+        scan(jira, project, "token-1234");
 
         assertThat(issueFetchService.updatedSince.get().toEpochMilli())
                 .isEqualTo(firstSuccessfulScanStartedAt.toEpochMilli());
@@ -420,22 +455,14 @@ class JiraKnowledgeScanServiceTests {
             JiraSettings jira = jira();
             jira.setInstanceUrl("http://127.0.0.1:" + server.getAddress().getPort());
             JiraIssueFetchService httpFetchService = new JiraIssueFetchService(HttpClient.newHttpClient(), objectMapper);
-            KnowledgeScanEngine httpEngine = new KnowledgeScanEngine(
-                    rootRepository,
-                    scanRepository,
-                    resourceRepository,
-                    pipelineRepository,
-                    new KnowledgeChunkingService(pipelineRepository),
-                    indexingService,
-                    mock(EventService.class),
-                    objectMapper
-            );
-            JiraKnowledgeScanService httpScanService =
-                    new JiraKnowledgeScanService(httpEngine, rootRepository, httpFetchService);
+            JiraProjectDto project = project();
+            KnowledgeScanEngine.ScanOutcome result = engine.scan(
+                    jiraRoot(jira, project),
+                    jiraAdapter(httpFetchService, jira, "token-1234"),
+                    () -> false,
+                    item -> {});
 
-            JiraKnowledgeScanService.ScanResult result = httpScanService.scanProject(jira, project(), "token-1234");
-
-            assertThat(result.issues()).isEqualTo(1);
+            assertThat(result.resources()).isEqualTo(1);
             String expectedAuth = "Basic " + Base64.getEncoder()
                     .encodeToString("me@example.com:token-1234".getBytes(StandardCharsets.UTF_8));
             assertThat(issueSearchAuth.get()).isEqualTo(expectedAuth);
@@ -468,7 +495,7 @@ class JiraKnowledgeScanServiceTests {
         JiraIssueFetchService.JiraIssueManifest issue = manifest(jira, "10100", "DEV-7", "Issue 10100");
         issueFetchService.setManifests(List.of(issue));
         issueFetchService.putDocument(document(jira, "10100", "DEV-7", "Issue 10100", "removedtoken"));
-        scanService.scanProject(jira, project, "token-1234");
+        scan(jira, project, "token-1234");
 
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,

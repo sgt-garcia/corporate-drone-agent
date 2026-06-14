@@ -737,7 +737,7 @@ public class SettingsService {
         folder.setFiles(root.getTotalResources());
         folder.setSize(root.getTotalSizeBytes() == 0
                 ? ""
-                : KnowledgeFolderScanService.formatBytes(root.getTotalSizeBytes()));
+                : formatBytes(root.getTotalSizeBytes()));
         folder.setNextScan(nextScan(root));
         folder.setChecked(checkedLabel(root));
         folder.setMessage("error".equals(folder.getStatus()) ? root.getScanMessage() : "");
@@ -802,6 +802,20 @@ public class SettingsService {
     private String displayName(Path path) {
         Path fileName = path.getFileName();
         return fileName == null ? path.toString() : fileName.toString();
+    }
+
+    private String formatBytes(long bytes) {
+        if (bytes < 1024) {
+            return bytes + " B";
+        }
+        String[] units = {"KB", "MB", "GB", "TB"};
+        double value = bytes;
+        int unitIndex = -1;
+        do {
+            value = value / 1024;
+            unitIndex++;
+        } while (value >= 1024 && unitIndex < units.length - 1);
+        return String.format(Locale.ROOT, "%.1f %s", value, units[unitIndex]);
     }
 
     private List<KnowledgeFolderDto> sanitizeKnowledgeFolders(List<KnowledgeFolderDto> folders) {

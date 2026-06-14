@@ -5,7 +5,11 @@ import ai.corporatedroneagent.dto.JiraConnectionValidationDto;
 import ai.corporatedroneagent.dto.JiraProjectDto;
 import ai.corporatedroneagent.dto.JiraProjectRequest;
 import ai.corporatedroneagent.model.JiraSettings;
-import ai.corporatedroneagent.service.JiraProjectScanService;
+import ai.corporatedroneagent.model.knowledge.JiraKnowledgeRootConfig;
+import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
+import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
+import ai.corporatedroneagent.repository.KnowledgeRootRepository;
+import ai.corporatedroneagent.service.KnowledgeIngestionService;
 import ai.corporatedroneagent.service.SettingsService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -19,20 +23,24 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/settings/knowledge/jira")
 public class JiraKnowledgeController {
 
     private final SettingsService settingsService;
-    private final JiraProjectScanService jiraProjectScanService;
+    private final KnowledgeIngestionService ingestionService;
+    private final KnowledgeRootRepository knowledgeRootRepository;
 
     public JiraKnowledgeController(
             SettingsService settingsService,
-            JiraProjectScanService jiraProjectScanService
+            KnowledgeIngestionService ingestionService,
+            KnowledgeRootRepository knowledgeRootRepository
     ) {
         this.settingsService = settingsService;
-        this.jiraProjectScanService = jiraProjectScanService;
+        this.ingestionService = ingestionService;
+        this.knowledgeRootRepository = knowledgeRootRepository;
     }
 
     @GetMapping
@@ -78,7 +86,15 @@ public class JiraKnowledgeController {
 
     @PostMapping("/projects/{projectId}/scan")
     public JiraProjectDto scanProject(@PathVariable String projectId) {
-        return jiraProjectScanService.scanProject(projectId);
+        KnowledgeRoot root = knowledgeRootRepository.findBySource(KnowledgeSource.JIRA).stream()
+                .filter(candidate -> projectId.equals(JiraKnowledgeRootConfig.readProjectId(candidate)))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found"));
+        ingestionService.scan(root);
+        return settingsService.getJiraSettings().getProjects().stream()
+                .filter(project -> projectId.equals(project.getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found"));
     }
 
     @PostMapping("/projects/{projectId}/pause")

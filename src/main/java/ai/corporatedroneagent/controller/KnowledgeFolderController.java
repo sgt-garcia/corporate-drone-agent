@@ -2,11 +2,15 @@ package ai.corporatedroneagent.controller;
 
 import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
-import ai.corporatedroneagent.service.KnowledgeFolderScanService;
+import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
+import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
+import ai.corporatedroneagent.repository.KnowledgeRootRepository;
+import ai.corporatedroneagent.service.KnowledgeIngestionService;
 import ai.corporatedroneagent.service.SettingsService;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,14 +25,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class KnowledgeFolderController {
 
     private final SettingsService settingsService;
-    private final KnowledgeFolderScanService knowledgeFolderScanService;
+    private final KnowledgeIngestionService ingestionService;
+    private final KnowledgeRootRepository knowledgeRootRepository;
 
     public KnowledgeFolderController(
             SettingsService settingsService,
-            KnowledgeFolderScanService knowledgeFolderScanService
+            KnowledgeIngestionService ingestionService,
+            KnowledgeRootRepository knowledgeRootRepository
     ) {
         this.settingsService = settingsService;
-        this.knowledgeFolderScanService = knowledgeFolderScanService;
+        this.ingestionService = ingestionService;
+        this.knowledgeRootRepository = knowledgeRootRepository;
     }
 
     @GetMapping
@@ -49,7 +56,13 @@ public class KnowledgeFolderController {
 
     @PostMapping("/{folderId}/scan")
     public KnowledgeFolderDto scanKnowledgeFolder(@PathVariable UUID folderId) {
-        return knowledgeFolderScanService.scanFolder(folderId);
+        KnowledgeRoot root = knowledgeRootRepository.findByIdAndSource(folderId, KnowledgeSource.LOCAL_FOLDER)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge folder not found"));
+        ingestionService.scan(root);
+        return settingsService.listKnowledgeFolders().stream()
+                .filter(folder -> folderId.equals(folder.getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge folder not found"));
     }
 
     @PostMapping("/{folderId}/pause")

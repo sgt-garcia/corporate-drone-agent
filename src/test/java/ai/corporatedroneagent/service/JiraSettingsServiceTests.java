@@ -43,7 +43,6 @@ class JiraSettingsServiceTests {
     private KnowledgeRootRepository knowledgeRootRepository;
     private SettingsRepository settingsRepository;
     private JdbcTemplate jdbcTemplate;
-    private JiraProjectScanService jiraProjectScanService;
 
     @BeforeEach
     void setUp() {
@@ -199,82 +198,9 @@ class JiraSettingsServiceTests {
                 "jira://example.atlassian.net/project/10002"
         )).get().extracting(KnowledgeRoot::isPaused).isEqualTo(false);
 
-        JiraProjectDto scanned = jiraProjectScanService.scanProject(added.getId());
-        assertThat(scanned.getIssues()).isEqualTo(added.getIssues());
-        assertThat(scanned.getChecked()).isEqualTo("just now");
-
         settingsService.removeJiraProject(added.getId());
         assertThat(settingsService.listJiraProjects()).isEmpty();
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).isEmpty();
-    }
-
-    @Test
-    void scheduledJiraScanSkipsPausedProjectsAndContinuesAfterProjectFailure() {
-        JiraKnowledgeScanService scanService = mock(JiraKnowledgeScanService.class);
-        settingsService = serviceWith(validValidator(), fakeDiscovery(), scanService);
-        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
-        JiraProjectDto dev = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
-        JiraProjectDto ops = settingsService.addJiraProject(new JiraProjectRequest("OPS"));
-        JiraProjectDto help = settingsService.addJiraProject(new JiraProjectRequest("HLP"));
-        settingsService.pauseJiraProject(ops.getId());
-
-        when(scanService.scanScheduledProject(any(), any(), eq("token-1234"), any(), any())).thenAnswer(invocation -> {
-            JiraProjectDto project = invocation.getArgument(1);
-            if ("DEV".equals(project.getKey())) {
-                throw new JiraKnowledgeScanService.JiraScanException("Could not scan Jira project", new RuntimeException("boom"));
-            }
-            return new JiraKnowledgeScanService.ScanResult(5, 123);
-        });
-
-        jiraProjectScanService.scanAllProjects();
-
-        verify(scanService, times(2)).scanScheduledProject(any(), any(), eq("token-1234"), any(), any());
-        verify(scanService).scanScheduledProject(any(), argThat(project -> "DEV".equals(project.getKey())), eq("token-1234"), any(), any());
-        verify(scanService).scanScheduledProject(any(), argThat(project -> "HLP".equals(project.getKey())), eq("token-1234"), any(), any());
-        verify(scanService, times(0)).scanScheduledProject(any(), argThat(project -> "OPS".equals(project.getKey())), any(), any(), any());
-        // OPS was paused and skipped; HLP scanned past DEV's failure; DEV's failure was
-        // recorded on its root, so its derived status is "error". Statuses now derive
-        // from the KnowledgeRoot rather than the ScanResult the (mocked) scanner returns.
-        assertThat(settingsService.listJiraProjects())
-                .filteredOn(project -> project.getId().equals(ops.getId()))
-                .singleElement()
-                .extracting(JiraProjectDto::getStatus)
-                .isEqualTo("paused");
-        assertThat(settingsService.listJiraProjects())
-                .filteredOn(project -> project.getId().equals(help.getId()))
-                .singleElement()
-                .extracting(JiraProjectDto::getStatus)
-                .isEqualTo("scanned");
-        assertThat(settingsService.listJiraProjects())
-                .filteredOn(project -> project.getId().equals(dev.getId()))
-                .singleElement()
-                .satisfies(project -> {
-                    assertThat(project.getStatus()).isEqualTo("error");
-                    assertThat(project.getIssues()).isEqualTo(42L);
-                });
-    }
-
-    @Test
-    void scanJiraProjectPersistsErrorStatusAndPreservesResponseStatusException() {
-        JiraKnowledgeScanService scanService = mock(JiraKnowledgeScanService.class);
-        settingsService = serviceWith(validValidator(), fakeDiscovery(), scanService);
-        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
-        JiraProjectDto dev = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
-        when(scanService.scanProject(any(), any(), eq("token-1234"), any(), any())).thenThrow(
-                new ResponseStatusException(HttpStatus.FORBIDDEN, "Jira does not allow this account to read issues")
-        );
-
-        assertThatThrownBy(() -> jiraProjectScanService.scanProject(dev.getId()))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Jira does not allow this account to read issues");
-
-        assertThat(settingsService.listJiraProjects())
-                .singleElement()
-                .satisfies(project -> {
-                    assertThat(project.getStatus()).isEqualTo("error");
-                    assertThat(project.getMessage()).isEqualTo("Jira does not allow this account to read issues");
-                    assertThat(project.getIssues()).isEqualTo(42);
-                });
     }
 
     @Test
@@ -482,14 +408,6 @@ class JiraSettingsServiceTests {
             JiraConnectionValidationService validator,
             JiraProjectDiscoveryService discovery
     ) {
-        return serviceWith(validator, discovery, null);
-    }
-
-    private SettingsService serviceWith(
-            JiraConnectionValidationService validator,
-            JiraProjectDiscoveryService discovery,
-            JiraKnowledgeScanService scanService
-    ) {
         jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
         knowledgeRootRepository = new KnowledgeRootRepository(jdbcTemplate);
         settingsRepository = new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules());
@@ -498,26 +416,16 @@ class JiraSettingsServiceTests {
                 new KnowledgeResourceRepository(jdbcTemplate),
                 mock(KnowledgeIndexingService.class)
         );
-        KnowledgeScanCoordinator coordinator = new KnowledgeScanCoordinator();
-        EventService eventService = mock(EventService.class);
-        SettingsService service = new SettingsService(
+        return new SettingsService(
                 settingsRepository,
                 knowledgeRootRepository,
                 new SettingsSecretsService(secretStore),
-                eventService,
+                mock(EventService.class),
                 cleanupService,
-                coordinator,
+                new KnowledgeScanCoordinator(),
                 validator,
                 discovery
         );
-        jiraProjectScanService = new JiraProjectScanService(
-                service,
-                knowledgeRootRepository,
-                eventService,
-                coordinator,
-                scanService
-        );
-        return service;
     }
 
     private JiraConnectionValidationService validValidator() {

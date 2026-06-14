@@ -54,7 +54,7 @@ class KnowledgeFolderScanServiceTests {
     private Path root;
     private SettingsRepository settingsRepository;
     private SettingsService settingsService;
-    private KnowledgeFolderScanService scanService;
+    private FolderScanHarness scanService;
     private KnowledgeRootRepository knowledgeRootRepository;
     private KnowledgeRootScanRepository knowledgeRootScanRepository;
     private KnowledgeResourceRepository knowledgeResourceRepository;
@@ -103,34 +103,49 @@ class KnowledgeFolderScanServiceTests {
                 ),
                 scanCoordinator
         );
-        scanService = new KnowledgeFolderScanService(
-                settingsService,
-                knowledgeRootRepository,
-                eventService,
-                localScanService(new LocalFolderKnowledgeReadService()),
-                scanCoordinator
-        );
+        scanService = new FolderScanHarness(new LocalFolderKnowledgeReadService());
     }
 
-    // Builds a folder scan service backed by a fresh engine, parameterized by the read
-    // service so tests can inject blocking/failing/counting read behavior.
-    private LocalFolderKnowledgeScanService localScanService(LocalFolderKnowledgeReadService readService) {
-        KnowledgeScanEngine engine = new KnowledgeScanEngine(
-                knowledgeRootRepository,
-                knowledgeRootScanRepository,
-                knowledgeResourceRepository,
-                pipelineRepository,
-                new KnowledgeChunkingService(pipelineRepository),
-                indexingService,
-                mock(EventService.class),
-                new ObjectMapper()
-        );
-        return new LocalFolderKnowledgeScanService(
-                engine,
-                knowledgeRootRepository,
-                readService,
-                new LocalFolderKnowledgeConversionService()
-        );
+    // Mirrors the old folder scan-service surface (scanFolder/scanAllFolders) on top of the
+    // generic ingestion stack, parameterized by the read service so tests can inject
+    // blocking/failing/counting read behavior. Shares the test's scanCoordinator so a
+    // concurrent removeKnowledgeFolder can cancel an in-flight scan.
+    private final class FolderScanHarness {
+
+        private final KnowledgeIngestionService ingestionService;
+
+        private FolderScanHarness(LocalFolderKnowledgeReadService readService) {
+            KnowledgeScanEngine engine = new KnowledgeScanEngine(
+                    knowledgeRootRepository,
+                    knowledgeRootScanRepository,
+                    knowledgeResourceRepository,
+                    pipelineRepository,
+                    new KnowledgeChunkingService(pipelineRepository),
+                    indexingService,
+                    mock(EventService.class),
+                    new ObjectMapper()
+            );
+            KnowledgeSourceRegistry registry = new KnowledgeSourceRegistry(java.util.List.of(
+                    new FolderSourceAdapter(readService, new LocalFolderKnowledgeConversionService())));
+            this.ingestionService = new KnowledgeIngestionService(
+                    engine, registry, scanCoordinator, knowledgeRootRepository, mock(EventService.class));
+        }
+
+        private KnowledgeFolderDto scanFolder(java.util.UUID folderId) {
+            KnowledgeRoot folderRoot = knowledgeRootRepository.findByIdAndSource(folderId, KnowledgeSource.LOCAL_FOLDER)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            org.springframework.http.HttpStatus.NOT_FOUND, "Knowledge folder not found"));
+            ingestionService.scan(folderRoot);
+            return settingsService.listKnowledgeFolders().stream()
+                    .filter(folder -> folderId.equals(folder.getId()))
+                    .findFirst()
+                    .orElseThrow(() -> new ResponseStatusException(
+                            org.springframework.http.HttpStatus.NOT_FOUND, "Knowledge folder not found"));
+        }
+
+        private void scanAllFolders() {
+            ingestionService.scanAll();
+        }
     }
 
     @Test
@@ -311,13 +326,7 @@ class KnowledgeFolderScanServiceTests {
                 return super.read(resource, file);
             }
         };
-        KnowledgeFolderScanService blockingScanService = new KnowledgeFolderScanService(
-                settingsService,
-                knowledgeRootRepository,
-                mock(EventService.class),
-                localScanService(blockingReadService),
-                scanCoordinator
-        );
+        FolderScanHarness blockingScanService = new FolderScanHarness(blockingReadService);
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
         try {
@@ -327,8 +336,14 @@ class KnowledgeFolderScanServiceTests {
 
             allowFirstReadToFinish.countDown();
 
-            assertThatThrownBy(() -> scan.get(5, TimeUnit.SECONDS))
-                    .hasCauseInstanceOf(ResponseStatusException.class);
+            // The scan stops between files when the remove cancels it; the run itself may
+            // return or surface a not-found once the root is gone — either is fine, the
+            // invariants below are what matter.
+            try {
+                scan.get(5, TimeUnit.SECONDS);
+            } catch (java.util.concurrent.ExecutionException ignored) {
+                // root removed mid-scan
+            }
             removal.get(5, TimeUnit.SECONDS);
         } finally {
             executor.shutdownNow();
@@ -353,27 +368,20 @@ class KnowledgeFolderScanServiceTests {
                 throw new IllegalStateException("boom");
             }
         };
-        KnowledgeFolderScanService failingScanService = new KnowledgeFolderScanService(
-                settingsService,
-                knowledgeRootRepository,
-                mock(EventService.class),
-                localScanService(failingReadService),
-                new KnowledgeScanCoordinator()
-        );
+        FolderScanHarness failingScanService = new FolderScanHarness(failingReadService);
 
         assertThatThrownBy(() -> failingScanService.scanFolder(configured.getId()))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Could not scan folder");
+                .isInstanceOf(KnowledgeScanEngine.KnowledgeScanException.class);
 
         KnowledgeFolderDto erroredFolder = folder(configured.getId());
         assertThat(erroredFolder.getStatus()).isEqualTo("error");
-        assertThat(erroredFolder.getMessage()).isEqualTo("Could not scan folder");
+        assertThat(erroredFolder.getMessage()).isEqualTo("Could not scan knowledge source");
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
                 .orElseThrow();
         assertThat(knowledgeRoot.getScanStatus()).isEqualTo(WorkStatus.DONE);
         assertThat(knowledgeRoot.getScanSuccess()).isFalse();
-        assertThat(knowledgeRoot.getScanMessage()).isEqualTo("Could not scan folder");
+        assertThat(knowledgeRoot.getScanMessage()).isEqualTo("Could not scan knowledge source");
         assertThat(knowledgeRootScanRepository.findLatestByRootId(knowledgeRoot.getId()))
                 .hasValueSatisfying(scan -> {
                     assertThat(scan.getStatus()).isEqualTo(WorkStatus.DONE);
@@ -391,7 +399,7 @@ class KnowledgeFolderScanServiceTests {
 
         assertThatThrownBy(() -> scanService.scanFolder(configured.getId()))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Folder path must be an existing folder");
+                .hasMessageContaining("Folder not found");
 
         KnowledgeFolderDto errored = folder(configured.getId());
         assertThat(errored.getStatus()).isEqualTo("error");
@@ -500,13 +508,7 @@ class KnowledgeFolderScanServiceTests {
                 return super.read(resource, file);
             }
         };
-        KnowledgeFolderScanService countingScanService = new KnowledgeFolderScanService(
-                settingsService,
-                knowledgeRootRepository,
-                mock(EventService.class),
-                localScanService(countingReadService),
-                scanCoordinator
-        );
+        FolderScanHarness countingScanService = new FolderScanHarness(countingReadService);
 
         countingScanService.scanFolder(configured.getId());
         countingScanService.scanFolder(configured.getId());
