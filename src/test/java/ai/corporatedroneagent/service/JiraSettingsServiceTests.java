@@ -230,19 +230,26 @@ class JiraSettingsServiceTests {
         verify(scanService).scanScheduledProject(any(), argThat(project -> "DEV".equals(project.getKey())), eq("token-1234"), any());
         verify(scanService).scanScheduledProject(any(), argThat(project -> "HLP".equals(project.getKey())), eq("token-1234"), any());
         verify(scanService, times(0)).scanScheduledProject(any(), argThat(project -> "OPS".equals(project.getKey())), any(), any());
+        // OPS was paused and skipped; HLP scanned past DEV's failure; DEV's failure was
+        // recorded on its root, so its derived status is "error". Statuses now derive
+        // from the KnowledgeRoot rather than the ScanResult the (mocked) scanner returns.
+        assertThat(settingsService.listJiraProjects())
+                .filteredOn(project -> project.getId().equals(ops.getId()))
+                .singleElement()
+                .extracting(JiraProjectDto::getStatus)
+                .isEqualTo("paused");
         assertThat(settingsService.listJiraProjects())
                 .filteredOn(project -> project.getId().equals(help.getId()))
                 .singleElement()
-                .satisfies(project -> {
-                    assertThat(project.getStatus()).isEqualTo("scanned");
-                    assertThat(project.getIssues()).isEqualTo(5);
-                    assertThat(project.getChecked()).isEqualTo("just now");
-                });
+                .extracting(JiraProjectDto::getStatus)
+                .isEqualTo("scanned");
         assertThat(settingsService.listJiraProjects())
                 .filteredOn(project -> project.getId().equals(dev.getId()))
                 .singleElement()
-                .extracting(JiraProjectDto::getIssues)
-                .isEqualTo(42L);
+                .satisfies(project -> {
+                    assertThat(project.getStatus()).isEqualTo("error");
+                    assertThat(project.getIssues()).isEqualTo(42L);
+                });
     }
 
     @Test
@@ -266,6 +273,36 @@ class JiraSettingsServiceTests {
                     assertThat(project.getMessage()).isEqualTo("Jira does not allow this account to read issues");
                     assertThat(project.getIssues()).isEqualTo(42);
                 });
+    }
+
+    @Test
+    void jiraProjectStatusDerivesScanningAndPausedFromKnowledgeRoot() {
+        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        KnowledgeRoot root = knowledgeRootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                "jira://example.atlassian.net/project/10001"
+        ).orElseThrow();
+
+        // An in-progress scan surfaces as "scanning", derived from the root rather than
+        // any stored project status — this is what lets the settings screen show a live
+        // scan without a client-side animation.
+        root.setScanStatus(WorkStatus.IN_PROGRESS);
+        root.setScanSuccess(null);
+        knowledgeRootRepository.save(root);
+        assertThat(settingsService.listJiraProjects())
+                .singleElement()
+                .extracting(JiraProjectDto::getStatus)
+                .isEqualTo("scanning");
+
+        // A pause that lands mid-scan must win over the in-progress scan, so the pause
+        // button sticks instead of the row snapping back to "scanning".
+        root.setPaused(true);
+        knowledgeRootRepository.save(root);
+        assertThat(settingsService.listJiraProjects())
+                .singleElement()
+                .extracting(JiraProjectDto::getStatus)
+                .isEqualTo("paused");
     }
 
     @Test

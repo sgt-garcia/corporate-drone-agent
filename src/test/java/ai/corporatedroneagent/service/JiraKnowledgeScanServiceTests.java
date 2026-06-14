@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import ai.corporatedroneagent.TestDatabaseSupport;
 import ai.corporatedroneagent.config.StorageProperties;
@@ -72,7 +73,8 @@ class JiraKnowledgeScanServiceTests {
                 chunkingService,
                 indexingService,
                 issueFetchService,
-                objectMapper
+                objectMapper,
+                mock(EventService.class)
         );
     }
 
@@ -388,7 +390,8 @@ class JiraKnowledgeScanServiceTests {
                     new KnowledgeChunkingService(pipelineRepository),
                     indexingService,
                     new JiraIssueFetchService(HttpClient.newHttpClient(), objectMapper),
-                    objectMapper
+                    objectMapper,
+                    mock(EventService.class)
             );
 
             JiraKnowledgeScanService.ScanResult result = httpScanService.scanProject(jira, project(), "token-1234");

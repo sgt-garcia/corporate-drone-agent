@@ -10,6 +10,7 @@ public class KnowledgeScanCoordinator {
 
     private final Set<UUID> runningFolderScans = new HashSet<>();
     private final Set<UUID> cancelledFolderScans = new HashSet<>();
+    private final Set<UUID> runningJiraScans = new HashSet<>();
 
     public synchronized boolean tryStartFolderScan(UUID folderId) {
         if (cancelledFolderScans.contains(folderId)) {
@@ -21,6 +22,19 @@ public class KnowledgeScanCoordinator {
 
     public synchronized void finishFolderScan(UUID folderId) {
         runningFolderScans.remove(folderId);
+        notifyAll();
+    }
+
+    // Dedupe concurrent scans of the same Jira project root. Returns false when a
+    // scan for this root is already in flight, mirroring how the folder set guards
+    // a folder. There is no Jira cancellation: pausing a project flips its derived
+    // status to "paused" while the running scan finishes and its result is dropped.
+    public synchronized boolean tryStartJiraScan(UUID rootId) {
+        return runningJiraScans.add(rootId);
+    }
+
+    public synchronized void finishJiraScan(UUID rootId) {
+        runningJiraScans.remove(rootId);
         notifyAll();
     }
 

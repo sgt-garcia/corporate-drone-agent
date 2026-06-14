@@ -47,6 +47,7 @@ public class JiraKnowledgeScanService {
     private final KnowledgeIndexingService indexingService;
     private final JiraIssueFetchService issueFetchService;
     private final ObjectMapper objectMapper;
+    private final EventService eventService;
 
     public JiraKnowledgeScanService(
             KnowledgeRootRepository rootRepository,
@@ -56,7 +57,8 @@ public class JiraKnowledgeScanService {
             KnowledgeChunkingService chunkingService,
             KnowledgeIndexingService indexingService,
             JiraIssueFetchService issueFetchService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            EventService eventService
     ) {
         this.rootRepository = rootRepository;
         this.scanRepository = scanRepository;
@@ -66,6 +68,7 @@ public class JiraKnowledgeScanService {
         this.indexingService = indexingService;
         this.issueFetchService = issueFetchService;
         this.objectMapper = objectMapper;
+        this.eventService = eventService;
     }
 
     private static final Consumer<String> NO_PROGRESS = item -> {
@@ -308,7 +311,9 @@ public class JiraKnowledgeScanService {
         root.setSource(KnowledgeSource.JIRA);
         root.setReference(reference);
         root.setDisplayName(jiraProjectDisplayName(project));
-        root.setPaused("paused".equals(project.getStatus()));
+        // Do not re-seed paused from the stored project status: root.paused is the
+        // live source of truth (a pause may have landed after this snapshot), and
+        // re-seeding here would clobber it.
         return root;
     }
 
@@ -318,7 +323,11 @@ public class JiraKnowledgeScanService {
         root.setScanMessage("");
         root.setScanStartedAt(startedAt);
         root.setScanFinishedAt(null);
-        return rootRepository.save(root);
+        KnowledgeRoot saved = rootRepository.save(root);
+        // Announce the flip to IN_PROGRESS so the settings screen derives "scanning"
+        // from the root, exactly like a local-folder scan does.
+        publishSettingsUpdated();
+        return saved;
     }
 
     private KnowledgeRootScan startScan(UUID rootId, Instant startedAt) {
@@ -356,16 +365,26 @@ public class JiraKnowledgeScanService {
         scan.setFinishedAt(finishedAt);
         scanRepository.save(scan);
 
-        root.setTotalResources(totals.resources());
-        root.setTotalSizeBytes(totals.bytes());
-        root.setScanStatus(WorkStatus.DONE);
-        root.setScanSuccess(success);
-        root.setScanMessage(errorMessage);
-        root.setScanFinishedAt(finishedAt);
+        // Reload before settling so a pause that landed mid-scan is preserved: we
+        // only own the scan fields here, not the paused flag (which a concurrent
+        // pause may have set on the persisted row).
+        KnowledgeRoot current = rootRepository.findById(root.getId()).orElse(root);
+        current.setTotalResources(totals.resources());
+        current.setTotalSizeBytes(totals.bytes());
+        current.setScanStatus(WorkStatus.DONE);
+        current.setScanSuccess(success);
+        current.setScanMessage(errorMessage);
+        current.setScanFinishedAt(finishedAt);
         if (success) {
-            root.setConfigJson(configWithScanMetadata(root));
+            current.setConfigJson(configWithScanMetadata(current));
         }
-        rootRepository.save(root);
+        rootRepository.save(current);
+        // Announce the settled status so the settings screen re-derives scanned/error.
+        publishSettingsUpdated();
+    }
+
+    private void publishSettingsUpdated() {
+        eventService.publish("settings-updated");
     }
 
     private Instant configInstant(KnowledgeRoot root, String fieldName) {

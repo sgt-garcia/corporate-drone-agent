@@ -1045,7 +1045,6 @@ function JiraConfig({
   const [available, setAvailable] = useState([]);
   const [pickerLoading, setPickerLoading] = useState(false);
   const [addingProjectKey, setAddingProjectKey] = useState("");
-  const [scanningProjectIds, setScanningProjectIds] = useState(() => new Set());
   const pickerRef = useRef(null);
 
   useServerSync(config, (next) => {
@@ -1065,15 +1064,15 @@ function JiraConfig({
   });
 
   const hasSaved = cfg.tokenConfigured;
+  // Status (scanning/paused/error/scanned) is server-derived from each project's
+  // KnowledgeRoot and synced here, so the list renders it directly — no client-side
+  // "scanning" override, matching how Local Folders work.
   const projects = cfg.projects;
-  const visibleProjects = projects.map((project) =>
-    scanningProjectIds.has(project.id) ? { ...project, status: "scanning" } : project
-  );
   const atMax = projects.length >= JIRA_MAX;
   const totalIssues = projects.reduce((total, project) => total + Number(project.issues ?? 0), 0);
-  const scanningCount = visibleProjects.filter((project) => project.status === "scanning").length;
-  const pausedCount = visibleProjects.filter((project) => project.status === "paused").length;
-  const errorCount = visibleProjects.filter((project) => project.status === "error").length;
+  const scanningCount = projects.filter((project) => project.status === "scanning").length;
+  const pausedCount = projects.filter((project) => project.status === "paused").length;
+  const errorCount = projects.filter((project) => project.status === "error").length;
   // Days until the saved API token expires; under 14 we nudge the user to renew.
   const expiry = cfg.tokenExpiresDays;
   const expirySoon = typeof expiry === "number" && expiry <= 14;
@@ -1206,7 +1205,6 @@ function JiraConfig({
           : [...prev.projects, project]
       }));
       setPickerSearch("");
-      setScanningProjectIds((current) => new Set(current).add(project.id));
       try {
         const scannedProject = await onScanProject(project.id);
         setCfg((current) => ({
@@ -1217,12 +1215,6 @@ function JiraConfig({
         }));
       } catch (error) {
         setConnectError(error.message || "Project added, but Jira scan failed.");
-      } finally {
-        setScanningProjectIds((current) => {
-          const next = new Set(current);
-          next.delete(project.id);
-          return next;
-        });
       }
     } catch (error) {
       setConnectError(error.message || "Could not add Jira project.");
@@ -1262,10 +1254,9 @@ function JiraConfig({
   }
 
   async function scanNow(id) {
-    if (scanningProjectIds.has(id)) {
-      return;
-    }
-    setScanningProjectIds((current) => new Set(current).add(id));
+    // The server flips the project to "scanning" (and back) on its KnowledgeRoot and
+    // pushes it over SSE, so there's no client-side scanning state to track here —
+    // this mirrors the local-folder scan handler.
     try {
       const savedProject = await onScanProject(id);
       setCfg((current) => ({
@@ -1276,12 +1267,6 @@ function JiraConfig({
       }));
     } catch (error) {
       setConnectError(error.message || "Could not scan Jira project.");
-    } finally {
-      setScanningProjectIds((current) => {
-        const next = new Set(current);
-        next.delete(id);
-        return next;
-      });
     }
   }
 
@@ -1478,7 +1463,7 @@ function JiraConfig({
 
       {cfg.connected && (
         <KnowledgeSourceList
-          items={visibleProjects}
+          items={projects}
           max={JIRA_MAX}
           noun="projects"
           addRowRef={pickerRef}
