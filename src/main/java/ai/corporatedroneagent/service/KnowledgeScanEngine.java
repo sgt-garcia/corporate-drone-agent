@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.service;
 
+import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
@@ -51,6 +52,7 @@ public class KnowledgeScanEngine {
     private final KnowledgeResourcePipelineRepository pipelineRepository;
     private final KnowledgeChunkingService chunkingService;
     private final KnowledgeIndexingService indexingService;
+    private final EventService eventService;
     private final ObjectMapper objectMapper;
 
     public KnowledgeScanEngine(
@@ -60,6 +62,7 @@ public class KnowledgeScanEngine {
             KnowledgeResourcePipelineRepository pipelineRepository,
             KnowledgeChunkingService chunkingService,
             KnowledgeIndexingService indexingService,
+            EventService eventService,
             ObjectMapper objectMapper
     ) {
         this.rootRepository = rootRepository;
@@ -68,6 +71,7 @@ public class KnowledgeScanEngine {
         this.pipelineRepository = pipelineRepository;
         this.chunkingService = chunkingService;
         this.indexingService = indexingService;
+        this.eventService = eventService;
         this.objectMapper = objectMapper;
     }
 
@@ -81,6 +85,8 @@ public class KnowledgeScanEngine {
         ScanCursor cursor = readCursor(root);
         UUID rootId = startRootScan(root, startedAt).getId();
         KnowledgeRootScan scan = startScan(rootId, startedAt);
+        // Announce the flip to IN_PROGRESS so the settings screen derives "scanning".
+        publishSettingsUpdated();
 
         try (KnowledgeScanSession session = adapter.openSession(root)) {
             List<ResourceManifest> manifests = session.enumerate(cursor);
@@ -130,54 +136,68 @@ public class KnowledgeScanEngine {
             KnowledgeResource existing,
             Instant scannedAt
     ) {
-        FetchedResource fetched = session.fetch(manifest);
-        ResourceContent content = fetched.content();
+        // Read the bytes + authoritative metadata first (a root-level failure throws and
+        // aborts the scan); build/persist the resource and record the read stage.
+        ReadResult read = session.read(manifest);
 
         KnowledgeResource resource = new KnowledgeResource();
         resource.setRootId(rootId);
         if (existing != null) {
             resource.setId(existing.getId());
         }
-        resource.setReference(fetched.reference());
-        resource.setDisplayName(fetched.displayName());
-        resource.setFormat(fetched.format());
-        resource.setSizeBytes(fetched.sizeBytes());
-        resource.setLastModifiedAt(fetched.lastModifiedAt());
+        resource.setReference(read.reference());
+        resource.setDisplayName(read.displayName());
+        resource.setFormat(read.format());
+        resource.setSizeBytes(read.sizeBytes());
+        resource.setLastModifiedAt(read.lastModifiedAt());
         resource.setDeleted(false);
         resource.setScannedAt(scannedAt);
         KnowledgeResource saved = resourceRepository.save(resource);
         indexingService.deleteResource(saved);
+        recordRead(saved.getId(), read, scannedAt);
 
-        recordRead(saved.getId(), content, scannedAt);
-        KnowledgeResourceConversion conversion = recordConversion(saved.getId(), content, scannedAt);
-        List<KnowledgeResourceChunk> chunks = chunkingService.chunk(saved, conversion);
-        indexingService.index(saved, conversion, chunks);
+        // Convert separately so a failed conversion still leaves the read persisted and the
+        // scan continues with this resource marked failed, rather than aborting.
+        ConversionResult conversion;
+        if (!read.success()) {
+            conversion = ConversionResult.failed(KnowledgePipelineReason.READ_DID_NOT_SUCCEED, "Read did not succeed");
+        } else {
+            try {
+                conversion = session.convert(read);
+            } catch (RuntimeException exception) {
+                log.warn("Could not convert knowledge resource {}.", read.reference(), exception);
+                conversion = ConversionResult.failed(KnowledgePipelineReason.CONVERSION_FAILED, "Could not convert resource");
+            }
+        }
+        KnowledgeResourceConversion conversionEntity = recordConversion(saved.getId(), conversion, scannedAt);
+        List<KnowledgeResourceChunk> chunks = chunkingService.chunk(saved, conversionEntity);
+        indexingService.index(saved, conversionEntity, chunks);
     }
 
-    private void recordRead(UUID resourceId, ResourceContent content, Instant scannedAt) {
-        KnowledgeResourceRead read = pipelineRepository.findReadByResourceId(resourceId)
+    private void recordRead(UUID resourceId, ReadResult read, Instant scannedAt) {
+        KnowledgeResourceRead entity = pipelineRepository.findReadByResourceId(resourceId)
                 .orElseGet(KnowledgeResourceRead::new);
-        read.setResourceId(resourceId);
-        read.setStatus(WorkStatus.DONE);
-        read.setSuccess(content.readSuccess());
-        read.setReason(content.readReason());
-        read.setMessage(content.readMessage());
-        read.setValue(content.readValue());
-        read.setReadAt(scannedAt);
-        pipelineRepository.saveRead(read);
+        entity.setResourceId(resourceId);
+        entity.setStatus(WorkStatus.DONE);
+        entity.setSuccess(read.success());
+        entity.setReason(read.reason());
+        entity.setMessage(read.message());
+        entity.setValue(read.value());
+        entity.setReadAt(scannedAt);
+        pipelineRepository.saveRead(entity);
     }
 
-    private KnowledgeResourceConversion recordConversion(UUID resourceId, ResourceContent content, Instant scannedAt) {
-        KnowledgeResourceConversion conversion = pipelineRepository.findConversionByResourceId(resourceId)
+    private KnowledgeResourceConversion recordConversion(UUID resourceId, ConversionResult conversion, Instant scannedAt) {
+        KnowledgeResourceConversion entity = pipelineRepository.findConversionByResourceId(resourceId)
                 .orElseGet(KnowledgeResourceConversion::new);
-        conversion.setResourceId(resourceId);
-        conversion.setStatus(WorkStatus.DONE);
-        conversion.setSuccess(content.conversionSuccess());
-        conversion.setReason(content.conversionReason());
-        conversion.setMessage(content.conversionMessage());
-        conversion.setValue(content.text());
-        conversion.setConvertedAt(scannedAt);
-        return pipelineRepository.saveConversion(conversion);
+        entity.setResourceId(resourceId);
+        entity.setStatus(WorkStatus.DONE);
+        entity.setSuccess(conversion.success());
+        entity.setReason(conversion.reason());
+        entity.setMessage(conversion.message());
+        entity.setValue(conversion.text());
+        entity.setConvertedAt(scannedAt);
+        return pipelineRepository.saveConversion(entity);
     }
 
     private void removeDeletedResourceIndexes(List<String> currentReferences, Collection<KnowledgeResource> existing) {
@@ -266,6 +286,12 @@ public class KnowledgeScanEngine {
             current.setConfigJson(configWithCursor(current, startedAt));
         }
         rootRepository.save(current);
+        // Announce the settled status so the settings screen re-derives scanned/error.
+        publishSettingsUpdated();
+    }
+
+    private void publishSettingsUpdated() {
+        eventService.publish("settings-updated");
     }
 
     private ScanCursor readCursor(KnowledgeRoot root) {

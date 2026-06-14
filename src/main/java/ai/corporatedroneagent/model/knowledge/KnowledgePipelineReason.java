@@ -6,5 +6,6 @@ public enum KnowledgePipelineReason {
     READ_FAILED,
     READ_DID_NOT_SUCCEED,
     UTF8_DECODE_FAILED,
+    CONVERSION_FAILED,
     INDEX_FAILED
 }

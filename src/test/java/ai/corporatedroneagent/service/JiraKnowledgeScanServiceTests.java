@@ -8,6 +8,7 @@ import ai.corporatedroneagent.config.StorageProperties;
 import ai.corporatedroneagent.dto.JiraProjectDto;
 import ai.corporatedroneagent.model.JiraSettings;
 import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
+import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
@@ -66,17 +67,17 @@ class JiraKnowledgeScanServiceTests {
         indexingService = new KnowledgeIndexingService(pipelineRepository, storageProperties);
         objectMapper = new ObjectMapper();
         issueFetchService = new FakeJiraIssueFetchService(objectMapper);
-        scanService = new JiraKnowledgeScanService(
+        KnowledgeScanEngine engine = new KnowledgeScanEngine(
                 rootRepository,
                 scanRepository,
                 resourceRepository,
                 pipelineRepository,
                 chunkingService,
                 indexingService,
-                issueFetchService,
-                objectMapper,
-                mock(EventService.class)
+                mock(EventService.class),
+                objectMapper
         );
+        scanService = new JiraKnowledgeScanService(engine, rootRepository, issueFetchService);
     }
 
     @Test
@@ -155,7 +156,7 @@ class JiraKnowledgeScanServiceTests {
     }
 
     @Test
-    void conversionFailureStillPersistsNativeJiraReadPayload() {
+    void conversionFailurePersistsNativeReadAndRecordsFailedConversionWithoutAbortingScan() {
         JiraSettings jira = jira();
         JiraProjectDto project = project();
         JiraIssueFetchService.JiraIssueManifest manifest = manifest(jira, "10100", "DEV-7", "Issue 10100");
@@ -164,15 +165,17 @@ class JiraKnowledgeScanServiceTests {
         issueFetchService.putDocument(document);
         issueFetchService.throwOnMarkdown = true;
 
-        org.junit.jupiter.api.Assertions.assertThrows(
-                JiraKnowledgeScanService.JiraScanException.class,
-                () -> scanService.scanProject(jira, project, "token-1234")
-        );
+        // A single item's conversion failure no longer aborts the scan; it records a failed
+        // conversion and the scan completes, keeping the native read so nothing is lost.
+        JiraKnowledgeScanService.ScanResult result = scanService.scanProject(jira, project, "token-1234");
+        assertThat(result.issues()).isEqualTo(1);
 
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
                 JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
         ).orElseThrow();
+        assertThat(root.getScanStatus()).isEqualTo(WorkStatus.DONE);
+        assertThat(root.getScanSuccess()).isTrue();
         KnowledgeResource resource = resourceRepository
                 .findByRootIdAndReference(root.getId(), manifest.reference())
                 .orElseThrow();
@@ -182,7 +185,11 @@ class JiraKnowledgeScanServiceTests {
                     assertThat(payload.path("issue").path("key").asText()).isEqualTo("DEV-7");
                     assertThat(payload.path("comments").get(0).path("body").toString()).contains("firsttoken");
                 });
-        assertThat(pipelineRepository.findConversionByResourceId(resource.getId())).isEmpty();
+        assertThat(pipelineRepository.findConversionByResourceId(resource.getId()))
+                .hasValueSatisfying(conversion -> {
+                    assertThat(conversion.getSuccess()).isFalse();
+                    assertThat(conversion.getReason()).isEqualTo(KnowledgePipelineReason.CONVERSION_FAILED);
+                });
     }
 
     @Test
@@ -412,17 +419,19 @@ class JiraKnowledgeScanServiceTests {
         try {
             JiraSettings jira = jira();
             jira.setInstanceUrl("http://127.0.0.1:" + server.getAddress().getPort());
-            JiraKnowledgeScanService httpScanService = new JiraKnowledgeScanService(
+            JiraIssueFetchService httpFetchService = new JiraIssueFetchService(HttpClient.newHttpClient(), objectMapper);
+            KnowledgeScanEngine httpEngine = new KnowledgeScanEngine(
                     rootRepository,
                     scanRepository,
                     resourceRepository,
                     pipelineRepository,
                     new KnowledgeChunkingService(pipelineRepository),
                     indexingService,
-                    new JiraIssueFetchService(HttpClient.newHttpClient(), objectMapper),
-                    objectMapper,
-                    mock(EventService.class)
+                    mock(EventService.class),
+                    objectMapper
             );
+            JiraKnowledgeScanService httpScanService =
+                    new JiraKnowledgeScanService(httpEngine, rootRepository, httpFetchService);
 
             JiraKnowledgeScanService.ScanResult result = httpScanService.scanProject(jira, project(), "token-1234");
 

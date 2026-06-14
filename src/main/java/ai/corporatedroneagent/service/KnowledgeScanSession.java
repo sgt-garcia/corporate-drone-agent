@@ -13,8 +13,16 @@ public interface KnowledgeScanSession extends AutoCloseable {
     /** Cheap listing of the source's items — no content download. */
     List<ResourceManifest> enumerate(ScanCursor cursor);
 
-    /** Full content + authoritative metadata for one item the engine has decided to (re)index. */
-    FetchedResource fetch(ResourceManifest manifest);
+    /**
+     * Acquire one item's bytes + authoritative metadata. Return {@code success=false} for an
+     * item-level skip (unsupported/too large/unreadable); throw
+     * {@link org.springframework.web.server.ResponseStatusException} for a root-level failure
+     * (auth/network) so the engine aborts the whole scan.
+     */
+    ReadResult read(ResourceManifest manifest);
+
+    /** Render the read bytes to text. Only called when the read succeeded. */
+    ConversionResult convert(ReadResult read);
 
     /** Source-specific change detection against the stored resource (timestamp, size, hash…). */
     boolean isUnchanged(KnowledgeResource existing, ResourceManifest manifest);
