@@ -2,19 +2,21 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
-import ai.corporatedroneagent.model.knowledge.KnowledgeResourceRead;
-import ai.corporatedroneagent.model.knowledge.WorkStatus;
-import ai.corporatedroneagent.repository.KnowledgeResourcePipelineRepository;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.Locale;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+/**
+ * Reads a local file's bytes for the ingestion engine: enforces the supported-format and
+ * size limits and returns a pure {@link ReadResult} (the engine records the read stage).
+ * An unsupported/too-large/unreadable file is an item-level skip ({@code success=false}),
+ * not a thrown error, so the scan keeps going.
+ */
 @Service
 public class LocalFolderKnowledgeReadService {
 
@@ -49,27 +51,14 @@ public class LocalFolderKnowledgeReadService {
             "yml"
     );
 
-    private final KnowledgeResourcePipelineRepository pipelineRepository;
-
-    public LocalFolderKnowledgeReadService(KnowledgeResourcePipelineRepository pipelineRepository) {
-        this.pipelineRepository = pipelineRepository;
-    }
-
-    public KnowledgeResourceRead read(KnowledgeResource resource, Path file) {
-        KnowledgeResourceRead read = startRead(resource);
+    public ReadResult read(KnowledgeResource resource, Path file) {
         if (!isSupported(resource)) {
             log.debug(
                     "Skipping local knowledge resource {} because format '{}' is unsupported.",
                     resource.getReference(),
                     resource.getFormat()
             );
-            return finishRead(
-                    read,
-                    false,
-                    KnowledgePipelineReason.UNSUPPORTED_FILE_FORMAT,
-                    "Unsupported file format",
-                    null
-            );
+            return failed(resource, KnowledgePipelineReason.UNSUPPORTED_FILE_FORMAT, "Unsupported file format");
         }
         if (resource.getSizeBytes() > MAX_READ_BYTES) {
             log.debug(
@@ -77,43 +66,31 @@ public class LocalFolderKnowledgeReadService {
                     resource.getReference(),
                     resource.getSizeBytes()
             );
-            return finishRead(read, false, KnowledgePipelineReason.FILE_TOO_LARGE, "File is larger than 1 MB", null);
+            return failed(resource, KnowledgePipelineReason.FILE_TOO_LARGE, "File is larger than 1 MB");
         }
-
         try {
-            return finishRead(read, true, null, "", Files.readAllBytes(file));
+            return ReadResult.of(
+                    resource.getReference(),
+                    resource.getDisplayName(),
+                    resource.getFormat(),
+                    resource.getSizeBytes(),
+                    resource.getLastModifiedAt(),
+                    Files.readAllBytes(file));
         } catch (IOException exception) {
             log.warn("Could not read local knowledge resource {}.", resource.getReference(), exception);
-            return finishRead(read, false, KnowledgePipelineReason.READ_FAILED, "Could not read resource", null);
+            return failed(resource, KnowledgePipelineReason.READ_FAILED, "Could not read resource");
         }
     }
 
-    private KnowledgeResourceRead startRead(KnowledgeResource resource) {
-        KnowledgeResourceRead read = pipelineRepository.findReadByResourceId(resource.getId())
-                .orElseGet(KnowledgeResourceRead::new);
-        read.setResourceId(resource.getId());
-        read.setStatus(WorkStatus.IN_PROGRESS);
-        read.setSuccess(null);
-        read.setReason(null);
-        read.setMessage("");
-        read.setValue(null);
-        return pipelineRepository.saveRead(read);
-    }
-
-    private KnowledgeResourceRead finishRead(
-            KnowledgeResourceRead read,
-            boolean success,
-            KnowledgePipelineReason reason,
-            String message,
-            byte[] value
-    ) {
-        read.setStatus(WorkStatus.DONE);
-        read.setSuccess(success);
-        read.setReason(reason);
-        read.setMessage(message);
-        read.setValue(value);
-        read.setReadAt(Instant.now());
-        return pipelineRepository.saveRead(read);
+    private ReadResult failed(KnowledgeResource resource, KnowledgePipelineReason reason, String message) {
+        return ReadResult.failed(
+                resource.getReference(),
+                resource.getDisplayName(),
+                resource.getFormat(),
+                resource.getSizeBytes(),
+                resource.getLastModifiedAt(),
+                reason,
+                message);
     }
 
     private boolean isSupported(KnowledgeResource resource) {

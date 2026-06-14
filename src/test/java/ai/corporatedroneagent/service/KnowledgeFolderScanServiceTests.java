@@ -82,11 +82,6 @@ class KnowledgeFolderScanServiceTests {
         knowledgeRootScanRepository = new KnowledgeRootScanRepository(jdbcTemplate);
         knowledgeResourceRepository = new KnowledgeResourceRepository(jdbcTemplate);
         pipelineRepository = new KnowledgeResourcePipelineRepository(jdbcTemplate);
-        LocalFolderKnowledgeReadService readService = new LocalFolderKnowledgeReadService(pipelineRepository);
-        LocalFolderKnowledgeConversionService conversionService = new LocalFolderKnowledgeConversionService(
-                pipelineRepository
-        );
-        KnowledgeChunkingService chunkingService = new KnowledgeChunkingService(pipelineRepository);
         indexingService = new KnowledgeIndexingService(pipelineRepository, storageProperties);
         scanCoordinator = new KnowledgeScanCoordinator();
         searchService = new KnowledgeSearchService(
@@ -108,22 +103,33 @@ class KnowledgeFolderScanServiceTests {
                 ),
                 scanCoordinator
         );
-        LocalFolderKnowledgeScanService localScanService = new LocalFolderKnowledgeScanService(
-                knowledgeRootRepository,
-                knowledgeRootScanRepository,
-                knowledgeResourceRepository,
-                pipelineRepository,
-                readService,
-                conversionService,
-                chunkingService,
-                indexingService
-        );
         scanService = new KnowledgeFolderScanService(
                 settingsService,
                 knowledgeRootRepository,
                 eventService,
-                localScanService,
+                localScanService(new LocalFolderKnowledgeReadService()),
                 scanCoordinator
+        );
+    }
+
+    // Builds a folder scan service backed by a fresh engine, parameterized by the read
+    // service so tests can inject blocking/failing/counting read behavior.
+    private LocalFolderKnowledgeScanService localScanService(LocalFolderKnowledgeReadService readService) {
+        KnowledgeScanEngine engine = new KnowledgeScanEngine(
+                knowledgeRootRepository,
+                knowledgeRootScanRepository,
+                knowledgeResourceRepository,
+                pipelineRepository,
+                new KnowledgeChunkingService(pipelineRepository),
+                indexingService,
+                mock(EventService.class),
+                new ObjectMapper()
+        );
+        return new LocalFolderKnowledgeScanService(
+                engine,
+                knowledgeRootRepository,
+                readService,
+                new LocalFolderKnowledgeConversionService()
         );
     }
 
@@ -289,9 +295,9 @@ class KnowledgeFolderScanServiceTests {
         CountDownLatch allowFirstReadToFinish = new CountDownLatch(1);
         AtomicBoolean blockedFirstRead = new AtomicBoolean();
         AtomicInteger reads = new AtomicInteger();
-        LocalFolderKnowledgeReadService blockingReadService = new LocalFolderKnowledgeReadService(pipelineRepository) {
+        LocalFolderKnowledgeReadService blockingReadService = new LocalFolderKnowledgeReadService() {
             @Override
-            public KnowledgeResourceRead read(KnowledgeResource resource, Path file) {
+            public ReadResult read(KnowledgeResource resource, Path file) {
                 reads.incrementAndGet();
                 if (blockedFirstRead.compareAndSet(false, true)) {
                     firstReadStarted.countDown();
@@ -305,21 +311,11 @@ class KnowledgeFolderScanServiceTests {
                 return super.read(resource, file);
             }
         };
-        LocalFolderKnowledgeScanService blockingLocalScanService = new LocalFolderKnowledgeScanService(
-                knowledgeRootRepository,
-                knowledgeRootScanRepository,
-                knowledgeResourceRepository,
-                pipelineRepository,
-                blockingReadService,
-                new LocalFolderKnowledgeConversionService(pipelineRepository),
-                new KnowledgeChunkingService(pipelineRepository),
-                indexingService
-        );
         KnowledgeFolderScanService blockingScanService = new KnowledgeFolderScanService(
                 settingsService,
                 knowledgeRootRepository,
                 mock(EventService.class),
-                blockingLocalScanService,
+                localScanService(blockingReadService),
                 scanCoordinator
         );
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -351,27 +347,17 @@ class KnowledgeFolderScanServiceTests {
         Path folder = Files.createDirectory(root.resolve("fail-me"));
         Files.writeString(folder.resolve("broken.txt"), "broken", StandardCharsets.UTF_8);
         KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
-        LocalFolderKnowledgeReadService failingReadService = new LocalFolderKnowledgeReadService(pipelineRepository) {
+        LocalFolderKnowledgeReadService failingReadService = new LocalFolderKnowledgeReadService() {
             @Override
-            public KnowledgeResourceRead read(KnowledgeResource resource, Path file) {
+            public ReadResult read(KnowledgeResource resource, Path file) {
                 throw new IllegalStateException("boom");
             }
         };
-        LocalFolderKnowledgeScanService failingLocalScanService = new LocalFolderKnowledgeScanService(
-                knowledgeRootRepository,
-                knowledgeRootScanRepository,
-                knowledgeResourceRepository,
-                pipelineRepository,
-                failingReadService,
-                new LocalFolderKnowledgeConversionService(pipelineRepository),
-                new KnowledgeChunkingService(pipelineRepository),
-                indexingService
-        );
         KnowledgeFolderScanService failingScanService = new KnowledgeFolderScanService(
                 settingsService,
                 knowledgeRootRepository,
                 mock(EventService.class),
-                failingLocalScanService,
+                localScanService(failingReadService),
                 new KnowledgeScanCoordinator()
         );
 
@@ -507,28 +493,18 @@ class KnowledgeFolderScanServiceTests {
         Files.writeString(file, "oldtoken", StandardCharsets.UTF_8);
         KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
         AtomicInteger reads = new AtomicInteger();
-        LocalFolderKnowledgeReadService countingReadService = new LocalFolderKnowledgeReadService(pipelineRepository) {
+        LocalFolderKnowledgeReadService countingReadService = new LocalFolderKnowledgeReadService() {
             @Override
-            public KnowledgeResourceRead read(KnowledgeResource resource, Path file) {
+            public ReadResult read(KnowledgeResource resource, Path file) {
                 reads.incrementAndGet();
                 return super.read(resource, file);
             }
         };
-        LocalFolderKnowledgeScanService countingLocalScanService = new LocalFolderKnowledgeScanService(
-                knowledgeRootRepository,
-                knowledgeRootScanRepository,
-                knowledgeResourceRepository,
-                pipelineRepository,
-                countingReadService,
-                new LocalFolderKnowledgeConversionService(pipelineRepository),
-                new KnowledgeChunkingService(pipelineRepository),
-                indexingService
-        );
         KnowledgeFolderScanService countingScanService = new KnowledgeFolderScanService(
                 settingsService,
                 knowledgeRootRepository,
                 mock(EventService.class),
-                countingLocalScanService,
+                localScanService(countingReadService),
                 scanCoordinator
         );
 
