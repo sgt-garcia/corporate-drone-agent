@@ -479,17 +479,24 @@ class JiraSettingsServiceTests {
                 mock(KnowledgeIndexingService.class)
         );
         KnowledgeScanCoordinator coordinator = new KnowledgeScanCoordinator();
+        EventService eventService = mock(EventService.class);
         SettingsService service = new SettingsService(
                 settingsRepository,
                 knowledgeRootRepository,
                 new SettingsSecretsService(secretStore),
-                mock(EventService.class),
+                eventService,
                 cleanupService,
                 coordinator,
                 validator,
                 discovery
         );
-        jiraProjectScanService = new JiraProjectScanService(service, coordinator, scanService);
+        jiraProjectScanService = new JiraProjectScanService(
+                service,
+                knowledgeRootRepository,
+                eventService,
+                coordinator,
+                scanService
+        );
         return service;
     }
 

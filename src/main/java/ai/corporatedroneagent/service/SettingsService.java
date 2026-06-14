@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -387,78 +386,6 @@ public class SettingsService {
         log.info("Removed Jira project {}.", projectId);
     }
 
-    // Snapshot everything a scan needs while briefly holding the SettingsService
-    // monitor, then return so the scan (driven by JiraProjectScanService) runs lock-free
-    // and getSettings stays responsive. Package-private: the scan orchestrator calls it.
-    synchronized JiraScanContext jiraScanContext(String projectId) {
-        JiraSettings jira = currentJiraSettings();
-        requireJiraSetup(jira);
-        JiraProjectDto target = jira.getProjects().stream()
-                .filter(project -> project.getId().equals(projectId))
-                .findFirst()
-                .map(this::copyJiraProject)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found"));
-        KnowledgeRoot root = knowledgeRootRepository
-                .findBySourceAndReference(KnowledgeSource.JIRA, jiraProjectRootReference(jira, target))
-                .orElse(null);
-        return new JiraScanContext(
-                jira,
-                target,
-                savedJiraToken(),
-                root == null ? null : root.getId(),
-                root != null && root.isPaused(),
-                KnowledgeScanProgress.emitter(eventService, target.getId())
-        );
-    }
-
-    synchronized JiraProjectDto currentJiraProjectDto(String projectId) {
-        return currentJiraSettings().getProjects().stream()
-                .filter(project -> project.getId().equals(projectId))
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found"));
-    }
-
-    synchronized JiraProjectDto recordSyntheticJiraScanSuccess(String projectId, JiraScanContext context) {
-        UUID rootId = context.rootId();
-        if (rootId != null) {
-            knowledgeRootRepository.findById(rootId).ifPresent(root -> {
-                Instant now = Instant.now();
-                root.setScanStatus(WorkStatus.DONE);
-                root.setScanSuccess(true);
-                root.setScanMessage("");
-                root.setScanStartedAt(now);
-                root.setScanFinishedAt(now);
-                knowledgeRootRepository.save(root);
-            });
-            publishSettingsUpdated();
-        }
-        return currentJiraProjectDto(projectId);
-    }
-
-    synchronized void recordJiraScanFailure(UUID rootId, String message) {
-        if (rootId == null) {
-            return;
-        }
-        knowledgeRootRepository.findById(rootId).ifPresent(root -> {
-            root.setScanStatus(WorkStatus.DONE);
-            root.setScanSuccess(false);
-            root.setScanMessage(message);
-            root.setScanFinishedAt(Instant.now());
-            knowledgeRootRepository.save(root);
-        });
-        publishSettingsUpdated();
-    }
-
-    record JiraScanContext(
-            JiraSettings jira,
-            JiraProjectDto target,
-            String token,
-            UUID rootId,
-            boolean paused,
-            Consumer<String> onProgress
-    ) {
-    }
-
     public synchronized JiraProjectDto pauseJiraProject(String projectId) {
         return setJiraProjectPaused(projectId, true);
     }
@@ -521,7 +448,8 @@ public class SettingsService {
         return submittedToken.isBlank() ? savedJiraToken() : submittedToken;
     }
 
-    private String savedJiraToken() {
+    // Package-private: the scan orchestrator reads the token to drive a scan.
+    String savedJiraToken() {
         ApplicationSettings secretValues = new ApplicationSettings();
         settingsSecretsService.applySecretValues(secretValues);
         return secretValues.getJira().getToken();
@@ -594,7 +522,9 @@ public class SettingsService {
 
     // Canonical KnowledgeRoot -> Jira-project-DTO mapper, mirroring knowledgeFolder(root):
     // identity comes from configJson, status/issues/checked/message from the scan pipeline.
-    private JiraProjectDto jiraProject(KnowledgeRoot root) {
+    // Package-private and non-synchronized so the scan orchestrator can map a root to a
+    // DTO without taking the SettingsService monitor (mirrors knowledgeFolder).
+    JiraProjectDto jiraProject(KnowledgeRoot root) {
         JiraProjectDto project = new JiraProjectDto();
         project.setId(JiraKnowledgeRootConfig.readProjectId(root));
         project.setKey(JiraKnowledgeRootConfig.readKey(root));
@@ -678,18 +608,6 @@ public class SettingsService {
     private void removeAllJiraRoots() {
         knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)
                 .forEach(knowledgeRootCleanupService::removeRoot);
-    }
-
-    private JiraProjectDto copyJiraProject(JiraProjectDto source) {
-        JiraProjectDto copy = new JiraProjectDto();
-        copy.setId(source.getId());
-        copy.setKey(source.getKey());
-        copy.setName(source.getName());
-        copy.setStatus(source.getStatus());
-        copy.setIssues(source.getIssues());
-        copy.setChecked(source.getChecked());
-        copy.setMessage(source.getMessage());
-        return copy;
     }
 
     private String normalizeJiraProjectKey(String key) {
