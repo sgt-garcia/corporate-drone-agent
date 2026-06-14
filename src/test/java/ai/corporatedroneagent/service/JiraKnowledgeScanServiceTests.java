@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -122,6 +123,35 @@ class JiraKnowledgeScanServiceTests {
                 .hasValueSatisfying(index -> assertThat(index.getSuccess()).isTrue());
         assertThat(indexingService.searchTerm("firsttoken", 10))
                 .containsExactly(resource.getId() + ":0");
+    }
+
+    @Test
+    void cancelledScanStopsBetweenIssuesAndDoesNotAdvanceCursor() {
+        JiraSettings jira = jira();
+        JiraProjectDto project = project();
+        issueFetchService.setManifests(List.of(
+                manifest(jira, "10100", "DEV-7", "Issue 10100"),
+                manifest(jira, "10101", "DEV-8", "Issue 10101")
+        ));
+        issueFetchService.putDocument(document(jira, "10100", "DEV-7", "Issue 10100", "firsttoken"));
+        issueFetchService.putDocument(document(jira, "10101", "DEV-8", "Issue 10101", "secondtoken"));
+
+        // Let the first issue through, then cancel before the second.
+        AtomicInteger checks = new AtomicInteger();
+        BooleanSupplier isCancelled = () -> checks.getAndIncrement() >= 1;
+
+        JiraKnowledgeScanService.ScanResult result =
+                scanService.scanProject(jira, project, "token-1234", item -> {}, isCancelled);
+
+        // Only the first issue was indexed before cancellation.
+        assertThat(result.issues()).isEqualTo(1);
+        KnowledgeRoot root = rootRepository.findBySourceAndReference(
+                KnowledgeSource.JIRA,
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+        ).orElseThrow();
+        assertThat(root.getScanStatus()).isEqualTo(WorkStatus.DONE);
+        // The cursor must not advance, so the next scan re-covers the skipped issue.
+        assertThat(root.getConfigJson()).doesNotContain("lastSuccessfulScanStartedAt");
     }
 
     @Test

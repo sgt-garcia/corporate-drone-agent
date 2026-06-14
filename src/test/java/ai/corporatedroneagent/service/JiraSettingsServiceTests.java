@@ -218,7 +218,7 @@ class JiraSettingsServiceTests {
         JiraProjectDto help = settingsService.addJiraProject(new JiraProjectRequest("HLP"));
         settingsService.pauseJiraProject(ops.getId());
 
-        when(scanService.scanScheduledProject(any(), any(), eq("token-1234"), any())).thenAnswer(invocation -> {
+        when(scanService.scanScheduledProject(any(), any(), eq("token-1234"), any(), any())).thenAnswer(invocation -> {
             JiraProjectDto project = invocation.getArgument(1);
             if ("DEV".equals(project.getKey())) {
                 throw new JiraKnowledgeScanService.JiraScanException("Could not scan Jira project", new RuntimeException("boom"));
@@ -228,10 +228,10 @@ class JiraSettingsServiceTests {
 
         jiraProjectScanService.scanAllProjects();
 
-        verify(scanService, times(2)).scanScheduledProject(any(), any(), eq("token-1234"), any());
-        verify(scanService).scanScheduledProject(any(), argThat(project -> "DEV".equals(project.getKey())), eq("token-1234"), any());
-        verify(scanService).scanScheduledProject(any(), argThat(project -> "HLP".equals(project.getKey())), eq("token-1234"), any());
-        verify(scanService, times(0)).scanScheduledProject(any(), argThat(project -> "OPS".equals(project.getKey())), any(), any());
+        verify(scanService, times(2)).scanScheduledProject(any(), any(), eq("token-1234"), any(), any());
+        verify(scanService).scanScheduledProject(any(), argThat(project -> "DEV".equals(project.getKey())), eq("token-1234"), any(), any());
+        verify(scanService).scanScheduledProject(any(), argThat(project -> "HLP".equals(project.getKey())), eq("token-1234"), any(), any());
+        verify(scanService, times(0)).scanScheduledProject(any(), argThat(project -> "OPS".equals(project.getKey())), any(), any(), any());
         // OPS was paused and skipped; HLP scanned past DEV's failure; DEV's failure was
         // recorded on its root, so its derived status is "error". Statuses now derive
         // from the KnowledgeRoot rather than the ScanResult the (mocked) scanner returns.
@@ -260,7 +260,7 @@ class JiraSettingsServiceTests {
         settingsService = serviceWith(validValidator(), fakeDiscovery(), scanService);
         settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
         JiraProjectDto dev = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
-        when(scanService.scanProject(any(), any(), eq("token-1234"), any())).thenThrow(
+        when(scanService.scanProject(any(), any(), eq("token-1234"), any(), any())).thenThrow(
                 new ResponseStatusException(HttpStatus.FORBIDDEN, "Jira does not allow this account to read issues")
         );
 

@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -73,6 +74,7 @@ public class JiraKnowledgeScanService {
 
     private static final Consumer<String> NO_PROGRESS = item -> {
     };
+    private static final BooleanSupplier NOT_CANCELLED = () -> false;
 
     public ScanResult scanProject(JiraSettings jira, JiraProjectDto project, String token) {
         return scanProject(jira, project, token, NO_PROGRESS);
@@ -84,7 +86,17 @@ public class JiraKnowledgeScanService {
             String token,
             Consumer<String> onProgress
     ) {
-        return scanProjectInternal(jira, project, token, onProgress);
+        return scanProject(jira, project, token, onProgress, NOT_CANCELLED);
+    }
+
+    public ScanResult scanProject(
+            JiraSettings jira,
+            JiraProjectDto project,
+            String token,
+            Consumer<String> onProgress,
+            BooleanSupplier isCancelled
+    ) {
+        return scanProjectInternal(jira, project, token, onProgress, isCancelled);
     }
 
     public ScanResult scanScheduledProject(JiraSettings jira, JiraProjectDto project, String token) {
@@ -97,14 +109,25 @@ public class JiraKnowledgeScanService {
             String token,
             Consumer<String> onProgress
     ) {
-        return scanProjectInternal(jira, project, token, onProgress);
+        return scanScheduledProject(jira, project, token, onProgress, NOT_CANCELLED);
+    }
+
+    public ScanResult scanScheduledProject(
+            JiraSettings jira,
+            JiraProjectDto project,
+            String token,
+            Consumer<String> onProgress,
+            BooleanSupplier isCancelled
+    ) {
+        return scanProjectInternal(jira, project, token, onProgress, isCancelled);
     }
 
     private ScanResult scanProjectInternal(
             JiraSettings jira,
             JiraProjectDto project,
             String token,
-            Consumer<String> onProgress
+            Consumer<String> onProgress,
+            BooleanSupplier isCancelled
     ) {
         Instant startedAt = Instant.now();
         KnowledgeRoot root = knowledgeRoot(jira, project);
@@ -129,11 +152,12 @@ public class JiraKnowledgeScanService {
                     jira.getApiVersion()
             );
             stats.add(issues);
-            processIssues(jira, token, root.getId(), issues, startedAt, onProgress);
+            boolean cancelled = processIssues(jira, token, root.getId(), issues, startedAt, onProgress, isCancelled);
             ResourceTotals totals = activeResourceTotals(root.getId());
-            completeScan(root, scan, totals, null);
+            completeScan(root, scan, totals, null, cancelled);
             log.info(
-                    "Completed {} Jira project scan for {} with {} fetched issue manifests, {} indexed issues, and {} bytes.",
+                    "{} {} Jira project scan for {} with {} fetched issue manifests, {} indexed issues, and {} bytes.",
+                    cancelled ? "Cancelled" : "Completed",
                     incrementalScan ? "incremental" : "partial",
                     project.getKey(),
                     stats.resources(),
@@ -143,7 +167,7 @@ public class JiraKnowledgeScanService {
             return new ScanResult(totals.resources(), totals.bytes());
         } catch (ResponseStatusException exception) {
             ResourceTotals totals = activeResourceTotals(root.getId());
-            completeScan(root, scan, totals, scanErrorMessage(exception));
+            completeScan(root, scan, totals, scanErrorMessage(exception), false);
             log.warn(
                     "Jira project scan failed for {} after {} issues and {} bytes.",
                     project.getKey(),
@@ -154,7 +178,7 @@ public class JiraKnowledgeScanService {
             throw exception;
         } catch (RuntimeException exception) {
             ResourceTotals totals = activeResourceTotals(root.getId());
-            completeScan(root, scan, totals, "Could not scan Jira project");
+            completeScan(root, scan, totals, "Could not scan Jira project", false);
             log.warn(
                     "Jira project scan failed for {} after {} issues and {} bytes.",
                     project.getKey(),
@@ -183,13 +207,17 @@ public class JiraKnowledgeScanService {
         return root.getScanStartedAt() == null ? root.getScanFinishedAt() : root.getScanStartedAt();
     }
 
-    private void processIssues(
+    // Returns true if the scan was cancelled partway. Cancellation is checked between
+    // issues (mirroring the local-folder per-file check), so the current issue always
+    // finishes cleanly rather than leaving a half-written resource.
+    private boolean processIssues(
             JiraSettings jira,
             String token,
             UUID rootId,
             List<JiraIssueFetchService.JiraIssueManifest> issues,
             Instant scannedAt,
-            Consumer<String> onProgress
+            Consumer<String> onProgress,
+            BooleanSupplier isCancelled
     ) {
         Map<String, KnowledgeResource> existingResources = resourceRepository.findByRootId(rootId).stream()
                 .collect(Collectors.toMap(
@@ -199,6 +227,9 @@ public class JiraKnowledgeScanService {
                 ));
         Set<UUID> reusablePipelineResourceIds = pipelineRepository.findReusablePipelineResourceIdsByRootId(rootId);
         for (JiraIssueFetchService.JiraIssueManifest issue : issues) {
+            if (isCancelled.getAsBoolean()) {
+                return true;
+            }
             onProgress.accept(issue.key());
             saveResource(
                     jira,
@@ -210,6 +241,7 @@ public class JiraKnowledgeScanService {
                     scannedAt
             );
         }
+        return false;
     }
 
     private void saveResource(
@@ -352,7 +384,8 @@ public class JiraKnowledgeScanService {
             KnowledgeRoot root,
             KnowledgeRootScan scan,
             ResourceTotals totals,
-            String errorMessage
+            String errorMessage,
+            boolean cancelled
     ) {
         Instant finishedAt = Instant.now();
         boolean success = errorMessage == null || errorMessage.isBlank();
@@ -375,7 +408,9 @@ public class JiraKnowledgeScanService {
         current.setScanSuccess(success);
         current.setScanMessage(errorMessage);
         current.setScanFinishedAt(finishedAt);
-        if (success) {
+        if (success && !cancelled) {
+            // A cancelled scan only covered part of the project, so it must not advance
+            // the incremental cursor — the next scan needs to re-cover what it skipped.
             current.setConfigJson(configWithScanMetadata(current));
         }
         rootRepository.save(current);

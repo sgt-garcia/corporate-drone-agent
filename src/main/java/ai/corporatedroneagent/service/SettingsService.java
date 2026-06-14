@@ -378,7 +378,11 @@ public class SettingsService {
         settingsSecretsService.applySecretStatus(settings);
         requireJiraSetup(settings.getJira());
         KnowledgeRoot root = findJiraRoot(projectId);
-        knowledgeRootCleanupService.removeRoot(root);
+        // Stop any in-flight scan before deleting the root so the scan can't keep writing
+        // to it (mirrors removeKnowledgeFolder). The scan stops between issues.
+        knowledgeScanCoordinator.cancelJiraScanAndWait(root.getId());
+        KnowledgeRoot current = knowledgeRootRepository.findById(root.getId()).orElse(root);
+        knowledgeRootCleanupService.removeRoot(current);
         publishSettingsUpdated();
         log.info("Removed Jira project {}.", projectId);
     }

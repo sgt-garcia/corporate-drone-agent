@@ -4,6 +4,7 @@ import ai.corporatedroneagent.dto.JiraProjectDto;
 import ai.corporatedroneagent.model.JiraSettings;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -77,26 +78,39 @@ public class JiraProjectScanService {
         }
         UUID rootId = context.rootId();
         if (rootId != null && !knowledgeScanCoordinator.tryStartJiraScan(rootId)) {
-            // A scan for this project is already in flight; don't start a second one.
+            // A scan for this project is already in flight (or being cancelled for a
+            // remove); don't start a second one.
             return settingsService.currentJiraProjectDto(projectId);
         }
+        BooleanSupplier isCancelled = rootId == null
+                ? () -> false
+                : () -> knowledgeScanCoordinator.isJiraScanCancelled(rootId);
+        RuntimeException failure = null;
         try {
             if (scheduled) {
                 jiraKnowledgeScanService.scanScheduledProject(
-                        context.jira(), context.target(), context.token(), context.onProgress());
+                        context.jira(), context.target(), context.token(), context.onProgress(), isCancelled);
             } else {
                 jiraKnowledgeScanService.scanProject(
-                        context.jira(), context.target(), context.token(), context.onProgress());
+                        context.jira(), context.target(), context.token(), context.onProgress(), isCancelled);
             }
         } catch (RuntimeException exception) {
-            // Settle the root as failed so the derived status is "error", even if the
-            // scanner threw before recording it (mirrors the folder scan failure path).
-            settingsService.recordJiraScanFailure(rootId, scanFailureMessage(exception));
-            throw exception;
+            failure = exception;
         } finally {
+            // Release the coordinator BEFORE touching any synchronized SettingsService
+            // method below: a concurrent removeJiraProject holds the SettingsService
+            // monitor while waiting here, so settling/reading under that monitor before
+            // finishing the scan would deadlock.
             if (rootId != null) {
                 knowledgeScanCoordinator.finishJiraScan(rootId);
             }
+        }
+        if (failure != null) {
+            // Settle the root as failed so the derived status is "error", even if the
+            // scanner threw before recording it (idempotent if a concurrent remove
+            // already deleted the root). Mirrors the folder scan failure path.
+            settingsService.recordJiraScanFailure(rootId, scanFailureMessage(failure));
+            throw failure;
         }
         return settingsService.currentJiraProjectDto(projectId);
     }

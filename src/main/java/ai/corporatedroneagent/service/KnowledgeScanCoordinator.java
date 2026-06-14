@@ -11,6 +11,7 @@ public class KnowledgeScanCoordinator {
     private final Set<UUID> runningFolderScans = new HashSet<>();
     private final Set<UUID> cancelledFolderScans = new HashSet<>();
     private final Set<UUID> runningJiraScans = new HashSet<>();
+    private final Set<UUID> cancelledJiraScans = new HashSet<>();
 
     public synchronized boolean tryStartFolderScan(UUID folderId) {
         if (cancelledFolderScans.contains(folderId)) {
@@ -25,17 +26,36 @@ public class KnowledgeScanCoordinator {
         notifyAll();
     }
 
-    // Dedupe concurrent scans of the same Jira project root. Returns false when a
-    // scan for this root is already in flight, mirroring how the folder set guards
-    // a folder. There is no Jira cancellation: pausing a project flips its derived
-    // status to "paused" while the running scan finishes and its result is dropped.
+    // Dedupe concurrent scans of the same Jira project root, and refuse to start one
+    // that is being cancelled — mirroring the folder set. Pausing a project does NOT
+    // cancel (its derived status flips to "paused" while the scan finishes); removing
+    // it does, so the root can be deleted without a scan still writing to it.
     public synchronized boolean tryStartJiraScan(UUID rootId) {
+        if (cancelledJiraScans.contains(rootId)) {
+            return false;
+        }
         return runningJiraScans.add(rootId);
     }
 
     public synchronized void finishJiraScan(UUID rootId) {
         runningJiraScans.remove(rootId);
         notifyAll();
+    }
+
+    public synchronized boolean isJiraScanCancelled(UUID rootId) {
+        return cancelledJiraScans.contains(rootId);
+    }
+
+    public synchronized void cancelJiraScanAndWait(UUID rootId) {
+        cancelledJiraScans.add(rootId);
+        while (runningJiraScans.contains(rootId)) {
+            try {
+                wait();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while waiting for Jira scan to stop", exception);
+            }
+        }
     }
 
     public synchronized boolean isFolderScanCancelled(UUID folderId) {
