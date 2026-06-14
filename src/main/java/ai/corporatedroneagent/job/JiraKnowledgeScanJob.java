@@ -1,20 +1,20 @@
 package ai.corporatedroneagent.job;
 
-import ai.corporatedroneagent.service.SettingsService;
+import ai.corporatedroneagent.service.JiraProjectScanService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
 public class JiraKnowledgeScanJob {
 
-    private final SettingsService settingsService;
+    private final JiraProjectScanService jiraProjectScanService;
 
-    public JiraKnowledgeScanJob(SettingsService settingsService) {
-        this.settingsService = settingsService;
+    public JiraKnowledgeScanJob(JiraProjectScanService jiraProjectScanService) {
+        this.jiraProjectScanService = jiraProjectScanService;
     }
 
     @Scheduled(cron = "0 0/15 * * * *")
     public void scanJiraProjects() {
-        settingsService.scanAllJiraProjects();
+        jiraProjectScanService.scanAllProjects();
     }
 }

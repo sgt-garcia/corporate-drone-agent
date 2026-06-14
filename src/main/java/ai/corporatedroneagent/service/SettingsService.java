@@ -52,7 +52,6 @@ public class SettingsService {
     private final KnowledgeScanCoordinator knowledgeScanCoordinator;
     private final JiraConnectionValidationService jiraConnectionValidationService;
     private final JiraProjectDiscoveryService jiraProjectDiscoveryService;
-    private final JiraKnowledgeScanService jiraKnowledgeScanService;
 
     SettingsService(
             SettingsRepository settingsRepository,
@@ -70,8 +69,7 @@ public class SettingsService {
                 knowledgeRootCleanupService,
                 knowledgeScanCoordinator,
                 new JiraConnectionValidationService(),
-                new JiraProjectDiscoveryService(new ObjectMapper()),
-                null
+                new JiraProjectDiscoveryService(new ObjectMapper())
         );
     }
 
@@ -84,8 +82,7 @@ public class SettingsService {
             KnowledgeRootCleanupService knowledgeRootCleanupService,
             KnowledgeScanCoordinator knowledgeScanCoordinator,
             JiraConnectionValidationService jiraConnectionValidationService,
-            JiraProjectDiscoveryService jiraProjectDiscoveryService,
-            JiraKnowledgeScanService jiraKnowledgeScanService
+            JiraProjectDiscoveryService jiraProjectDiscoveryService
     ) {
         this.settingsRepository = settingsRepository;
         this.knowledgeRootRepository = knowledgeRootRepository;
@@ -95,7 +92,6 @@ public class SettingsService {
         this.knowledgeScanCoordinator = knowledgeScanCoordinator;
         this.jiraConnectionValidationService = jiraConnectionValidationService;
         this.jiraProjectDiscoveryService = jiraProjectDiscoveryService;
-        this.jiraKnowledgeScanService = jiraKnowledgeScanService;
     }
 
     public synchronized ApplicationSettings get() {
@@ -316,32 +312,6 @@ public class SettingsService {
         return currentJiraSettings().getProjects();
     }
 
-    // Not synchronized: each per-project scan runs off the SettingsService monitor so
-    // the scheduled sweep never blocks getSettings. Per-root deduplication in the scan
-    // coordinator stops overlapping sweeps from double-scanning the same project.
-    public void scanAllJiraProjects() {
-        JiraSettings jira = currentJiraSettings();
-        if (!jira.isConnected() || !jira.isTokenConfigured()) {
-            log.debug("Skipping scheduled Jira project scan because Jira is not connected.");
-            return;
-        }
-
-        List<String> projectIds = jira.getProjects().stream()
-                .filter(project -> !"paused".equals(project.getStatus()))
-                .map(JiraProjectDto::getId)
-                .toList();
-        log.info("Starting scheduled Jira scan for {} projects.", projectIds.size());
-
-        for (String projectId : projectIds) {
-            try {
-                scanJiraProject(projectId, true);
-            } catch (RuntimeException exception) {
-                log.warn("Scheduled Jira scan failed for project {}.", projectId, exception);
-            }
-        }
-        log.info("Finished scheduled Jira scan for {} projects.", projectIds.size());
-    }
-
     public synchronized List<JiraProjectDto> searchJiraProjects(String query) {
         JiraSettings jira = currentJiraSettings();
         requireJiraSetup(jira);
@@ -413,53 +383,10 @@ public class SettingsService {
         log.info("Removed Jira project {}.", projectId);
     }
 
-    public JiraProjectDto scanJiraProject(String projectId) {
-        return scanJiraProject(projectId, false);
-    }
-
-    // Runs the scan WITHOUT holding the SettingsService monitor for its duration. Only
-    // the context snapshot and the result read are synchronized, so getSettings (and
-    // the SSE-triggered refetch) stays responsive and observes the "scanning" status
-    // the scan publishes — mirroring how KnowledgeFolderScanService runs off this lock.
-    private JiraProjectDto scanJiraProject(String projectId, boolean scheduled) {
-        JiraScanContext context = jiraScanContext(projectId);
-
-        if (jiraKnowledgeScanService == null) {
-            // No scanner wired (tests / Jira indexing disabled): settle the root as an
-            // instant success so the derived status becomes "scanned".
-            return recordSyntheticJiraScanSuccess(projectId, context);
-        }
-        if (context.paused()) {
-            return currentJiraProjectDto(projectId);
-        }
-        UUID rootId = context.rootId();
-        if (rootId != null && !knowledgeScanCoordinator.tryStartJiraScan(rootId)) {
-            // A scan for this project is already in flight; don't start a second one.
-            return currentJiraProjectDto(projectId);
-        }
-        try {
-            Consumer<String> onProgress = KnowledgeScanProgress.emitter(eventService, context.target().getId());
-            if (scheduled) {
-                jiraKnowledgeScanService.scanScheduledProject(
-                        context.jira(), context.target(), context.token(), onProgress);
-            } else {
-                jiraKnowledgeScanService.scanProject(
-                        context.jira(), context.target(), context.token(), onProgress);
-            }
-        } catch (RuntimeException exception) {
-            // Settle the root as failed so the derived status is "error", even if the
-            // scanner threw before recording it (mirrors the folder scan failure path).
-            recordJiraScanFailure(rootId, jiraScanFailureMessage(exception));
-            throw exception;
-        } finally {
-            if (rootId != null) {
-                knowledgeScanCoordinator.finishJiraScan(rootId);
-            }
-        }
-        return currentJiraProjectDto(projectId);
-    }
-
-    private synchronized JiraScanContext jiraScanContext(String projectId) {
+    // Snapshot everything a scan needs while briefly holding the SettingsService
+    // monitor, then return so the scan (driven by JiraProjectScanService) runs lock-free
+    // and getSettings stays responsive. Package-private: the scan orchestrator calls it.
+    synchronized JiraScanContext jiraScanContext(String projectId) {
         JiraSettings jira = currentJiraSettings();
         requireJiraSetup(jira);
         JiraProjectDto target = jira.getProjects().stream()
@@ -475,18 +402,19 @@ public class SettingsService {
                 target,
                 savedJiraToken(),
                 root == null ? null : root.getId(),
-                root != null && root.isPaused()
+                root != null && root.isPaused(),
+                KnowledgeScanProgress.emitter(eventService, target.getId())
         );
     }
 
-    private synchronized JiraProjectDto currentJiraProjectDto(String projectId) {
+    synchronized JiraProjectDto currentJiraProjectDto(String projectId) {
         return currentJiraSettings().getProjects().stream()
                 .filter(project -> project.getId().equals(projectId))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found"));
     }
 
-    private synchronized JiraProjectDto recordSyntheticJiraScanSuccess(String projectId, JiraScanContext context) {
+    synchronized JiraProjectDto recordSyntheticJiraScanSuccess(String projectId, JiraScanContext context) {
         UUID rootId = context.rootId();
         if (rootId != null) {
             knowledgeRootRepository.findById(rootId).ifPresent(root -> {
@@ -503,7 +431,7 @@ public class SettingsService {
         return currentJiraProjectDto(projectId);
     }
 
-    private synchronized void recordJiraScanFailure(UUID rootId, String message) {
+    synchronized void recordJiraScanFailure(UUID rootId, String message) {
         if (rootId == null) {
             return;
         }
@@ -517,19 +445,13 @@ public class SettingsService {
         publishSettingsUpdated();
     }
 
-    private String jiraScanFailureMessage(RuntimeException exception) {
-        if (exception instanceof ResponseStatusException responseStatusException) {
-            return statusMessage(responseStatusException);
-        }
-        return "Could not scan Jira project";
-    }
-
-    private record JiraScanContext(
+    record JiraScanContext(
             JiraSettings jira,
             JiraProjectDto target,
             String token,
             UUID rootId,
-            boolean paused
+            boolean paused,
+            Consumer<String> onProgress
     ) {
     }
 

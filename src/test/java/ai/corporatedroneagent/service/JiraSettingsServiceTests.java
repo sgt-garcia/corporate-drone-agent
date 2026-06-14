@@ -43,6 +43,7 @@ class JiraSettingsServiceTests {
     private KnowledgeRootRepository knowledgeRootRepository;
     private SettingsRepository settingsRepository;
     private JdbcTemplate jdbcTemplate;
+    private JiraProjectScanService jiraProjectScanService;
 
     @BeforeEach
     void setUp() {
@@ -198,7 +199,7 @@ class JiraSettingsServiceTests {
                 "jira://example.atlassian.net/project/10002"
         )).get().extracting(KnowledgeRoot::isPaused).isEqualTo(false);
 
-        JiraProjectDto scanned = settingsService.scanJiraProject(added.getId());
+        JiraProjectDto scanned = jiraProjectScanService.scanProject(added.getId());
         assertThat(scanned.getIssues()).isEqualTo(added.getIssues());
         assertThat(scanned.getChecked()).isEqualTo("just now");
 
@@ -225,7 +226,7 @@ class JiraSettingsServiceTests {
             return new JiraKnowledgeScanService.ScanResult(5, 123);
         });
 
-        settingsService.scanAllJiraProjects();
+        jiraProjectScanService.scanAllProjects();
 
         verify(scanService, times(2)).scanScheduledProject(any(), any(), eq("token-1234"), any());
         verify(scanService).scanScheduledProject(any(), argThat(project -> "DEV".equals(project.getKey())), eq("token-1234"), any());
@@ -263,7 +264,7 @@ class JiraSettingsServiceTests {
                 new ResponseStatusException(HttpStatus.FORBIDDEN, "Jira does not allow this account to read issues")
         );
 
-        assertThatThrownBy(() -> settingsService.scanJiraProject(dev.getId()))
+        assertThatThrownBy(() -> jiraProjectScanService.scanProject(dev.getId()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Jira does not allow this account to read issues");
 
@@ -477,17 +478,19 @@ class JiraSettingsServiceTests {
                 new KnowledgeResourceRepository(jdbcTemplate),
                 mock(KnowledgeIndexingService.class)
         );
-        return new SettingsService(
+        KnowledgeScanCoordinator coordinator = new KnowledgeScanCoordinator();
+        SettingsService service = new SettingsService(
                 settingsRepository,
                 knowledgeRootRepository,
                 new SettingsSecretsService(secretStore),
                 mock(EventService.class),
                 cleanupService,
-                new KnowledgeScanCoordinator(),
+                coordinator,
                 validator,
-                discovery,
-                scanService
+                discovery
         );
+        jiraProjectScanService = new JiraProjectScanService(service, coordinator, scanService);
+        return service;
     }
 
     private JiraConnectionValidationService validValidator() {

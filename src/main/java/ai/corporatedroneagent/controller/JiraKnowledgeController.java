@@ -5,6 +5,7 @@ import ai.corporatedroneagent.dto.JiraConnectionValidationDto;
 import ai.corporatedroneagent.dto.JiraProjectDto;
 import ai.corporatedroneagent.dto.JiraProjectRequest;
 import ai.corporatedroneagent.model.JiraSettings;
+import ai.corporatedroneagent.service.JiraProjectScanService;
 import ai.corporatedroneagent.service.SettingsService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -24,9 +25,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class JiraKnowledgeController {
 
     private final SettingsService settingsService;
+    private final JiraProjectScanService jiraProjectScanService;
 
-    public JiraKnowledgeController(SettingsService settingsService) {
+    public JiraKnowledgeController(
+            SettingsService settingsService,
+            JiraProjectScanService jiraProjectScanService
+    ) {
         this.settingsService = settingsService;
+        this.jiraProjectScanService = jiraProjectScanService;
     }
 
     @GetMapping
@@ -72,7 +78,7 @@ public class JiraKnowledgeController {
 
     @PostMapping("/projects/{projectId}/scan")
     public JiraProjectDto scanProject(@PathVariable String projectId) {
-        return settingsService.scanJiraProject(projectId);
+        return jiraProjectScanService.scanProject(projectId);
     }
 
     @PostMapping("/projects/{projectId}/pause")
