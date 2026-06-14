@@ -136,7 +136,11 @@ public class SettingsService {
         current.setBedrock(settings.getBedrock());
         current.setGroq(settings.getGroq());
         current.setDeepSeek(settings.getDeepSeek());
-        current.setJira(sanitizeJira(settings.getJira()));
+        // The Jira connection is owned by the dedicated connect/disconnect endpoints,
+        // not the general settings PUT. Preserve the server's connection rather than
+        // trusting the client payload: a stale or omitted jira.connected here would
+        // otherwise hide every project (reads gate on connected) while its roots live on.
+        current.setJira(sanitizeJira(current.getJira()));
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);

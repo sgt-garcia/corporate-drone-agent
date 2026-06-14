@@ -444,6 +444,26 @@ class JiraSettingsServiceTests {
     }
 
     @Test
+    void generalSettingsSaveDoesNotDisconnectJiraOrDropProjects() {
+        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        JiraProjectDto added = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+
+        // A general settings PUT carrying a stale/blank jira payload (connected=false)
+        // must not disconnect Jira or hide its projects — the connection is owned by the
+        // dedicated endpoints, and the roots are the source of truth.
+        ApplicationSettings incoming = new ApplicationSettings();
+        incoming.setAgentName("Renamed Agent");
+        incoming.getJira().setConnected(false);
+        settingsService.save(incoming);
+
+        JiraSettings jira = settingsService.getJiraSettings();
+        assertThat(jira.isConnected()).isTrue();
+        assertThat(jira.getProjects()).extracting(JiraProjectDto::getId).contains(added.getId());
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).hasSize(1);
+        assertThat(settingsService.get().getAgentName()).isEqualTo("Renamed Agent");
+    }
+
+    @Test
     void validatesJiraConnectionShapeWithoutLiveValidation() {
         var validation = settingsService.validateJiraConnection(
                 connection("https://example.atlassian.net", "me@example.com", "token-1234")
