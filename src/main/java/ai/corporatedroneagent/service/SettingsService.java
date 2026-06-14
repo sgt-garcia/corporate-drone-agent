@@ -9,6 +9,7 @@ import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.JiraSettings;
 import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
+import ai.corporatedroneagent.model.knowledge.JiraKnowledgeRootConfig;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
 import ai.corporatedroneagent.model.knowledge.WorkStatus;
@@ -25,11 +26,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -103,10 +102,11 @@ public class SettingsService {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         attachKnowledgeFolders(settings);
+        migrateJiraProjectsToRoots(settings);
         settings.setJira(sanitizeJira(settings.getJira()));
         settingsSecretsService.clearSecretValues(settings);
         settingsSecretsService.applySecretStatus(settings);
-        applyJiraProjectStatuses(settings.getJira());
+        attachJiraProjects(settings.getJira());
         return settings;
     }
 
@@ -122,6 +122,9 @@ public class SettingsService {
         ApplicationSettings current = settingsRepository.get();
         migratePlaintextSecrets(current);
         migrateLegacyKnowledgeFolders(current);
+        // Migrate the server's own stored Jira projects to roots; never import a
+        // client-submitted project list (the root is the source of truth now).
+        migrateJiraProjectsToRoots(current);
         settingsSecretsService.saveSubmittedSecrets(settings);
 
         current.setAgentName(Strings.defaultIfBlank(settings.getAgentName(), "Corporate Drone's Agent"));
@@ -142,7 +145,6 @@ public class SettingsService {
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);
-        syncJiraKnowledgeRoots(current.getJira());
         ApplicationSettings savedSettings = get();
         eventService.publish("settings-updated");
         return savedSettings;
@@ -254,13 +256,16 @@ public class SettingsService {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         migrateLegacyKnowledgeFolders(settings);
+        migrateJiraProjectsToRoots(settings);
         settingsSecretsService.applySecretStatus(settings);
 
         JiraSettings current = settings.getJira();
+        boolean wasConnected = current.isConnected();
         String token = Strings.defaultIfBlank(request == null ? "" : request.token(), "");
         if (request != null && request.clearToken() && token.isBlank()) {
             JiraSettings cleared = new JiraSettings();
             settings.setJira(cleared);
+            removeAllJiraRoots();
             persistJiraSettings(settings, cleared, jiraSecretRequest("", true));
             log.info("Cleared Jira setup.");
             return currentJiraSettings();
@@ -284,7 +289,11 @@ public class SettingsService {
         next.setConnected(true);
         next.setApiVersion(validation.apiVersion());
         next.setTokenExpiresDays(current.getTokenExpiresDays() == null ? 90 : current.getTokenExpiresDays());
-        next.setProjects(current.isConnected() ? current.getProjects() : List.of());
+        if (!wasConnected) {
+            // Fresh connect from disconnected: drop any stale roots so the new connection
+            // starts clean (parity with the old projects=List.of() reset).
+            removeAllJiraRoots();
+        }
 
         persistJiraSettings(settings, next, token.isBlank() ? null : jiraSecretRequest(token, false));
         log.info("Saved Jira setup for {}.", next.getInstanceUrl());
@@ -297,6 +306,7 @@ public class SettingsService {
         migrateLegacyKnowledgeFolders(settings);
         JiraSettings cleared = new JiraSettings();
         settings.setJira(cleared);
+        removeAllJiraRoots();
         persistJiraSettings(settings, cleared, jiraSecretRequest("", true));
         log.info("Cleared Jira setup.");
         return currentJiraSettings();
@@ -352,48 +362,54 @@ public class SettingsService {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         migrateLegacyKnowledgeFolders(settings);
+        migrateJiraProjectsToRoots(settings);
         settingsSecretsService.applySecretStatus(settings);
         JiraSettings jira = settings.getJira();
         requireJiraSetup(jira);
 
         String key = normalizeJiraProjectKey(request == null ? "" : request.key());
-        if (jira.getProjects().stream().anyMatch(project -> project.getKey().equalsIgnoreCase(key))) {
+        List<KnowledgeRoot> existing = knowledgeRootRepository.findBySource(KnowledgeSource.JIRA);
+        if (existing.stream().anyMatch(root -> key.equalsIgnoreCase(JiraKnowledgeRootConfig.readKey(root)))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Jira project is already configured");
         }
-        if (jira.getProjects().size() >= MAX_JIRA_PROJECTS) {
+        if (existing.size() >= MAX_JIRA_PROJECTS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira project limit reached");
         }
 
-        List<JiraProjectDto> projects = new ArrayList<>(jira.getProjects());
-        JiraProjectDto project = jiraProjectDiscoveryService.getProject(
+        JiraProjectDto discovered = jiraProjectDiscoveryService.getProject(
                 jira.getInstanceUrl(),
                 jira.getEmail(),
                 savedJiraToken(),
                 key,
                 jira.getApiVersion()
         );
-        projects.add(project);
-        jira.setProjects(projects);
-        persistJiraSettings(settings, jira, null);
+        String projectId = Strings.defaultIfBlank(discovered.getId(), "").trim();
+        if (projectId.isBlank()) {
+            projectId = UUID.randomUUID().toString();
+        }
+        KnowledgeRoot root = new KnowledgeRoot();
+        root.setSource(KnowledgeSource.JIRA);
+        root.setReference(JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), projectId));
+        root.setDisplayName(jiraDisplayName(discovered.getKey(), discovered.getName()));
+        root.setTotalResources(discovered.getIssues());
+        root.setConfigJson(JiraKnowledgeRootConfig.withIdentity(
+                null, projectId, discovered.getKey(), discovered.getName()));
+        root = knowledgeRootRepository.save(root);
+        publishSettingsUpdated();
         log.info("Added Jira project {}.", key);
-        return project;
+        return jiraProject(root);
     }
 
     public synchronized void removeJiraProject(String projectId) {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         migrateLegacyKnowledgeFolders(settings);
+        migrateJiraProjectsToRoots(settings);
         settingsSecretsService.applySecretStatus(settings);
-        JiraSettings jira = settings.getJira();
-        requireJiraSetup(jira);
-        List<JiraProjectDto> projects = jira.getProjects().stream()
-                .filter(project -> !project.getId().equals(projectId))
-                .toList();
-        if (projects.size() == jira.getProjects().size()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found");
-        }
-        jira.setProjects(projects);
-        persistJiraSettings(settings, jira, null);
+        requireJiraSetup(settings.getJira());
+        KnowledgeRoot root = findJiraRoot(projectId);
+        knowledgeRootCleanupService.removeRoot(root);
+        publishSettingsUpdated();
         log.info("Removed Jira project {}.", projectId);
     }
 
@@ -518,23 +534,35 @@ public class SettingsService {
     }
 
     public synchronized JiraProjectDto pauseJiraProject(String projectId) {
-        return updateJiraProject(projectId, project -> project.setStatus("paused"));
+        return setJiraProjectPaused(projectId, true);
     }
 
     public synchronized JiraProjectDto resumeJiraProject(String projectId) {
-        return updateJiraProject(projectId, project -> {
-            project.setStatus("scanned");
-            project.setMessage("");
-        });
+        return setJiraProjectPaused(projectId, false);
+    }
+
+    private JiraProjectDto setJiraProjectPaused(String projectId, boolean paused) {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        migrateJiraProjectsToRoots(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        requireJiraSetup(settings.getJira());
+        KnowledgeRoot root = findJiraRoot(projectId);
+        root.setPaused(paused);
+        root = knowledgeRootRepository.save(root);
+        publishSettingsUpdated();
+        return jiraProject(root);
     }
 
     private JiraSettings currentJiraSettings() {
         ApplicationSettings settings = settingsRepository.get();
         migratePlaintextSecrets(settings);
         migrateLegacyKnowledgeFolders(settings);
+        migrateJiraProjectsToRoots(settings);
         settings.setJira(sanitizeJira(settings.getJira()));
         settingsSecretsService.applySecretStatus(settings);
-        applyJiraProjectStatuses(settings.getJira());
+        attachJiraProjects(settings.getJira());
         return settings.getJira();
     }
 
@@ -586,7 +614,6 @@ public class SettingsService {
         settingsSecretsService.clearSecretValues(settings);
         settingsSecretsService.applySecretStatus(settings);
         settingsRepository.save(settings);
-        syncJiraKnowledgeRoots(sanitizedJira);
         publishSettingsUpdated();
     }
 
@@ -603,43 +630,6 @@ public class SettingsService {
         }
     }
 
-    private void syncJiraKnowledgeRoots(JiraSettings jira) {
-        List<String> expectedReferences = jira.isConnected()
-                ? jira.getProjects().stream()
-                .map(project -> jiraProjectRootReference(jira, project))
-                .toList()
-                : List.of();
-
-        knowledgeRootRepository.findBySource(KnowledgeSource.JIRA).stream()
-                .filter(root -> !expectedReferences.contains(root.getReference()))
-                .forEach(knowledgeRootCleanupService::removeRoot);
-
-        if (!jira.isConnected()) {
-            return;
-        }
-
-        for (JiraProjectDto project : jira.getProjects()) {
-            String reference = jiraProjectRootReference(jira, project);
-            KnowledgeRoot root = knowledgeRootRepository
-                    .findBySourceAndReference(KnowledgeSource.JIRA, reference)
-                    .orElseGet(KnowledgeRoot::new);
-            boolean newRoot = root.getId() == null;
-            root.setSource(KnowledgeSource.JIRA);
-            root.setReference(reference);
-            root.setDisplayName(jiraProjectDisplayName(project));
-            // Seed paused from the stored status (the on-load migration for existing
-            // settings.json); thereafter pause/resume own root.paused directly.
-            root.setPaused("paused".equals(project.getStatus()));
-            if (newRoot) {
-                // Totals are owned by the scan once a root exists; only seed them for a
-                // brand-new root so a concurrent persist can't clobber live scan totals.
-                root.setTotalResources(project.getIssues());
-                root.setTotalSizeBytes(0);
-            }
-            knowledgeRootRepository.save(root);
-        }
-    }
-
     private String jiraProjectRootReference(JiraSettings jira, JiraProjectDto project) {
         return JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), jiraProjectReferenceId(project));
     }
@@ -649,71 +639,119 @@ public class SettingsService {
         return projectId.isBlank() ? project.getKey() : projectId;
     }
 
-    private String jiraProjectDisplayName(JiraProjectDto project) {
-        String key = Strings.defaultIfBlank(project.getKey(), "").trim();
-        String name = Strings.defaultIfBlank(project.getName(), "").trim();
-        if (key.isBlank()) {
-            return name;
+    private String jiraDisplayName(String key, String name) {
+        String trimmedKey = Strings.defaultIfBlank(key, "").trim();
+        String trimmedName = Strings.defaultIfBlank(name, "").trim();
+        if (trimmedKey.isBlank()) {
+            return trimmedName;
         }
-        if (name.isBlank()) {
-            return key;
+        if (trimmedName.isBlank()) {
+            return trimmedKey;
         }
-        return key + " - " + name;
+        return trimmedKey + " - " + trimmedName;
     }
 
-    // Overlay each Jira project's live status onto the stored identity, derived from
-    // its KnowledgeRoot exactly like a local folder. The stored DTO keeps id/key/name;
-    // status/issues/checked/message reflect the root's scan pipeline so the settings
-    // screen sees "scanning" while a scan runs and a pause sticks through completion.
-    private void applyJiraProjectStatuses(JiraSettings jira) {
-        if (jira == null || !jira.isConnected() || jira.getProjects().isEmpty()) {
+    // The list of configured Jira projects on read, rebuilt from JIRA roots — the
+    // root is the sole record, exactly like attachKnowledgeFolders for local folders.
+    private void attachJiraProjects(JiraSettings jira) {
+        if (jira == null) {
             return;
         }
-        Map<String, KnowledgeRoot> rootsByReference = knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)
-                .stream()
-                .collect(Collectors.toMap(KnowledgeRoot::getReference, root -> root, (first, second) -> first));
-        for (JiraProjectDto project : jira.getProjects()) {
-            applyDerivedJiraStatus(project, rootsByReference.get(jiraProjectRootReference(jira, project)));
-        }
+        jira.setProjects(jira.isConnected() ? jiraProjects() : List.of());
     }
 
-    private void applyDerivedJiraStatus(JiraProjectDto project, KnowledgeRoot root) {
-        if (root == null) {
-            // No root yet (project added but never synced): leave the stored status,
-            // which sanitizeJiraProjects has already normalized to "scanned".
-            return;
-        }
+    private List<JiraProjectDto> jiraProjects() {
+        return knowledgeRootRepository.findBySource(KnowledgeSource.JIRA).stream()
+                .map(this::jiraProject)
+                .toList();
+    }
+
+    // Canonical KnowledgeRoot -> Jira-project-DTO mapper, mirroring knowledgeFolder(root):
+    // identity comes from configJson, status/issues/checked/message from the scan pipeline.
+    private JiraProjectDto jiraProject(KnowledgeRoot root) {
+        JiraProjectDto project = new JiraProjectDto();
+        project.setId(JiraKnowledgeRootConfig.readProjectId(root));
+        project.setKey(JiraKnowledgeRootConfig.readKey(root));
+        project.setName(JiraKnowledgeRootConfig.readName(root));
         String status = knowledgeStatus(root);
         project.setStatus(status);
         project.setIssues(root.getTotalResources());
         project.setChecked(checkedLabel(root));
         project.setMessage("error".equals(status) ? root.getScanMessage() : "");
+        return project;
     }
 
-    private JiraProjectDto updateJiraProject(String projectId, Consumer<JiraProjectDto> updater) {
-        ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
-        settingsSecretsService.applySecretStatus(settings);
+    // One-time migration of legacy settings.json Jira projects into roots, mirroring
+    // migrateLegacyKnowledgeFolders. Idempotent: re-finds roots by reference, only seeds
+    // pause/error/totals on a brand-new root, and clears the stored list only after every
+    // root is saved so a mid-migration crash is safe to retry.
+    private void migrateJiraProjectsToRoots(ApplicationSettings settings) {
         JiraSettings jira = settings.getJira();
-        requireJiraSetup(jira);
-
-        JiraProjectDto updatedProject = null;
-        List<JiraProjectDto> projects = new ArrayList<>();
+        if (jira == null || !jira.isConnected() || jira.getProjects().isEmpty()) {
+            return;
+        }
+        List<String> seenKeys = new ArrayList<>();
         for (JiraProjectDto project : jira.getProjects()) {
-            JiraProjectDto copy = copyJiraProject(project);
-            if (copy.getId().equals(projectId)) {
-                updater.accept(copy);
-                updatedProject = copy;
+            if (project == null) {
+                continue;
             }
-            projects.add(copy);
+            String key = Strings.defaultIfBlank(project.getKey(), "").trim();
+            if (key.isBlank() || seenKeys.stream().anyMatch(seen -> seen.equalsIgnoreCase(key))) {
+                continue;
+            }
+            if (seenKeys.size() >= MAX_JIRA_PROJECTS) {
+                break;
+            }
+            seenKeys.add(key);
+
+            String projectId = Strings.defaultIfBlank(project.getId(), "").trim();
+            if (projectId.isBlank()) {
+                projectId = UUID.randomUUID().toString();
+            }
+            String name = Strings.defaultIfBlank(project.getName(), "").trim();
+            String reference = JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), projectId);
+            KnowledgeRoot root = knowledgeRootRepository
+                    .findBySourceAndReference(KnowledgeSource.JIRA, reference)
+                    .orElseGet(KnowledgeRoot::new);
+            boolean newRoot = root.getId() == null;
+            root.setSource(KnowledgeSource.JIRA);
+            root.setReference(reference);
+            root.setDisplayName(jiraDisplayName(key, name));
+            root.setConfigJson(JiraKnowledgeRootConfig.withIdentity(root.getConfigJson(), projectId, key, name));
+            if (newRoot) {
+                seedLegacyJiraScanState(root, project);
+            }
+            knowledgeRootRepository.save(root);
         }
-        if (updatedProject == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found");
+        jira.setProjects(List.of());
+        settingsRepository.save(settings);
+    }
+
+    // Preserve the user-visible status of a legacy project on its new root: a pause is a
+    // real user intent; an error stays sticky until the next scan; totals seed the count.
+    private void seedLegacyJiraScanState(KnowledgeRoot root, JiraProjectDto project) {
+        if ("paused".equals(project.getStatus())) {
+            root.setPaused(true);
+        } else if ("error".equals(project.getStatus())) {
+            root.setScanStatus(WorkStatus.DONE);
+            root.setScanSuccess(false);
+            root.setScanMessage(Strings.defaultIfBlank(project.getMessage(), "Could not scan Jira project"));
+            root.setScanFinishedAt(Instant.now());
         }
-        jira.setProjects(projects);
-        persistJiraSettings(settings, jira, null);
-        return updatedProject;
+        root.setTotalResources(project.getIssues());
+        root.setTotalSizeBytes(0);
+    }
+
+    private KnowledgeRoot findJiraRoot(String projectId) {
+        return knowledgeRootRepository.findBySource(KnowledgeSource.JIRA).stream()
+                .filter(root -> projectId.equals(JiraKnowledgeRootConfig.readProjectId(root)))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found"));
+    }
+
+    private void removeAllJiraRoots() {
+        knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)
+                .forEach(knowledgeRootCleanupService::removeRoot);
     }
 
     private JiraProjectDto copyJiraProject(JiraProjectDto source) {
@@ -945,10 +983,10 @@ public class SettingsService {
         return sanitized;
     }
 
-    // Persist only what the Settings screen needs to render on reload: trimmed
-    // connection details, the chosen projects (capped and deduped by key), and
-    // the token expiry. The secret token is handled separately by
-    // SettingsSecretsService.
+    // Persist only the connection the Settings screen needs on reload: trimmed details,
+    // api version, token expiry. Projects are NOT persisted here — they live in JIRA
+    // roots and are rebuilt by attachJiraProjects on read. The secret token is handled
+    // separately by SettingsSecretsService.
     private JiraSettings sanitizeJira(JiraSettings jira) {
         JiraSettings sanitized = new JiraSettings();
         if (jira == null) {
@@ -959,41 +997,6 @@ public class SettingsService {
         sanitized.setConnected(jira.isConnected());
         sanitized.setApiVersion(sanitizeJiraApiVersion(jira.getApiVersion()));
         sanitized.setTokenExpiresDays(jira.getTokenExpiresDays());
-        if (!jira.isConnected()) {
-            return sanitized;
-        }
-        sanitized.setProjects(sanitizeJiraProjects(jira.getProjects()));
-        return sanitized;
-    }
-
-    private List<JiraProjectDto> sanitizeJiraProjects(List<JiraProjectDto> projects) {
-        List<JiraProjectDto> sanitized = new ArrayList<>();
-        if (projects == null) {
-            return sanitized;
-        }
-        for (JiraProjectDto project : projects) {
-            if (project == null || project.getKey() == null || project.getKey().isBlank()) {
-                continue;
-            }
-            String key = project.getKey().trim();
-            if (sanitized.stream().anyMatch(existing -> existing.getKey().equalsIgnoreCase(key))) {
-                continue;
-            }
-            JiraProjectDto sanitizedProject = new JiraProjectDto();
-            sanitizedProject.setId(project.getId() == null || project.getId().isBlank()
-                    ? UUID.randomUUID().toString()
-                    : project.getId());
-            sanitizedProject.setKey(key);
-            sanitizedProject.setName(project.getName());
-            sanitizedProject.setStatus(sanitizeJiraProjectStatus(project.getStatus()));
-            sanitizedProject.setIssues(project.getIssues());
-            sanitizedProject.setChecked(project.getChecked());
-            sanitizedProject.setMessage(project.getMessage());
-            sanitized.add(sanitizedProject);
-            if (sanitized.size() == MAX_JIRA_PROJECTS) {
-                break;
-            }
-        }
         return sanitized;
     }
 
@@ -1005,14 +1008,6 @@ public class SettingsService {
         String normalized = Strings.defaultIfBlank(status, "scanned");
         return switch (normalized) {
             case "paused", "scanning", "error" -> normalized;
-            default -> "scanned";
-        };
-    }
-
-    private String sanitizeJiraProjectStatus(String status) {
-        String normalized = Strings.defaultIfBlank(status, "scanned");
-        return switch (normalized) {
-            case "paused", "error" -> normalized;
             default -> "scanned";
         };
     }

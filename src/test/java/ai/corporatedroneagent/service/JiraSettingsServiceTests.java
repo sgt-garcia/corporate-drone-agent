@@ -42,6 +42,7 @@ class JiraSettingsServiceTests {
     private InMemorySecretStore secretStore;
     private KnowledgeRootRepository knowledgeRootRepository;
     private SettingsRepository settingsRepository;
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
@@ -322,23 +323,25 @@ class JiraSettingsServiceTests {
     }
 
     @Test
-    void savingSettingsSyncsExistingSavedJiraProjectsToKnowledgeRoots() {
-        ApplicationSettings settings = settingsRepository.get();
+    void readingSettingsMigratesStoredJiraProjectsToKnowledgeRoots() {
         JiraSettings jira = new JiraSettings();
         jira.setConnected(true);
         jira.setInstanceUrl("https://example.atlassian.net");
         jira.setEmail("me@example.com");
         jira.setProjects(java.util.List.of(project("10001", "DEV", "Software Development", 42)));
-        settings.setJira(jira);
+        seedLegacyJiraProjects(jira);
 
-        settingsService.save(settings);
+        settingsService.getJiraSettings();
 
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
                 .singleElement()
                 .satisfies(root -> {
                     assertThat(root.getReference()).isEqualTo("jira://example.atlassian.net/project/10001");
                     assertThat(root.getDisplayName()).isEqualTo("DEV - Software Development");
+                    assertThat(root.getTotalResources()).isEqualTo(42);
                 });
+        // The stored list is cleared once migrated.
+        assertThat(settingsRepository.get().getJira().getProjects()).isEmpty();
     }
 
     @Test
@@ -352,19 +355,20 @@ class JiraSettingsServiceTests {
         root.setScanSuccess(null);
         root.setScanMessage("");
         root.setScanStartedAt(startedAt);
+        root.setConfigJson("{\"kept\":\"value\"}");
         root = knowledgeRootRepository.save(root);
 
-        ApplicationSettings settings = settingsRepository.get();
         JiraSettings jira = new JiraSettings();
         jira.setConnected(true);
         jira.setInstanceUrl("https://example.atlassian.net");
         jira.setEmail("me@example.com");
         jira.setProjects(java.util.List.of(project("10001", "DEV", "Software Development", 42)));
-        settings.setJira(jira);
-        settingsRepository.save(settings);
+        seedLegacyJiraProjects(jira);
 
         settingsService.get();
 
+        // Migration writes the project identity into the existing root's configJson but
+        // must not touch its in-flight scan state, nor clobber unrelated config keys.
         assertThat(knowledgeRootRepository.findByIdAndSource(root.getId(), KnowledgeSource.JIRA))
                 .get()
                 .satisfies(savedRoot -> {
@@ -372,12 +376,13 @@ class JiraSettingsServiceTests {
                     assertThat(savedRoot.getScanStartedAt()).isEqualTo(startedAt);
                     assertThat(savedRoot.getScanFinishedAt()).isNull();
                     assertThat(savedRoot.getScanSuccess()).isNull();
+                    assertThat(savedRoot.getConfigJson()).contains("\"kept\":\"value\"");
+                    assertThat(savedRoot.getConfigJson()).contains("\"jiraProjectKey\":\"DEV\"");
                 });
     }
 
     @Test
-    void readingJiraSettingsSanitizesPersistedConnectionAndProjects() {
-        ApplicationSettings settings = settingsRepository.get();
+    void readingJiraSettingsMigratesAndDedupesPersistedProjects() {
         JiraSettings jira = new JiraSettings();
         jira.setConnected(true);
         jira.setInstanceUrl(" https://example.atlassian.net/ ");
@@ -394,8 +399,7 @@ class JiraSettingsServiceTests {
         support.setStatus("error");
         support.setMessage("Could not scan Jira project");
         jira.setProjects(java.util.List.of(dev, duplicateDev, invalid, ops, support));
-        settings.setJira(jira);
-        settingsRepository.save(settings);
+        seedLegacyJiraProjects(jira);
         secretStore.put("settings.jira.token", "token-1234");
 
         JiraSettings sanitized = settingsService.getJiraSettings();
@@ -405,19 +409,31 @@ class JiraSettingsServiceTests {
         assertThat(sanitized.getTokenExpiresDays()).isEqualTo(30);
         assertThat(sanitized.getApiVersion()).isEqualTo("3");
         assertThat(sanitized.isTokenConfigured()).isTrue();
+        // Blank-key skipped, DEV deduped against "dev" (case-insensitive).
         assertThat(sanitized.getProjects())
                 .extracting(JiraProjectDto::getKey)
-                .containsExactly("dev", "OPS", "SUP");
-        assertThat(sanitized.getProjects().getFirst())
+                .containsExactlyInAnyOrder("dev", "OPS", "SUP");
+        assertThat(sanitized.getProjects())
+                .filteredOn(project -> "dev".equals(project.getKey()))
+                .singleElement()
                 .satisfies(project -> {
                     assertThat(project.getId()).isNotBlank();
                     assertThat(project.getStatus()).isEqualTo("scanned");
                     assertThat(project.getIssues()).isEqualTo(42);
                 });
-        assertThat(sanitized.getProjects().get(1).getStatus()).isEqualTo("paused");
-        assertThat(sanitized.getProjects().get(2).getStatus()).isEqualTo("error");
-        assertThat(sanitized.getProjects().get(2).getMessage()).isEqualTo("Could not scan Jira project");
-        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).isEmpty();
+        assertThat(sanitized.getProjects())
+                .filteredOn(project -> "OPS".equals(project.getKey()))
+                .singleElement()
+                .extracting(JiraProjectDto::getStatus)
+                .isEqualTo("paused");
+        assertThat(sanitized.getProjects())
+                .filteredOn(project -> "SUP".equals(project.getKey()))
+                .singleElement()
+                .satisfies(project -> {
+                    assertThat(project.getStatus()).isEqualTo("error");
+                    assertThat(project.getMessage()).isEqualTo("Could not scan Jira project");
+                });
+        assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).hasSize(3);
     }
 
     @Test
@@ -453,7 +469,7 @@ class JiraSettingsServiceTests {
             JiraProjectDiscoveryService discovery,
             JiraKnowledgeScanService scanService
     ) {
-        JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
+        jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
         knowledgeRootRepository = new KnowledgeRootRepository(jdbcTemplate);
         settingsRepository = new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules());
         KnowledgeRootCleanupService cleanupService = new KnowledgeRootCleanupService(
@@ -516,6 +532,23 @@ class JiraSettingsServiceTests {
                         .orElseThrow();
             }
         };
+    }
+
+    // Seed a legacy settings_json that still carries jira.projects, simulating an
+    // install from before projects moved to knowledge roots. Production
+    // SettingsRepository strips jira.projects on write, so we insert raw JSON here.
+    private void seedLegacyJiraProjects(JiraSettings jira) {
+        ApplicationSettings settings = new ApplicationSettings();
+        settings.setJira(jira);
+        try {
+            String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(settings);
+            jdbcTemplate.update(
+                    "MERGE INTO app_settings (id, settings_json, updated_at) KEY(id) VALUES (1, ?, ?)",
+                    json,
+                    java.sql.Timestamp.from(Instant.now()));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private JiraProjectDto project(String id, String key, String name, long issues) {

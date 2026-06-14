@@ -61,7 +61,13 @@ public class SettingsRepository {
     private String writeSettings(ApplicationSettings settings) {
         try {
             com.fasterxml.jackson.databind.node.ObjectNode settingsJson = objectMapper.valueToTree(settings);
+            // Knowledge sources live in knowledge_roots, not settings_json. Strip both the
+            // local-folder list and the nested Jira project list so the root stays the sole
+            // record; reads rebuild these from roots.
             settingsJson.remove("knowledgeFolders");
+            if (settingsJson.get("jira") instanceof com.fasterxml.jackson.databind.node.ObjectNode jira) {
+                jira.remove("projects");
+            }
             return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(settingsJson);
         } catch (JsonProcessingException exception) {
             throw new UncheckedIOException("Could not write application settings to database", exception);
