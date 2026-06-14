@@ -65,7 +65,7 @@ public class KnowledgeFolderScanService {
     }
 
     public synchronized KnowledgeFolderDto scanFolder(UUID folderId) {
-        if (!knowledgeScanCoordinator.tryStartFolderScan(folderId)) {
+        if (!knowledgeScanCoordinator.tryStartScan(folderId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge folder not found");
         }
 
@@ -123,7 +123,7 @@ public class KnowledgeFolderScanService {
             );
             return folder;
         } finally {
-            knowledgeScanCoordinator.finishFolderScan(folderId);
+            knowledgeScanCoordinator.finishScan(folderId);
         }
     }
 
@@ -173,7 +173,7 @@ public class KnowledgeFolderScanService {
             return localFolderKnowledgeScanService.scan(
                     folder,
                     folderPath,
-                    () -> knowledgeScanCoordinator.isFolderScanCancelled(folderId),
+                    () -> knowledgeScanCoordinator.isScanCancelled(folderId),
                     KnowledgeScanProgress.emitter(eventService, folderId.toString())
             );
         } catch (LocalFolderKnowledgeScanService.KnowledgeScanException exception) {

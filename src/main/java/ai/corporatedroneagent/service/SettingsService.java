@@ -192,7 +192,7 @@ public class SettingsService {
         migrateLegacyKnowledgeFolders(settings);
 
         KnowledgeRoot removedFolder = findKnowledgeRoot(folderId);
-        knowledgeScanCoordinator.cancelFolderScanAndWait(folderId);
+        knowledgeScanCoordinator.cancelScanAndWait(folderId);
         removedFolder = findKnowledgeRoot(folderId);
 
         knowledgeRootCleanupService.removeLocalFolderRoot(removedFolder.getReference());
@@ -383,7 +383,7 @@ public class SettingsService {
         KnowledgeRoot root = findJiraRoot(projectId);
         // Stop any in-flight scan before deleting the root so the scan can't keep writing
         // to it (mirrors removeKnowledgeFolder). The scan stops between issues.
-        knowledgeScanCoordinator.cancelJiraScanAndWait(root.getId());
+        knowledgeScanCoordinator.cancelScanAndWait(root.getId());
         KnowledgeRoot current = knowledgeRootRepository.findById(root.getId()).orElse(root);
         knowledgeRootCleanupService.removeRoot(current);
         publishSettingsUpdated();

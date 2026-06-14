@@ -5,71 +5,43 @@ import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
+/**
+ * Serializes scans of a single knowledge root across sources. Keyed by the root's
+ * UUID (globally unique across source types), so one method family serves every
+ * source: dedupe concurrent scans of the same root, and let a remove cancel an
+ * in-flight scan and wait for it to stop. Pausing a source does NOT cancel — its
+ * derived status flips to "paused" while the scan finishes and its result is dropped.
+ */
 @Service
 public class KnowledgeScanCoordinator {
 
-    private final Set<UUID> runningFolderScans = new HashSet<>();
-    private final Set<UUID> cancelledFolderScans = new HashSet<>();
-    private final Set<UUID> runningJiraScans = new HashSet<>();
-    private final Set<UUID> cancelledJiraScans = new HashSet<>();
+    private final Set<UUID> runningScans = new HashSet<>();
+    private final Set<UUID> cancelledScans = new HashSet<>();
 
-    public synchronized boolean tryStartFolderScan(UUID folderId) {
-        if (cancelledFolderScans.contains(folderId)) {
+    public synchronized boolean tryStartScan(UUID rootId) {
+        if (cancelledScans.contains(rootId)) {
             return false;
         }
-        runningFolderScans.add(folderId);
-        return true;
+        return runningScans.add(rootId);
     }
 
-    public synchronized void finishFolderScan(UUID folderId) {
-        runningFolderScans.remove(folderId);
+    public synchronized void finishScan(UUID rootId) {
+        runningScans.remove(rootId);
         notifyAll();
     }
 
-    // Dedupe concurrent scans of the same Jira project root, and refuse to start one
-    // that is being cancelled — mirroring the folder set. Pausing a project does NOT
-    // cancel (its derived status flips to "paused" while the scan finishes); removing
-    // it does, so the root can be deleted without a scan still writing to it.
-    public synchronized boolean tryStartJiraScan(UUID rootId) {
-        if (cancelledJiraScans.contains(rootId)) {
-            return false;
-        }
-        return runningJiraScans.add(rootId);
+    public synchronized boolean isScanCancelled(UUID rootId) {
+        return cancelledScans.contains(rootId);
     }
 
-    public synchronized void finishJiraScan(UUID rootId) {
-        runningJiraScans.remove(rootId);
-        notifyAll();
-    }
-
-    public synchronized boolean isJiraScanCancelled(UUID rootId) {
-        return cancelledJiraScans.contains(rootId);
-    }
-
-    public synchronized void cancelJiraScanAndWait(UUID rootId) {
-        cancelledJiraScans.add(rootId);
-        while (runningJiraScans.contains(rootId)) {
+    public synchronized void cancelScanAndWait(UUID rootId) {
+        cancelledScans.add(rootId);
+        while (runningScans.contains(rootId)) {
             try {
                 wait();
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
-                throw new IllegalStateException("Interrupted while waiting for Jira scan to stop", exception);
-            }
-        }
-    }
-
-    public synchronized boolean isFolderScanCancelled(UUID folderId) {
-        return cancelledFolderScans.contains(folderId);
-    }
-
-    public synchronized void cancelFolderScanAndWait(UUID folderId) {
-        cancelledFolderScans.add(folderId);
-        while (runningFolderScans.contains(folderId)) {
-            try {
-                wait();
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Interrupted while waiting for folder scan to stop", exception);
+                throw new IllegalStateException("Interrupted while waiting for knowledge scan to stop", exception);
             }
         }
     }

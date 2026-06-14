@@ -95,14 +95,14 @@ public class JiraProjectScanService {
             return settingsService.jiraProject(root);
         }
         UUID rootId = root.getId();
-        if (!knowledgeScanCoordinator.tryStartJiraScan(rootId)) {
+        if (!knowledgeScanCoordinator.tryStartScan(rootId)) {
             // A scan for this project is already in flight (or being cancelled for a
             // remove); don't start a second one.
             return settingsService.jiraProject(reload(root));
         }
         JiraProjectDto target = settingsService.jiraProject(root);
         Consumer<String> onProgress = KnowledgeScanProgress.emitter(eventService, target.getId());
-        BooleanSupplier isCancelled = () -> knowledgeScanCoordinator.isJiraScanCancelled(rootId);
+        BooleanSupplier isCancelled = () -> knowledgeScanCoordinator.isScanCancelled(rootId);
         try {
             if (scheduled) {
                 jiraKnowledgeScanService.scanScheduledProject(connection, target, token, onProgress, isCancelled);
@@ -115,7 +115,7 @@ public class JiraProjectScanService {
             settleFailure(rootId, scanFailureMessage(exception));
             throw exception;
         } finally {
-            knowledgeScanCoordinator.finishJiraScan(rootId);
+            knowledgeScanCoordinator.finishScan(rootId);
         }
         return settingsService.jiraProject(reload(root));
     }
