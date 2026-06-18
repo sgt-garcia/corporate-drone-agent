@@ -1,8 +1,10 @@
 import "./styles.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  addConfluenceSpace as addConfluenceSpaceRequest,
   addJiraProject as addJiraProjectRequest,
   addKnowledgeFolder as addKnowledgeFolderRequest,
+  clearConfluenceConnection as clearConfluenceConnectionRequest,
   clearJiraConnection as clearJiraConnectionRequest,
   createConversation,
   createProject,
@@ -12,20 +14,26 @@ import {
   getProjects,
   getSettings,
   markConversationSeen as markConversationSeenRequest,
+  pauseConfluenceSpace as pauseConfluenceSpaceRequest,
   pauseJiraProject as pauseJiraProjectRequest,
   pauseKnowledgeFolder as pauseKnowledgeFolderRequest,
   regenerateConversationReply,
   renameConversation as renameConversationRequest,
+  removeConfluenceSpace as removeConfluenceSpaceRequest,
   removeJiraProject as removeJiraProjectRequest,
   removeKnowledgeFolder as removeKnowledgeFolderRequest,
+  resumeConfluenceSpace as resumeConfluenceSpaceRequest,
   resumeJiraProject as resumeJiraProjectRequest,
   resumeKnowledgeFolder as resumeKnowledgeFolderRequest,
   retryConversationReply,
   saveProject,
   saveSettings,
+  saveConfluenceConnection as saveConfluenceConnectionRequest,
   saveJiraConnection as saveJiraConnectionRequest,
+  scanConfluenceSpace as scanConfluenceSpaceRequest,
   scanJiraProject as scanJiraProjectRequest,
   scanKnowledgeFolder as scanKnowledgeFolderRequest,
+  searchConfluenceSpaces as searchConfluenceSpacesRequest,
   searchJiraProjects as searchJiraProjectsRequest,
   sendConversationMessage
 } from "./api.js";
@@ -82,6 +90,15 @@ const emptySettings = {
     tokenLastFour: "",
     tokenExpiresDays: null,
     projects: []
+  },
+  confluence: {
+    instanceUrl: "",
+    email: "",
+    connected: false,
+    tokenConfigured: false,
+    tokenLastFour: "",
+    tokenExpiresDays: null,
+    spaces: []
   }
 };
 
@@ -786,6 +803,109 @@ export default function App() {
     }
   }
 
+  function applyConfluenceSettings(confluence) {
+    setSettings((currentSettings) => ({ ...currentSettings, confluence }));
+    return confluence;
+  }
+
+  async function saveConfluenceConnection(connection) {
+    try {
+      return applyConfluenceSettings(await saveConfluenceConnectionRequest(connection));
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function clearConfluenceConnection() {
+    try {
+      return applyConfluenceSettings(await clearConfluenceConnectionRequest());
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function searchConfluenceSpaces(query) {
+    try {
+      return await searchConfluenceSpacesRequest(query);
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function addConfluenceSpace(key) {
+    try {
+      const space = await addConfluenceSpaceRequest(key);
+      setSettings((currentSettings) => ({
+        ...currentSettings,
+        confluence: {
+          ...(currentSettings.confluence ?? emptySettings.confluence),
+          spaces: upsertById(currentSettings.confluence?.spaces ?? [], space)
+        }
+      }));
+      return space;
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function removeConfluenceSpace(spaceId) {
+    try {
+      await removeConfluenceSpaceRequest(spaceId);
+      setSettings((currentSettings) => ({
+        ...currentSettings,
+        confluence: {
+          ...(currentSettings.confluence ?? emptySettings.confluence),
+          spaces: (currentSettings.confluence?.spaces ?? []).filter((space) => space.id !== spaceId)
+        }
+      }));
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function scanConfluenceSpace(spaceId) {
+    clearScanProgress(spaceId);
+    try {
+      const space = await scanConfluenceSpaceRequest(spaceId);
+      setSettings((currentSettings) => ({
+        ...currentSettings,
+        confluence: {
+          ...(currentSettings.confluence ?? emptySettings.confluence),
+          spaces: upsertById(currentSettings.confluence?.spaces ?? [], space)
+        }
+      }));
+      return space;
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
+  async function toggleConfluenceSpacePause(space) {
+    try {
+      const savedSpace =
+        space.status === "paused"
+          ? await resumeConfluenceSpaceRequest(space.id)
+          : await pauseConfluenceSpaceRequest(space.id);
+      setSettings((currentSettings) => ({
+        ...currentSettings,
+        confluence: {
+          ...(currentSettings.confluence ?? emptySettings.confluence),
+          spaces: upsertById(currentSettings.confluence?.spaces ?? [], savedSpace)
+        }
+      }));
+      return savedSpace;
+    } catch (error) {
+      setStatusText(error.message);
+      throw error;
+    }
+  }
+
   // Append a streamed scan item for a source, keeping a short rolling window of
   // distinct recent names for the ticker to cycle through. Consecutive repeats
   // are ignored so a slow single-file scan doesn't stutter.
@@ -913,6 +1033,14 @@ export default function App() {
           onRemoveJiraProject={removeJiraProject}
           onScanJiraProject={scanJiraProject}
           onToggleJiraProjectPause={toggleJiraProjectPause}
+          confluenceConfig={settings.confluence ?? emptySettings.confluence}
+          onSaveConfluenceConnection={saveConfluenceConnection}
+          onClearConfluenceConnection={clearConfluenceConnection}
+          onSearchConfluenceSpaces={searchConfluenceSpaces}
+          onAddConfluenceSpace={addConfluenceSpace}
+          onRemoveConfluenceSpace={removeConfluenceSpace}
+          onScanConfluenceSpace={scanConfluenceSpace}
+          onToggleConfluenceSpacePause={toggleConfluenceSpacePause}
         />
       ) : (
         <main className="main">

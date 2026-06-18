@@ -22,6 +22,7 @@ public class ApplicationSettings {
     private GroqSettings groq = new GroqSettings();
     private DeepSeekSettings deepSeek = new DeepSeekSettings();
     private JiraSettings jira = new JiraSettings();
+    private ConfluenceSettings confluence = new ConfluenceSettings();
 
     public String getAgentName() {
         return agentName;
@@ -149,5 +150,13 @@ public class ApplicationSettings {
 
     public void setJira(JiraSettings jira) {
         this.jira = jira == null ? new JiraSettings() : jira;
+    }
+
+    public ConfluenceSettings getConfluence() {
+        return confluence;
+    }
+
+    public void setConfluence(ConfluenceSettings confluence) {
+        this.confluence = confluence == null ? new ConfluenceSettings() : confluence;
     }
 }

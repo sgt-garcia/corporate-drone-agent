@@ -23,6 +23,7 @@ public class SettingsSecretsService {
     private static final String GROQ_API_KEY = "settings.groq.apiKey";
     private static final String DEEPSEEK_API_KEY = "settings.deepSeek.apiKey";
     private static final String JIRA_API_TOKEN = "settings.jira.token";
+    private static final String CONFLUENCE_API_TOKEN = "settings.confluence.token";
     private static final List<SecretBinding> SECRET_BINDINGS = List.of(
             new SecretBinding(OPENAI_API_KEY, ApplicationSettings::getOpenAi),
             new SecretBinding(OPENAI_SDK_API_KEY, ApplicationSettings::getOpenAiSdk),
@@ -47,6 +48,7 @@ public class SettingsSecretsService {
         }
         migrated = migrateBedrockSecrets(settings) || migrated;
         migrated = migrateJiraToken(settings) || migrated;
+        migrated = migrateConfluenceToken(settings) || migrated;
         return migrated;
     }
 
@@ -54,6 +56,7 @@ public class SettingsSecretsService {
         SECRET_BINDINGS.forEach(binding -> saveSubmittedSecret(settings, binding));
         saveSubmittedBedrockSecrets(settings);
         saveSubmittedJiraToken(settings);
+        saveSubmittedConfluenceToken(settings);
     }
 
     public void applySecretValues(ApplicationSettings settings) {
@@ -63,12 +66,14 @@ public class SettingsSecretsService {
         });
         applyBedrockSecretValues(settings);
         settings.getJira().setToken(secretStore.get(JIRA_API_TOKEN).orElse(""));
+        settings.getConfluence().setToken(secretStore.get(CONFLUENCE_API_TOKEN).orElse(""));
     }
 
     public void applySecretStatus(ApplicationSettings settings) {
         SECRET_BINDINGS.forEach(binding -> applyStatus(settings, binding));
         applyBedrockSecretStatus(settings);
         applyJiraTokenStatus(settings);
+        applyConfluenceTokenStatus(settings);
     }
 
     public void clearSecretValues(ApplicationSettings settings) {
@@ -80,6 +85,8 @@ public class SettingsSecretsService {
         clearBedrockSecretValues(settings);
         settings.getJira().setToken("");
         settings.getJira().setClearToken(false);
+        settings.getConfluence().setToken("");
+        settings.getConfluence().setClearToken(false);
     }
 
     private boolean migrateSecret(ApplicationSettings settings, SecretBinding binding) {
@@ -188,6 +195,32 @@ public class SettingsSecretsService {
         var jira = settings.getJira();
         jira.setTokenConfigured(token.isPresent());
         jira.setTokenLastFour(token.map(this::lastFour).orElse(""));
+    }
+
+    private boolean migrateConfluenceToken(ApplicationSettings settings) {
+        String token = settings.getConfluence().getToken();
+        if (!hasText(token)) {
+            return false;
+        }
+        secretStore.put(CONFLUENCE_API_TOKEN, token);
+        settings.getConfluence().setToken("");
+        return true;
+    }
+
+    private void saveSubmittedConfluenceToken(ApplicationSettings settings) {
+        var confluence = settings.getConfluence();
+        if (confluence.isClearToken()) {
+            secretStore.delete(CONFLUENCE_API_TOKEN);
+        } else if (hasText(confluence.getToken())) {
+            secretStore.put(CONFLUENCE_API_TOKEN, confluence.getToken());
+        }
+    }
+
+    private void applyConfluenceTokenStatus(ApplicationSettings settings) {
+        Optional<String> token = secretStore.get(CONFLUENCE_API_TOKEN);
+        var confluence = settings.getConfluence();
+        confluence.setTokenConfigured(token.isPresent());
+        confluence.setTokenLastFour(token.map(this::lastFour).orElse(""));
     }
 
     private String lastFour(String value) {

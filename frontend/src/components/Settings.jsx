@@ -144,9 +144,10 @@ function toolEnabled(tool, settings) {
   return settings?.[tool.enabledKey] !== false;
 }
 
-// Maximum number of continuously-scanned local folders / Jira projects.
+// Maximum number of continuously-scanned local folders / Jira projects / Confluence spaces.
 const KNOWLEDGE_MAX = 10;
 const JIRA_MAX = 10;
+const CONFLUENCE_MAX = 10;
 
 const DEFAULT_AWS_REGION = "us-east-1";
 
@@ -258,12 +259,20 @@ export function Settings({
   onAddJiraProject,
   onRemoveJiraProject,
   onScanJiraProject,
-  onToggleJiraProjectPause
+  onToggleJiraProjectPause,
+  confluenceConfig,
+  onSaveConfluenceConnection,
+  onClearConfluenceConnection,
+  onSearchConfluenceSpaces,
+  onAddConfluenceSpace,
+  onRemoveConfluenceSpace,
+  onScanConfluenceSpace,
+  onToggleConfluenceSpacePause
 }) {
   const [draft, setDraft] = useState(settings);
   const [section, setSection] = useState(initialSection || "general");
   const [openProviderId, setOpenProviderId] = useState(null);
-  const [knowledgeView, setKnowledgeView] = useState(null); // null | "local-folders" | "jira"
+  const [knowledgeView, setKnowledgeView] = useState(null); // null | "local-folders" | "jira" | "confluence"
   const [openToolId, setOpenToolId] = useState(null); // null | toolId
 
   useServerSync(settings, setDraft);
@@ -382,12 +391,27 @@ export function Settings({
                 onToggleProjectPause={onToggleJiraProjectPause}
                 onBack={() => setKnowledgeView(null)}
               />
+            ) : knowledgeView === "confluence" ? (
+              <ConfluenceConfig
+                config={confluenceConfig}
+                scanProgressById={scanProgressById}
+                onSaveConnection={onSaveConfluenceConnection}
+                onClearConnection={onClearConfluenceConnection}
+                onSearchSpaces={onSearchConfluenceSpaces}
+                onAddSpace={onAddConfluenceSpace}
+                onRemoveSpace={onRemoveConfluenceSpace}
+                onScanSpace={onScanConfluenceSpace}
+                onToggleSpacePause={onToggleConfluenceSpacePause}
+                onBack={() => setKnowledgeView(null)}
+              />
             ) : (
               <KnowledgeOverview
                 folders={knowledgeFolders}
                 jira={jiraConfig}
+                confluence={confluenceConfig}
                 onOpenFolders={() => setKnowledgeView("local-folders")}
                 onOpenJira={() => setKnowledgeView("jira")}
+                onOpenConfluence={() => setKnowledgeView("confluence")}
               />
             ))}
           {section === "tools" &&
@@ -714,7 +738,7 @@ function KnowledgeSourceList({
   );
 }
 
-function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
+function KnowledgeOverview({ folders, jira, confluence, onOpenFolders, onOpenJira, onOpenConfluence }) {
   const scanning = folders.filter((f) => f.status === "scanning").length;
   const folderSummary = scanning
     ? `${scanning} scanning now`
@@ -735,14 +759,27 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
           ? "Connected · ready to scan"
           : "No projects yet";
 
+  const confSpaces = confluence?.spaces ?? [];
+  const confScanning = confSpaces.filter((s) => s.status === "scanning").length;
+  const confErrors = confSpaces.filter((s) => s.status === "error").length;
+  const confSummary = !confluence?.connected
+    ? "Not connected"
+    : confScanning
+      ? `${confScanning} scanning now`
+      : confErrors
+        ? `${confErrors} need attention`
+        : confSpaces.length
+          ? "Connected · ready to scan"
+          : "No spaces yet";
+
   return (
     <div className="settings-section wide">
       <div className="settings-intro">
         <h2 className="ds-h3">Knowledge</h2>
         <p className="ds-body">
           Sources the agent draws on to understand your work context. Local
-          folders and Jira issues are indexed locally after you choose what to
-          scan.
+          folders, Jira issues, and Confluence pages are indexed locally after
+          you choose what to scan.
         </p>
       </div>
       <div className="providers-grid">
@@ -807,6 +844,41 @@ function KnowledgeOverview({ folders, jira, onOpenFolders, onOpenJira }) {
             </span>
             <span className="provider-configure">
               {jira?.connected ? "Manage" : "Configure"}
+              <Icon name="chevron-right" size={13} color="var(--blue-600)" />
+            </span>
+          </div>
+        </button>
+
+        {/* Confluence tile */}
+        <button className="provider-card" type="button" onClick={onOpenConfluence}>
+          <div className="provider-card-head">
+            <span className="provider-icon">
+              <Icon name="book-open" size={19} color="var(--blue-600)" />
+            </span>
+            <div className="provider-id">
+              <div className="provider-name">Confluence (API)</div>
+              <div className="provider-region">
+                {confSpaces.length} of {CONFLUENCE_MAX} space slots · manual scans
+              </div>
+            </div>
+          </div>
+          <div className="knowledge-tile-badge">
+            {confluence?.connected ? (
+              <span className="badge badge-success">
+                <span className="dot" />
+                Connected
+              </span>
+            ) : (
+              <span className="badge badge-neutral">Not connected</span>
+            )}
+          </div>
+          <div className="provider-card-foot">
+            <span className="folder-summary">
+              <Icon name="circle-dot" size={12} color="var(--gray-400)" />
+              {confSummary}
+            </span>
+            <span className="provider-configure">
+              {confluence?.connected ? "Manage" : "Configure"}
               <Icon name="chevron-right" size={13} color="var(--blue-600)" />
             </span>
           </div>
@@ -1574,6 +1646,571 @@ function JiraConfig({
       <div className="knowledge-privacy">
         <Icon name="shield-check" size={14} color="var(--success-600)" />
         Jira issues are fetched, chunked, and indexed locally on this device.
+      </div>
+    </div>
+  );
+}
+
+// Sibling of JiraConfig — same connect/scan archetype, scoped to Confluence spaces and
+// pages. Confluence Cloud has a single REST API, so there's no apiVersion to carry.
+function ConfluenceConfig({
+  config,
+  scanProgressById,
+  onSaveConnection,
+  onClearConnection,
+  onSearchSpaces,
+  onAddSpace,
+  onRemoveSpace,
+  onScanSpace,
+  onToggleSpacePause,
+  onBack
+}) {
+  const [cfg, setCfg] = useState(() => ({
+    instanceUrl: config.instanceUrl ?? "",
+    email: config.email ?? "",
+    connected: Boolean(config.connected),
+    tokenConfigured: Boolean(config.tokenConfigured),
+    tokenLastFour: config.tokenLastFour ?? "",
+    tokenExpiresDays: config.tokenExpiresDays ?? null,
+    spaces: config.spaces ?? []
+  }));
+  const [instanceUrl, setInstanceUrl] = useState(config.instanceUrl ?? "");
+  const [email, setEmail] = useState(config.email ?? "");
+  const [token, setToken] = useState("");
+  const [pendingClear, setPendingClear] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState("");
+  const [disconnectConfirm, setDisconnectConfirm] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
+  const [available, setAvailable] = useState([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [addingSpaceKey, setAddingSpaceKey] = useState("");
+  const pickerRef = useRef(null);
+
+  useServerSync(config, (next) => {
+    const nextCfg = {
+      instanceUrl: next.instanceUrl ?? "",
+      email: next.email ?? "",
+      connected: Boolean(next.connected),
+      tokenConfigured: Boolean(next.tokenConfigured),
+      tokenLastFour: next.tokenLastFour ?? "",
+      tokenExpiresDays: next.tokenExpiresDays ?? null,
+      spaces: next.spaces ?? []
+    };
+    setCfg(nextCfg);
+    setInstanceUrl(nextCfg.instanceUrl);
+    setEmail(nextCfg.email);
+  });
+
+  const hasSaved = cfg.tokenConfigured;
+  // Status (scanning/paused/error/scanned) is server-derived from each space's
+  // KnowledgeRoot and synced here, so the list renders it directly — no client-side
+  // "scanning" override, matching how Jira projects and Local Folders work.
+  const spaces = cfg.spaces;
+  const atMax = spaces.length >= CONFLUENCE_MAX;
+  const totalPages = spaces.reduce((total, space) => total + Number(space.pages ?? 0), 0);
+  const scanningCount = spaces.filter((space) => space.status === "scanning").length;
+  const pausedCount = spaces.filter((space) => space.status === "paused").length;
+  const errorCount = spaces.filter((space) => space.status === "error").length;
+  // Days until the saved API token expires; under 14 we nudge the user to renew.
+  const expiry = cfg.tokenExpiresDays;
+  const expirySoon = typeof expiry === "number" && expiry <= 14;
+
+  // Close the space picker on an outside click or the Escape key.
+  useEffect(() => {
+    if (!pickerOpen) {
+      return undefined;
+    }
+    const close = () => {
+      setPickerOpen(false);
+      setPickerSearch("");
+    };
+    const onDown = (event) => {
+      if (pickerRef.current && !pickerRef.current.contains(event.target)) {
+        close();
+      }
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pickerOpen]);
+
+  useEffect(() => {
+    if (!pickerOpen || atMax) {
+      setAvailable([]);
+      return undefined;
+    }
+    let cancelled = false;
+    setPickerLoading(true);
+    onSearchSpaces(pickerSearch)
+      .then((found) => {
+        if (!cancelled) {
+          setAvailable(found);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setConnectError(error.message || "Could not load Confluence spaces.");
+          setAvailable([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPickerLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pickerOpen, pickerSearch, atMax, spaces.length]);
+
+  function saveConnection() {
+    const url = instanceUrl.trim();
+    const mail = email.trim();
+    if (!url) {
+      setConnectError("Enter your Confluence instance URL.");
+      return;
+    }
+    if (!/^https?:\/\//.test(url)) {
+      setConnectError("Instance URL must start with https://");
+      return;
+    }
+    if (!mail) {
+      setConnectError("Enter your email address.");
+      return;
+    }
+    if (!mail.includes("@")) {
+      setConnectError("Enter a valid email address.");
+      return;
+    }
+    const trimmedToken = token.trim();
+    if (!trimmedToken && !hasSaved && !pendingClear) {
+      setConnectError("Enter an API token.");
+      return;
+    }
+    setConnecting(true);
+    setConnectError("");
+    onSaveConnection({
+      instanceUrl: url,
+      email: mail,
+      token: trimmedToken,
+      clearToken: pendingClear
+    })
+      .then((savedCfg) => {
+        setCfg(savedCfg);
+        setToken("");
+        setPendingClear(false);
+      })
+      .catch((error) => {
+        setConnectError(error.message || "Could not save Confluence setup.");
+      })
+      .finally(() => {
+        setConnecting(false);
+      });
+  }
+
+  function disconnect() {
+    onClearConnection()
+      .then((savedCfg) => {
+        setCfg(savedCfg);
+        setDisconnectConfirm(false);
+        setToken("");
+        setPendingClear(false);
+      })
+      .catch((error) => {
+        setConnectError(error.message || "Could not clear Confluence setup.");
+      });
+  }
+
+  async function addSpaceByKey(key) {
+    if (addingSpaceKey || atMax || spaces.some((space) => space.key === key)) {
+      return;
+    }
+    setAddingSpaceKey(key);
+    try {
+      const space = await onAddSpace(key);
+      setCfg((prev) => ({
+        ...prev,
+        spaces: prev.spaces.some((item) => item.id === space.id)
+          ? prev.spaces.map((item) => (item.id === space.id ? space : item))
+          : [...prev.spaces, space]
+      }));
+      setPickerSearch("");
+      try {
+        const scannedSpace = await onScanSpace(space.id);
+        setCfg((current) => ({
+          ...current,
+          spaces: current.spaces.map((item) =>
+            item.id === scannedSpace.id ? scannedSpace : item
+          )
+        }));
+      } catch (error) {
+        setConnectError(error.message || "Space added, but Confluence scan failed.");
+      }
+    } catch (error) {
+      setConnectError(error.message || "Could not add Confluence space.");
+    } finally {
+      setAddingSpaceKey("");
+    }
+  }
+
+  async function removeSpace(id) {
+    try {
+      await onRemoveSpace(id);
+      setCfg((current) => ({
+        ...current,
+        spaces: current.spaces.filter((space) => space.id !== id)
+      }));
+    } catch (error) {
+      setConnectError(error.message || "Could not remove Confluence space.");
+    }
+  }
+
+  async function togglePause(id) {
+    const space = spaces.find((item) => item.id === id);
+    if (!space) {
+      return;
+    }
+    try {
+      const savedSpace = await onToggleSpacePause(space);
+      setCfg((current) => ({
+        ...current,
+        spaces: current.spaces.map((item) =>
+          item.id === savedSpace.id ? savedSpace : item
+        )
+      }));
+    } catch (error) {
+      setConnectError(error.message || "Could not update Confluence space.");
+    }
+  }
+
+  async function scanNow(id) {
+    // The server flips the space to "scanning" (and back) on its KnowledgeRoot and pushes
+    // it over SSE, so there's no client-side scanning state to track here — this mirrors
+    // the Jira project scan handler.
+    try {
+      const savedSpace = await onScanSpace(id);
+      setCfg((current) => ({
+        ...current,
+        spaces: current.spaces.map((space) =>
+          space.id === savedSpace.id ? savedSpace : space
+        )
+      }));
+    } catch (error) {
+      setConnectError(error.message || "Could not scan Confluence space.");
+    }
+  }
+
+  return (
+    <div className="settings-section">
+      <button className="config-back" type="button" onClick={onBack}>
+        <Icon name="arrow-left" size={15} color="var(--gray-600)" /> All knowledge
+      </button>
+
+      <div className="config-head">
+        <span className="provider-icon lg">
+          <Icon name="book-open" size={22} color="var(--blue-600)" />
+        </span>
+        <div className="provider-id">
+          <h2 className="ds-h3">Confluence (API)</h2>
+          <div className="provider-region">
+            Validate Confluence credentials, choose spaces, and manually scan
+            pages into the local knowledge index. Up to {CONFLUENCE_MAX} spaces.
+          </div>
+        </div>
+        {cfg.connected ? (
+          <span className="badge badge-success knowledge-head-badge">
+            <span className="dot" />
+            Connected
+          </span>
+        ) : (
+          <span className="badge badge-neutral knowledge-head-badge">Not connected</span>
+        )}
+      </div>
+
+      {cfg.connected && spaces.length > 0 && (
+        <SourceStats
+          items={[
+            { label: "Confluence pages", value: fmtNum(totalPages) },
+            { label: "Spaces", value: `${spaces.length} / ${CONFLUENCE_MAX}` },
+            {
+              // Errors take precedence over scanning/paused, matching the design.
+              label: "Status",
+              value: errorCount
+                ? `${errorCount} error${errorCount === 1 ? "" : "s"}`
+                : scanningCount
+                  ? `${scanningCount} scanning`
+                  : pausedCount
+                    ? `${pausedCount} paused`
+                    : "Ready",
+              tone: errorCount ? "danger" : undefined
+            }
+          ]}
+        />
+      )}
+
+      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <Field label="Instance URL" hint="Your Atlassian Cloud or Server wiki base URL.">
+          <input
+            className="input"
+            type="text"
+            placeholder="https://your-org.atlassian.net/wiki"
+            value={instanceUrl}
+            onChange={(event) => {
+              setInstanceUrl(event.target.value);
+              setConnectError("");
+            }}
+          />
+        </Field>
+        <Field label="Email" hint="The email address tied to your Confluence account.">
+          <input
+            className="input"
+            type="email"
+            placeholder="you@company.com"
+            value={email}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setConnectError("");
+            }}
+          />
+        </Field>
+        <div className="field">
+          <label className="field">
+            <span className="field-label">API token</span>
+            <span className="input-icon">
+              <Icon name="key" size={16} />
+              <input
+                className="input"
+                type="password"
+                placeholder={hasSaved ? `Saved token · ending ${cfg.tokenLastFour}` : ""}
+                value={token}
+                onChange={(event) => {
+                  setToken(event.target.value);
+                  setConnectError("");
+                  setPendingClear(false);
+                }}
+              />
+            </span>
+          </label>
+          {hasSaved && !pendingClear ? (
+            <span className="saved-key-row">
+              <span className="saved-key-text">
+                <Icon name="circle-check" size={13} color="var(--success-600)" />
+                Saved token ending {cfg.tokenLastFour}
+              </span>
+              <button
+                className="btn btn-ghost btn-sm"
+                type="button"
+                onClick={() => setPendingClear(true)}
+              >
+                Clear
+              </button>
+            </span>
+          ) : hasSaved && pendingClear ? (
+            <span className="saved-key-row">
+              <span className="token-clear-warning">
+                <Icon name="alert-triangle" size={13} color="var(--warning-700)" />
+                Token and selected spaces will be cleared on save.
+              </span>
+              <button
+                className="btn btn-ghost btn-sm"
+                type="button"
+                onClick={() => setPendingClear(false)}
+              >
+                Undo
+              </button>
+            </span>
+          ) : (
+            <span className="field-hint">
+              Generate one at id.atlassian.com/manage-profile/security/api-tokens.
+              Stored encrypted on this device — never synced.
+            </span>
+          )}
+          {hasSaved && !pendingClear && typeof expiry === "number" && (
+            <span className={expirySoon ? "jira-expiry soon" : "jira-expiry"}>
+              <Icon
+                name={expirySoon ? "alert-triangle" : "calendar"}
+                size={13}
+                color={expirySoon ? "var(--warning-700)" : "var(--gray-400)"}
+              />
+              {expirySoon
+                ? `Token expires in ${expiry} days — generate a new one before enabling live sync.`
+                : `Token expires in ${expiry} days.`}
+            </span>
+          )}
+        </div>
+        {connectError && <InlineError>{connectError}</InlineError>}
+      </div>
+
+      <div className="btn-row">
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={saveConnection}
+          disabled={connecting}
+        >
+          {connecting ? (
+            <>
+              <Icon name="refresh-cw" size={15} color="#fff" className="cda-spin" />
+              Saving…
+            </>
+          ) : cfg.connected ? (
+            <>
+              <Icon name="check" size={16} color="#fff" /> Save connection
+            </>
+          ) : (
+            <>
+              <Icon name="check" size={16} color="#fff" /> Connect
+            </>
+          )}
+        </button>
+        {cfg.connected && !disconnectConfirm && (
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={() => setDisconnectConfirm(true)}
+          >
+            Clear setup
+          </button>
+        )}
+        {cfg.connected && disconnectConfirm && (
+          <>
+            <span className="disconnect-prompt">
+              Remove all {spaces.length} space{spaces.length !== 1 ? "s" : ""} too?
+            </span>
+            <button
+              className="btn btn-secondary btn-sm"
+              type="button"
+              onClick={() => setDisconnectConfirm(false)}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-danger btn-sm" type="button" onClick={disconnect}>
+              <Icon name="trash" size={14} color="#fff" /> Clear setup
+            </button>
+          </>
+        )}
+      </div>
+
+      {cfg.connected && (
+        <KnowledgeSourceList
+          items={spaces}
+          max={CONFLUENCE_MAX}
+          noun="spaces"
+          addRowRef={pickerRef}
+          emptyText="No spaces yet. Add a Confluence space above to scan its pages."
+          confirmLabel="Remove space?"
+          removeLabel="Remove space"
+          onScanNow={scanNow}
+          onTogglePause={togglePause}
+          onRemove={removeSpace}
+          renderLeading={(space) => (
+            <span className={space.status === "error" ? "jira-key error" : "jira-key"}>
+              {space.key}
+            </span>
+          )}
+          renderTitle={(space) => space.name}
+          tickerItems={(space) => scanProgressById?.[space.id] ?? []}
+          metaScanned={(space) =>
+            `${fmtNum(space.pages)} indexed Confluence pages · scanned ${space.checked || "just now"}`
+          }
+          metaPaused={(space) =>
+            `Paused · ${fmtNum(space.pages)} indexed Confluence pages`
+          }
+          metaError={(space) =>
+            space.message ||
+            "Couldn’t reach this space — check your access and retry."
+          }
+          scanActionLabel="Scan now"
+          pauseActionLabel="Pause saved space"
+          resumeActionLabel="Resume saved space"
+          addControl={
+            pickerOpen ? (
+              <button
+                className="btn btn-secondary btn-sm"
+                type="button"
+                onClick={() => {
+                  setPickerOpen(false);
+                  setPickerSearch("");
+                }}
+              >
+                <Icon name="check" size={15} color="var(--gray-700)" /> Done
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary btn-sm"
+                type="button"
+                onClick={() => {
+                  setPickerOpen(true);
+                  setPickerSearch("");
+                }}
+                disabled={atMax}
+              >
+                <Icon name="plus" size={15} color="#fff" />{" "}
+                {atMax ? "Space limit reached" : "Add space"}
+              </button>
+            )
+          }
+          addBelow={
+            pickerOpen && !atMax ? (
+              <div className="jira-picker">
+                <span className="input-icon jira-picker-search">
+                  <Icon name="search" size={16} />
+                  <input
+                    className="input"
+                    type="text"
+                    autoFocus
+                    placeholder="Search spaces in this instance…"
+                    value={pickerSearch}
+                    onChange={(event) => setPickerSearch(event.target.value)}
+                  />
+                </span>
+                <div className="jira-picker-list">
+                  {pickerLoading ? (
+                    <div className="jira-picker-empty">Loading spaces...</div>
+                  ) : available.length === 0 ? (
+                    <div className="jira-picker-empty">
+                      {pickerSearch ? "No matching spaces." : "Every space is already added."}
+                    </div>
+                  ) : (
+                    available.map((space) => (
+                      <button
+                        key={space.key}
+                        type="button"
+                        className="jira-picker-item"
+                        disabled={Boolean(addingSpaceKey)}
+                        onClick={() => addSpaceByKey(space.key)}
+                      >
+                        <span className="jira-key">{space.key}</span>
+                        <span className="jira-picker-name">{space.name}</span>
+                        <Icon
+                          name={addingSpaceKey === space.key ? "refresh-cw" : "plus"}
+                          size={15}
+                          color="var(--blue-600)"
+                          className={addingSpaceKey === space.key ? "cda-spin" : ""}
+                        />
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null
+          }
+        />
+      )}
+
+      <div className="knowledge-privacy">
+        <Icon name="shield-check" size={14} color="var(--success-600)" />
+        Confluence pages are fetched, chunked, and indexed locally on this device.
       </div>
     </div>
   );

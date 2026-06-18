@@ -193,6 +193,69 @@ export async function resumeJiraProject(projectId) {
   });
 }
 
+export async function getConfluenceSettings() {
+  return request("/api/settings/knowledge/confluence");
+}
+
+export async function validateConfluenceConnection({ instanceUrl, email, token, clearToken }) {
+  return request("/api/settings/knowledge/confluence/connection/validate", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ instanceUrl, email, token, clearToken })
+  });
+}
+
+export async function saveConfluenceConnection({ instanceUrl, email, token, clearToken }) {
+  return request("/api/settings/knowledge/confluence/connection", {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify({ instanceUrl, email, token, clearToken })
+  });
+}
+
+export async function clearConfluenceConnection() {
+  return request("/api/settings/knowledge/confluence/connection", {
+    method: "DELETE"
+  });
+}
+
+export async function searchConfluenceSpaces(query = "") {
+  const params = new URLSearchParams({ query });
+  return request(`/api/settings/knowledge/confluence/spaces/search?${params}`);
+}
+
+export async function addConfluenceSpace(key) {
+  return request("/api/settings/knowledge/confluence/spaces", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ key })
+  });
+}
+
+export async function removeConfluenceSpace(spaceId) {
+  return requestNoContent(`/api/settings/knowledge/confluence/spaces/${spaceId}`, {
+    method: "DELETE"
+  });
+}
+
+export async function scanConfluenceSpace(spaceId) {
+  return request(`/api/settings/knowledge/confluence/spaces/${spaceId}/scan`, {
+    method: "POST"
+  });
+}
+
+export async function pauseConfluenceSpace(spaceId) {
+  return request(`/api/settings/knowledge/confluence/spaces/${spaceId}/pause`, {
+    method: "POST"
+  });
+}
+
+export async function resumeConfluenceSpace(spaceId) {
+  return request(`/api/settings/knowledge/confluence/spaces/${spaceId}/resume`, {
+    method: "POST"
+  });
+}
+
 export async function getOpenAiModels({ apiKey, provider, useSavedKey }) {
   return request("/api/settings/openai-models", {
     method: "POST",

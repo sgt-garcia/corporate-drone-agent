@@ -1,5 +1,9 @@
 package ai.corporatedroneagent.service;
 
+import ai.corporatedroneagent.dto.ConfluenceConnectionRequest;
+import ai.corporatedroneagent.dto.ConfluenceConnectionValidationDto;
+import ai.corporatedroneagent.dto.ConfluenceSpaceDto;
+import ai.corporatedroneagent.dto.ConfluenceSpaceRequest;
 import ai.corporatedroneagent.dto.JiraConnectionRequest;
 import ai.corporatedroneagent.dto.JiraConnectionValidationDto;
 import ai.corporatedroneagent.dto.JiraProjectDto;
@@ -7,7 +11,10 @@ import ai.corporatedroneagent.dto.JiraProjectRequest;
 import ai.corporatedroneagent.dto.KnowledgeFolderDto;
 import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
+import ai.corporatedroneagent.model.ConfluenceSettings;
 import ai.corporatedroneagent.model.JiraSettings;
+import ai.corporatedroneagent.model.knowledge.ConfluenceKnowledgeReferences;
+import ai.corporatedroneagent.model.knowledge.ConfluenceKnowledgeRootConfig;
 import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
 import ai.corporatedroneagent.model.knowledge.JiraKnowledgeRootConfig;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
@@ -42,6 +49,8 @@ public class SettingsService {
     private static final int MAX_KNOWLEDGE_FOLDERS = 10;
     private static final int MAX_JIRA_PROJECTS = 10;
     private static final int JIRA_PROJECT_SEARCH_LIMIT = 25;
+    private static final int MAX_CONFLUENCE_SPACES = 10;
+    private static final int CONFLUENCE_SPACE_SEARCH_LIMIT = 25;
 
     private final SettingsRepository settingsRepository;
     private final KnowledgeRootRepository knowledgeRootRepository;
@@ -51,6 +60,8 @@ public class SettingsService {
     private final KnowledgeScanCoordinator knowledgeScanCoordinator;
     private final JiraConnectionValidationService jiraConnectionValidationService;
     private final JiraProjectDiscoveryService jiraProjectDiscoveryService;
+    private final ConfluenceConnectionValidationService confluenceConnectionValidationService;
+    private final ConfluenceSpaceDiscoveryService confluenceSpaceDiscoveryService;
 
     SettingsService(
             SettingsRepository settingsRepository,
@@ -68,7 +79,35 @@ public class SettingsService {
                 knowledgeRootCleanupService,
                 knowledgeScanCoordinator,
                 new JiraConnectionValidationService(),
-                new JiraProjectDiscoveryService(new ObjectMapper())
+                new JiraProjectDiscoveryService(new ObjectMapper()),
+                new ConfluenceConnectionValidationService(),
+                new ConfluenceSpaceDiscoveryService(new ObjectMapper())
+        );
+    }
+
+    // Test convenience: inject mock Jira services while defaulting the Confluence ones,
+    // for tests that only exercise the Jira vertical.
+    SettingsService(
+            SettingsRepository settingsRepository,
+            KnowledgeRootRepository knowledgeRootRepository,
+            SettingsSecretsService settingsSecretsService,
+            EventService eventService,
+            KnowledgeRootCleanupService knowledgeRootCleanupService,
+            KnowledgeScanCoordinator knowledgeScanCoordinator,
+            JiraConnectionValidationService jiraConnectionValidationService,
+            JiraProjectDiscoveryService jiraProjectDiscoveryService
+    ) {
+        this(
+                settingsRepository,
+                knowledgeRootRepository,
+                settingsSecretsService,
+                eventService,
+                knowledgeRootCleanupService,
+                knowledgeScanCoordinator,
+                jiraConnectionValidationService,
+                jiraProjectDiscoveryService,
+                new ConfluenceConnectionValidationService(),
+                new ConfluenceSpaceDiscoveryService(new ObjectMapper())
         );
     }
 
@@ -81,7 +120,9 @@ public class SettingsService {
             KnowledgeRootCleanupService knowledgeRootCleanupService,
             KnowledgeScanCoordinator knowledgeScanCoordinator,
             JiraConnectionValidationService jiraConnectionValidationService,
-            JiraProjectDiscoveryService jiraProjectDiscoveryService
+            JiraProjectDiscoveryService jiraProjectDiscoveryService,
+            ConfluenceConnectionValidationService confluenceConnectionValidationService,
+            ConfluenceSpaceDiscoveryService confluenceSpaceDiscoveryService
     ) {
         this.settingsRepository = settingsRepository;
         this.knowledgeRootRepository = knowledgeRootRepository;
@@ -91,6 +132,8 @@ public class SettingsService {
         this.knowledgeScanCoordinator = knowledgeScanCoordinator;
         this.jiraConnectionValidationService = jiraConnectionValidationService;
         this.jiraProjectDiscoveryService = jiraProjectDiscoveryService;
+        this.confluenceConnectionValidationService = confluenceConnectionValidationService;
+        this.confluenceSpaceDiscoveryService = confluenceSpaceDiscoveryService;
     }
 
     public synchronized ApplicationSettings get() {
@@ -99,9 +142,11 @@ public class SettingsService {
         attachKnowledgeFolders(settings);
         migrateJiraProjectsToRoots(settings);
         settings.setJira(sanitizeJira(settings.getJira()));
+        settings.setConfluence(sanitizeConfluence(settings.getConfluence()));
         settingsSecretsService.clearSecretValues(settings);
         settingsSecretsService.applySecretStatus(settings);
         attachJiraProjects(settings.getJira());
+        attachConfluenceSpaces(settings.getConfluence());
         return settings;
     }
 
@@ -141,6 +186,10 @@ public class SettingsService {
         // trusting the client payload: a stale or omitted jira.connected here would
         // otherwise hide every project (reads gate on connected) while its roots live on.
         current.setJira(sanitizeJira(current.getJira()));
+        // Confluence shares Jira's contract: its connection is owned by the dedicated
+        // connect/disconnect endpoints, and its spaces live in CONFLUENCE roots — never
+        // imported from the general settings PUT.
+        current.setConfluence(sanitizeConfluence(current.getConfluence()));
         settingsSecretsService.clearSecretValues(current);
         settingsSecretsService.applySecretStatus(current);
         settingsRepository.save(current);
@@ -421,6 +470,341 @@ public class SettingsService {
         settingsSecretsService.applySecretStatus(settings);
         attachJiraProjects(settings.getJira());
         return settings.getJira();
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Confluence (API) — sibling of the Jira vertical above. Same connect/scan archetype: the
+    // connection lives in settings + the secret store, the chosen spaces live in CONFLUENCE
+    // roots (the sole record), and indexing runs through the shared knowledge pipeline.
+    // ---------------------------------------------------------------------------------------
+
+    public synchronized ConfluenceSettings getConfluenceSettings() {
+        return currentConfluenceSettings();
+    }
+
+    public synchronized ConfluenceConnectionValidationDto validateConfluenceConnection(ConfluenceConnectionRequest request) {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        boolean hasSavedToken = settings.getConfluence().isTokenConfigured();
+        validateConfluenceConnectionRequest(request, hasSavedToken);
+        String token = confluenceValidationToken(request);
+        ConfluenceConnectionValidationService.ValidationResult result = confluenceConnectionValidationService.validate(
+                Strings.defaultIfBlank(request.instanceUrl(), ""),
+                Strings.defaultIfBlank(request.email(), ""),
+                token
+        );
+        return new ConfluenceConnectionValidationDto(
+                result.valid(),
+                result.message(),
+                result.liveValidationAvailable()
+        );
+    }
+
+    public synchronized ConfluenceSettings saveConfluenceConnection(ConfluenceConnectionRequest request) {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+
+        ConfluenceSettings current = settings.getConfluence();
+        boolean wasConnected = current.isConnected();
+        String token = Strings.defaultIfBlank(request == null ? "" : request.token(), "");
+        if (request != null && request.clearToken() && token.isBlank()) {
+            ConfluenceSettings cleared = new ConfluenceSettings();
+            settings.setConfluence(cleared);
+            removeAllConfluenceRoots();
+            persistConfluenceSettings(settings, cleared, confluenceSecretRequest("", true));
+            log.info("Cleared Confluence setup.");
+            return currentConfluenceSettings();
+        }
+
+        validateConfluenceConnectionRequest(request, current.isTokenConfigured());
+        String validationToken = token.isBlank() ? savedConfluenceToken() : token;
+        ConfluenceConnectionValidationService.ValidationResult validation = confluenceConnectionValidationService.validate(
+                Strings.defaultIfBlank(request.instanceUrl(), ""),
+                Strings.defaultIfBlank(request.email(), ""),
+                validationToken
+        );
+        if (!validation.valid()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, validation.message());
+        }
+        ConfluenceSettings next = new ConfluenceSettings();
+        next.setInstanceUrl(Strings.defaultIfBlank(request.instanceUrl(), ""));
+        next.setEmail(Strings.defaultIfBlank(request.email(), ""));
+        next.setConnected(true);
+        next.setTokenExpiresDays(current.getTokenExpiresDays() == null ? 90 : current.getTokenExpiresDays());
+        if (!wasConnected) {
+            // Fresh connect from disconnected: drop any stale roots so the new connection
+            // starts clean (parity with Jira's reset).
+            removeAllConfluenceRoots();
+        }
+
+        persistConfluenceSettings(settings, next, token.isBlank() ? null : confluenceSecretRequest(token, false));
+        log.info("Saved Confluence setup for {}.", next.getInstanceUrl());
+        return currentConfluenceSettings();
+    }
+
+    public synchronized ConfluenceSettings clearConfluenceConnection() {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        ConfluenceSettings cleared = new ConfluenceSettings();
+        settings.setConfluence(cleared);
+        removeAllConfluenceRoots();
+        persistConfluenceSettings(settings, cleared, confluenceSecretRequest("", true));
+        log.info("Cleared Confluence setup.");
+        return currentConfluenceSettings();
+    }
+
+    public synchronized List<ConfluenceSpaceDto> listConfluenceSpaces() {
+        return currentConfluenceSettings().getSpaces();
+    }
+
+    public synchronized List<ConfluenceSpaceDto> searchConfluenceSpaces(String query) {
+        ConfluenceSettings confluence = currentConfluenceSettings();
+        requireConfluenceSetup(confluence);
+        return confluenceSpaceDiscoveryService.searchSpaces(
+                        confluence.getInstanceUrl(),
+                        confluence.getEmail(),
+                        savedConfluenceToken(),
+                        query,
+                        CONFLUENCE_SPACE_SEARCH_LIMIT
+                ).stream()
+                .filter(space -> confluence.getSpaces().stream()
+                        .noneMatch(configured -> configured.getKey().equalsIgnoreCase(space.getKey())))
+                .toList();
+    }
+
+    public synchronized ConfluenceSpaceDto addConfluenceSpace(ConfluenceSpaceRequest request) {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        ConfluenceSettings confluence = settings.getConfluence();
+        requireConfluenceSetup(confluence);
+
+        String key = normalizeConfluenceSpaceKey(request == null ? "" : request.key());
+        List<KnowledgeRoot> existing = knowledgeRootRepository.findBySource(KnowledgeSource.CONFLUENCE);
+        if (existing.stream().anyMatch(root -> key.equalsIgnoreCase(ConfluenceKnowledgeRootConfig.readKey(root)))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Confluence space is already configured");
+        }
+        if (existing.size() >= MAX_CONFLUENCE_SPACES) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence space limit reached");
+        }
+
+        ConfluenceSpaceDto discovered = confluenceSpaceDiscoveryService.getSpace(
+                confluence.getInstanceUrl(),
+                confluence.getEmail(),
+                savedConfluenceToken(),
+                key
+        );
+        String spaceId = Strings.defaultIfBlank(discovered.getId(), "").trim();
+        if (spaceId.isBlank()) {
+            spaceId = UUID.randomUUID().toString();
+        }
+        KnowledgeRoot root = new KnowledgeRoot();
+        root.setSource(KnowledgeSource.CONFLUENCE);
+        root.setReference(ConfluenceKnowledgeReferences.spaceRootReference(confluence.getInstanceUrl(), spaceId));
+        root.setDisplayName(confluenceDisplayName(discovered.getKey(), discovered.getName()));
+        root.setTotalResources(discovered.getPages());
+        root.setConfigJson(ConfluenceKnowledgeRootConfig.withIdentity(
+                null, spaceId, discovered.getKey(), discovered.getName()));
+        root = knowledgeRootRepository.save(root);
+        publishSettingsUpdated();
+        log.info("Added Confluence space {}.", key);
+        return confluenceSpace(root);
+    }
+
+    public synchronized void removeConfluenceSpace(String spaceId) {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        requireConfluenceSetup(settings.getConfluence());
+        KnowledgeRoot root = findConfluenceRoot(spaceId);
+        // Stop any in-flight scan before deleting the root so the scan can't keep writing to
+        // it (mirrors removeJiraProject). The scan stops between pages.
+        knowledgeScanCoordinator.cancelScanAndWait(root.getId());
+        KnowledgeRoot current = knowledgeRootRepository.findById(root.getId()).orElse(root);
+        knowledgeRootCleanupService.removeRoot(current);
+        publishSettingsUpdated();
+        log.info("Removed Confluence space {}.", spaceId);
+    }
+
+    public synchronized ConfluenceSpaceDto pauseConfluenceSpace(String spaceId) {
+        return setConfluenceSpacePaused(spaceId, true);
+    }
+
+    public synchronized ConfluenceSpaceDto resumeConfluenceSpace(String spaceId) {
+        return setConfluenceSpacePaused(spaceId, false);
+    }
+
+    private ConfluenceSpaceDto setConfluenceSpacePaused(String spaceId, boolean paused) {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        requireConfluenceSetup(settings.getConfluence());
+        KnowledgeRoot root = findConfluenceRoot(spaceId);
+        root.setPaused(paused);
+        root = knowledgeRootRepository.save(root);
+        publishSettingsUpdated();
+        return confluenceSpace(root);
+    }
+
+    private ConfluenceSettings currentConfluenceSettings() {
+        ApplicationSettings settings = settingsRepository.get();
+        migratePlaintextSecrets(settings);
+        migrateLegacyKnowledgeFolders(settings);
+        settings.setConfluence(sanitizeConfluence(settings.getConfluence()));
+        settingsSecretsService.applySecretStatus(settings);
+        attachConfluenceSpaces(settings.getConfluence());
+        return settings.getConfluence();
+    }
+
+    private void validateConfluenceConnectionRequest(ConfluenceConnectionRequest request, boolean hasSavedToken) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence connection details are required");
+        }
+        String instanceUrl = Strings.defaultIfBlank(request.instanceUrl(), "");
+        if (instanceUrl.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence instance URL is required");
+        }
+        if (!instanceUrl.startsWith("https://") && !instanceUrl.startsWith("http://")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence instance URL must start with https://");
+        }
+        String email = Strings.defaultIfBlank(request.email(), "");
+        if (email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence email is required");
+        }
+        if (!email.contains("@")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence email must be valid");
+        }
+        String token = Strings.defaultIfBlank(request.token(), "");
+        if (token.isBlank() && !hasSavedToken) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence API token is required");
+        }
+    }
+
+    private String confluenceValidationToken(ConfluenceConnectionRequest request) {
+        String submittedToken = Strings.defaultIfBlank(request.token(), "");
+        return submittedToken.isBlank() ? savedConfluenceToken() : submittedToken;
+    }
+
+    // Package-private: the scan orchestrator reads the token to drive a scan.
+    String savedConfluenceToken() {
+        ApplicationSettings secretValues = new ApplicationSettings();
+        settingsSecretsService.applySecretValues(secretValues);
+        return secretValues.getConfluence().getToken();
+    }
+
+    private void persistConfluenceSettings(
+            ApplicationSettings settings,
+            ConfluenceSettings confluence,
+            ApplicationSettings secretRequest
+    ) {
+        if (secretRequest != null) {
+            settingsSecretsService.saveSubmittedSecrets(secretRequest);
+        }
+        ConfluenceSettings sanitizedConfluence = sanitizeConfluence(confluence);
+        settings.setConfluence(sanitizedConfluence);
+        settingsSecretsService.clearSecretValues(settings);
+        settingsSecretsService.applySecretStatus(settings);
+        settingsRepository.save(settings);
+        publishSettingsUpdated();
+    }
+
+    private ApplicationSettings confluenceSecretRequest(String token, boolean clearToken) {
+        ApplicationSettings settings = new ApplicationSettings();
+        settings.getConfluence().setToken(token);
+        settings.getConfluence().setClearToken(clearToken);
+        return settings;
+    }
+
+    private void requireConfluenceSetup(ConfluenceSettings confluence) {
+        if (!confluence.isConnected() || !confluence.isTokenConfigured()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Save Confluence setup before managing spaces");
+        }
+    }
+
+    private String confluenceDisplayName(String key, String name) {
+        String trimmedKey = Strings.defaultIfBlank(key, "").trim();
+        String trimmedName = Strings.defaultIfBlank(name, "").trim();
+        if (trimmedKey.isBlank()) {
+            return trimmedName;
+        }
+        if (trimmedName.isBlank()) {
+            return trimmedKey;
+        }
+        return trimmedKey + " - " + trimmedName;
+    }
+
+    // The list of configured Confluence spaces on read, rebuilt from CONFLUENCE roots — the
+    // root is the sole record, exactly like attachJiraProjects for Jira.
+    private void attachConfluenceSpaces(ConfluenceSettings confluence) {
+        if (confluence == null) {
+            return;
+        }
+        confluence.setSpaces(confluence.isConnected() ? confluenceSpaces() : List.of());
+    }
+
+    private List<ConfluenceSpaceDto> confluenceSpaces() {
+        return knowledgeRootRepository.findBySource(KnowledgeSource.CONFLUENCE).stream()
+                .map(this::confluenceSpace)
+                .toList();
+    }
+
+    // Canonical KnowledgeRoot -> Confluence-space-DTO mapper, mirroring jiraProject(root):
+    // identity comes from configJson, status/pages/checked/message from the scan pipeline.
+    ConfluenceSpaceDto confluenceSpace(KnowledgeRoot root) {
+        ConfluenceSpaceDto space = new ConfluenceSpaceDto();
+        space.setId(ConfluenceKnowledgeRootConfig.readSpaceId(root));
+        space.setKey(ConfluenceKnowledgeRootConfig.readKey(root));
+        space.setName(ConfluenceKnowledgeRootConfig.readName(root));
+        String status = knowledgeStatus(root);
+        space.setStatus(status);
+        space.setPages(root.getTotalResources());
+        space.setChecked(checkedLabel(root));
+        space.setMessage("error".equals(status) ? root.getScanMessage() : "");
+        return space;
+    }
+
+    private KnowledgeRoot findConfluenceRoot(String spaceId) {
+        return knowledgeRootRepository.findBySource(KnowledgeSource.CONFLUENCE).stream()
+                .filter(root -> spaceId.equals(ConfluenceKnowledgeRootConfig.readSpaceId(root)))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Confluence space not found"));
+    }
+
+    private void removeAllConfluenceRoots() {
+        knowledgeRootRepository.findBySource(KnowledgeSource.CONFLUENCE)
+                .forEach(knowledgeRootCleanupService::removeRoot);
+    }
+
+    private String normalizeConfluenceSpaceKey(String key) {
+        String normalized = Strings.defaultIfBlank(key, "").toUpperCase(Locale.ROOT);
+        if (normalized.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence space key is required");
+        }
+        return normalized;
+    }
+
+    // Persist only the connection the Settings screen needs on reload: trimmed details and
+    // token expiry. Spaces are NOT persisted here — they live in CONFLUENCE roots and are
+    // rebuilt by attachConfluenceSpaces on read. The secret token is handled separately by
+    // SettingsSecretsService.
+    private ConfluenceSettings sanitizeConfluence(ConfluenceSettings confluence) {
+        ConfluenceSettings sanitized = new ConfluenceSettings();
+        if (confluence == null) {
+            return sanitized;
+        }
+        sanitized.setInstanceUrl(Strings.emptyIfNull(confluence.getInstanceUrl()).trim());
+        sanitized.setEmail(Strings.emptyIfNull(confluence.getEmail()).trim());
+        sanitized.setConnected(confluence.isConnected());
+        sanitized.setTokenExpiresDays(confluence.getTokenExpiresDays());
+        return sanitized;
     }
 
     private void validateJiraConnectionRequest(JiraConnectionRequest request, boolean hasSavedToken) {
