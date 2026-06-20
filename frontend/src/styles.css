@@ -678,11 +678,11 @@ select.input {
   color: var(--gray-500);
 }
 
-/* Persistent status key above the footer — decodes the shapes. Wraps to a second
-   row rather than clipping when the 272px sidebar can't fit it on one line. */
+/* Persistent status key above the footer — decodes the shapes. Stays on a single
+   row, matching the design (the four labels fit within the 272px sidebar). */
 .status-legend {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 5px 11px;
   padding: 9px 16px 11px;
