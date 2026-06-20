@@ -29,8 +29,18 @@ class KnowledgeSearchToolsTests {
 
         assertThat(result)
                 .contains("[1]")
-                .contains("JIRA / DEV - Software Development / DEV-77 - Checkout telemetry regression")
+                .contains("Jira / DEV - Software Development / DEV-77 - Checkout telemetry regression")
                 .contains("Renewal terms are net-30.");
+    }
+
+    @Test
+    void degradesGracefullyWhenSearchFails() {
+        KnowledgeSearchService search = mock(KnowledgeSearchService.class);
+        when(search.search("boom", 5, 2000)).thenThrow(new RuntimeException("index unavailable"));
+        KnowledgeSearchTools tools = new KnowledgeSearchTools(search, 5, 2000);
+
+        assertThat(tools.searchKnowledge("boom"))
+                .startsWith("Knowledge search failed");
     }
 
     @Test
