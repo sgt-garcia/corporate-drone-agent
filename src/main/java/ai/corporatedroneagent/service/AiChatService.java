@@ -17,6 +17,7 @@ import ai.corporatedroneagent.model.OpenAiSettings;
 import ai.corporatedroneagent.model.Project;
 import ai.corporatedroneagent.repository.ConversationRepository;
 import ai.corporatedroneagent.repository.ProjectRepository;
+import ai.corporatedroneagent.tools.KnowledgeSearchTools;
 import ai.corporatedroneagent.tools.ProjectFilesystemTools;
 import ai.corporatedroneagent.util.Strings;
 import com.azure.ai.openai.OpenAIClientBuilder;
@@ -114,7 +115,8 @@ public class AiChatService {
         if (chatProvider == null) {
             return echoReply(userContent);
         }
-        ChatReply reply = chatProvider.reply(new ChatRequest(settings, conversation, project, knowledgeContext));
+        ChatReply reply = chatProvider.reply(
+                new ChatRequest(settings, conversation, project, knowledgeContext, knowledgeSearchTools(settings)));
         // Surface the knowledge the agent consulted as the reply's sources.
         if (reply.assistant()) {
             return ChatReply.assistant(reply.content(), MessageSourceMapper.toSources(knowledgeContext));
@@ -135,6 +137,17 @@ public class AiChatService {
             log.warn("Knowledge retrieval failed; continuing without knowledge context.", exception);
             return List.of();
         }
+    }
+
+    // The on-demand search tool (separate from automatic retrieval): built only when the
+    // search mode is enabled, with its own results/length, so the model can query knowledge
+    // sources when it decides it needs to.
+    private KnowledgeSearchTools knowledgeSearchTools(ApplicationSettings settings) {
+        KnowledgeRetrievalMode search = settings.getKnowledgeTool().getSearch();
+        if (!search.isEnabled()) {
+            return null;
+        }
+        return new KnowledgeSearchTools(knowledgeSearchService, search.getResults(), search.getLength());
     }
 
     private Map<String, ChatProvider> defaultChatProviders() {
@@ -219,14 +232,22 @@ public class AiChatService {
             ChatModel chatModel,
             Conversation conversation,
             Project project,
-            List<KnowledgeContextSnippet> knowledgeContext
+            List<KnowledgeContextSnippet> knowledgeContext,
+            KnowledgeSearchTools knowledgeSearchTools
     ) {
         ChatClient chatClient = ChatClient.builder(chatModel).build();
 
         ChatClient.ChatClientRequestSpec prompt = chatClient.prompt()
                 .messages(buildPromptMessages(settings, project, conversation, knowledgeContext));
+        List<Object> tools = new ArrayList<>();
         if (!isBlank(project.getWorkingFolder()) && settings.isFilesystemToolEnabled()) {
-            prompt = prompt.tools(new ProjectFilesystemTools(project));
+            tools.add(new ProjectFilesystemTools(project));
+        }
+        if (knowledgeSearchTools != null) {
+            tools.add(knowledgeSearchTools);
+        }
+        if (!tools.isEmpty()) {
+            prompt = prompt.tools(tools.toArray());
         }
 
         return prompt.call().content();
@@ -267,7 +288,8 @@ public class AiChatService {
                         chatModel,
                         request.conversation(),
                         request.project(),
-                        request.knowledgeContext()
+                        request.knowledgeContext(),
+                        request.knowledgeSearchTools()
                 ));
             } catch (RuntimeException exception) {
                 return ChatReply.error(displayName + " request failed: " + exception.getMessage());
