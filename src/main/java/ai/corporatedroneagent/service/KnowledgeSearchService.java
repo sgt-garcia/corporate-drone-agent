@@ -1,7 +1,6 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
-import ai.corporatedroneagent.model.knowledge.KnowledgeResourceChunk;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResourceConversion;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
@@ -11,6 +10,7 @@ import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 public class KnowledgeSearchService {
 
     private static final Pattern JIRA_ISSUE_KEY = Pattern.compile("\\b[A-Z][A-Z0-9_]+-\\d+\\b", Pattern.CASE_INSENSITIVE);
+    private static final int DEFAULT_RESULT_LENGTH = 3000;
 
     private final KnowledgeIndexingService indexingService;
     private final KnowledgeResourcePipelineRepository pipelineRepository;
@@ -41,17 +42,22 @@ public class KnowledgeSearchService {
     }
 
     public List<KnowledgeContextSnippet> search(String query, int limit) {
+        return search(query, limit, DEFAULT_RESULT_LENGTH);
+    }
+
+    public List<KnowledgeContextSnippet> search(String query, int limit, int maxResultLength) {
         if (limit <= 0) {
             return List.of();
         }
+        int passageLength = maxResultLength <= 0 ? DEFAULT_RESULT_LENGTH : maxResultLength;
 
         List<KnowledgeContextSnippet> snippets = new ArrayList<>();
-        Set<UUID> seenChunks = new LinkedHashSet<>();
+        Set<UUID> seenResources = new LinkedHashSet<>();
         for (String issueKey : issueKeys(query)) {
             if (snippets.size() >= limit) {
                 break;
             }
-            snippets.addAll(jiraIssueSnippets(issueKey, limit - snippets.size(), seenChunks));
+            addJiraIssueSnippets(issueKey, limit, passageLength, seenResources, snippets);
         }
 
         if (snippets.size() >= limit) {
@@ -59,13 +65,13 @@ public class KnowledgeSearchService {
         }
 
         for (KnowledgeIndexingService.KnowledgeIndexHit hit : indexingService.search(query, limit)) {
-            if (seenChunks.contains(hit.chunkId())) {
+            if (seenResources.contains(hit.resourceId())) {
                 continue;
             }
-            Optional<KnowledgeContextSnippet> snippet = toSnippet(hit);
+            Optional<KnowledgeContextSnippet> snippet = toSnippet(hit, query, passageLength);
             if (snippet.isPresent()) {
                 snippets.add(snippet.get());
-                seenChunks.add(hit.chunkId());
+                seenResources.add(hit.resourceId());
             }
             if (snippets.size() >= limit) {
                 break;
@@ -74,71 +80,70 @@ public class KnowledgeSearchService {
         return snippets;
     }
 
-    private Optional<KnowledgeContextSnippet> toSnippet(KnowledgeIndexingService.KnowledgeIndexHit hit) {
-        Optional<KnowledgeResourceChunk> chunk = pipelineRepository.findChunkById(hit.chunkId());
-        if (chunk.isEmpty()) {
-            return Optional.empty();
-        }
-
-        Optional<KnowledgeResource> resource = resourceRepository.findById(chunk.get().getResourceId())
+    private Optional<KnowledgeContextSnippet> toSnippet(
+            KnowledgeIndexingService.KnowledgeIndexHit hit,
+            String query,
+            int passageLength
+    ) {
+        Optional<KnowledgeResource> resource = resourceRepository.findById(hit.resourceId())
                 .filter(candidate -> !candidate.isDeleted());
         if (resource.isEmpty()) {
             return Optional.empty();
         }
 
-        Optional<KnowledgeResourceConversion> conversion = pipelineRepository
-                .findConversionByResourceId(resource.get().getId())
-                .filter(candidate -> Boolean.TRUE.equals(candidate.getSuccess()));
-        if (conversion.isEmpty() || !hasValidOffsets(conversion.get(), chunk.get())) {
+        Optional<String> text = conversionText(resource.get().getId());
+        if (text.isEmpty()) {
             return Optional.empty();
         }
 
         KnowledgeRoot root = rootRepository.findById(resource.get().getRootId())
                 .orElseGet(KnowledgeRoot::new);
-        String content = conversion.get().getValue().substring(
-                chunk.get().getStartOffset(),
-                chunk.get().getEndOffset()
-        );
-        return Optional.of(toSnippet(root, resource.get(), chunk.get(), content, hit.score()));
+        return Optional.of(toSnippet(
+                root,
+                resource.get(),
+                extractPassage(text.get(), query, passageLength),
+                hit.score()
+        ));
     }
 
-    private List<KnowledgeContextSnippet> jiraIssueSnippets(
+    private void addJiraIssueSnippets(
             String issueKey,
             int limit,
-            Set<UUID> seenChunks
+            int passageLength,
+            Set<UUID> seenResources,
+            List<KnowledgeContextSnippet> snippets
     ) {
-        List<KnowledgeContextSnippet> snippets = new ArrayList<>();
         for (KnowledgeResource resource : resourceRepository.findActiveBySourceAndDisplayNamePrefix(
                 KnowledgeSource.JIRA,
                 issueKey,
                 limit
         )) {
-            Optional<KnowledgeResourceConversion> conversion = pipelineRepository
-                    .findConversionByResourceId(resource.getId())
-                    .filter(candidate -> Boolean.TRUE.equals(candidate.getSuccess()));
-            if (conversion.isEmpty()) {
+            if (snippets.size() >= limit) {
+                return;
+            }
+            if (seenResources.contains(resource.getId())) {
+                continue;
+            }
+            Optional<String> text = conversionText(resource.getId());
+            if (text.isEmpty()) {
                 continue;
             }
             KnowledgeRoot root = rootRepository.findById(resource.getRootId()).orElseGet(KnowledgeRoot::new);
-            for (KnowledgeResourceChunk chunk : pipelineRepository.findChunksByResourceId(resource.getId())) {
-                if (snippets.size() >= limit) {
-                    return snippets;
-                }
-                if (seenChunks.contains(chunk.getId()) || !hasValidOffsets(conversion.get(), chunk)) {
-                    continue;
-                }
-                String content = conversion.get().getValue().substring(chunk.getStartOffset(), chunk.getEndOffset());
-                snippets.add(toSnippet(root, resource, chunk, content, Float.MAX_VALUE));
-                seenChunks.add(chunk.getId());
-            }
+            snippets.add(toSnippet(root, resource, extractPassage(text.get(), issueKey, passageLength), Float.MAX_VALUE));
+            seenResources.add(resource.getId());
         }
-        return snippets;
+    }
+
+    private Optional<String> conversionText(UUID resourceId) {
+        return pipelineRepository.findConversionByResourceId(resourceId)
+                .filter(conversion -> Boolean.TRUE.equals(conversion.getSuccess()))
+                .map(KnowledgeResourceConversion::getValue)
+                .filter(value -> value != null && !value.isBlank());
     }
 
     private KnowledgeContextSnippet toSnippet(
             KnowledgeRoot root,
             KnowledgeResource resource,
-            KnowledgeResourceChunk chunk,
             String content,
             float score
     ) {
@@ -147,10 +152,58 @@ public class KnowledgeSearchService {
                 root.getDisplayName(),
                 resource.getReference(),
                 resource.getDisplayName(),
-                chunk.getChunkIndex(),
+                0,
                 content,
                 score
         );
+    }
+
+    /**
+     * Pulls a passage of at most {@code maxLength} characters from the resource text, centred on the
+     * first place a query term appears and snapped to word boundaries. The whole text is returned when
+     * it already fits. This is where "length of results" is applied — at query time, not at ingestion.
+     */
+    private String extractPassage(String text, String query, int maxLength) {
+        String trimmed = text.strip();
+        if (maxLength <= 0 || trimmed.length() <= maxLength) {
+            return trimmed;
+        }
+        int match = firstMatchOffset(trimmed, query);
+        int start = Math.max(0, match - maxLength / 4);
+        int end = Math.min(trimmed.length(), start + maxLength);
+        start = Math.max(0, end - maxLength);
+        if (start > 0) {
+            int nextSpace = trimmed.indexOf(' ', start);
+            if (nextSpace >= 0 && nextSpace < end) {
+                start = nextSpace + 1;
+            }
+        }
+        if (end < trimmed.length()) {
+            int previousSpace = trimmed.lastIndexOf(' ', end);
+            if (previousSpace > start) {
+                end = previousSpace;
+            }
+        }
+        String passage = trimmed.substring(start, end).strip();
+        return (start > 0 ? "… " : "") + passage + (end < trimmed.length() ? " …" : "");
+    }
+
+    private int firstMatchOffset(String text, String query) {
+        if (query == null || query.isBlank()) {
+            return 0;
+        }
+        String haystack = text.toLowerCase(Locale.ROOT);
+        int best = -1;
+        for (String token : query.toLowerCase(Locale.ROOT).split("[^\\p{Alnum}]+")) {
+            if (token.length() < 2) {
+                continue;
+            }
+            int at = haystack.indexOf(token);
+            if (at >= 0 && (best < 0 || at < best)) {
+                best = at;
+            }
+        }
+        return Math.max(best, 0);
     }
 
     private Set<String> issueKeys(String query) {
@@ -163,10 +216,5 @@ public class KnowledgeSearchService {
             keys.add(matcher.group().toUpperCase(java.util.Locale.ROOT));
         }
         return keys;
-    }
-
-    private boolean hasValidOffsets(KnowledgeResourceConversion conversion, KnowledgeResourceChunk chunk) {
-        return chunk.getStartOffset() <= chunk.getEndOffset()
-                && chunk.getEndOffset() <= conversion.getValue().length();
     }
 }

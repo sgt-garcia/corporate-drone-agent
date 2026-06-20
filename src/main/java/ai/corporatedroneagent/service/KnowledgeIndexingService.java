@@ -42,8 +42,6 @@ public class KnowledgeIndexingService {
 
     private static final String FIELD_DOCUMENT_ID = "documentId";
     private static final String FIELD_RESOURCE_ID = "resourceId";
-    private static final String FIELD_CHUNK_ID = "chunkId";
-    private static final String FIELD_CHUNK_INDEX = "chunkIndex";
     private static final String FIELD_RESOURCE_REFERENCE = "resourceReference";
     private static final String FIELD_CONTENT = "content";
 
@@ -67,20 +65,25 @@ public class KnowledgeIndexingService {
             return;
         }
 
+        String documentId = documentId(resource);
         try {
-            log.debug("Indexing local knowledge resource {} with {} chunks.", resource.getReference(), chunks.size());
+            log.debug("Indexing knowledge resource {}.", resource.getReference());
             Files.createDirectories(indexPath);
             try (StandardAnalyzer analyzer = new StandardAnalyzer();
                     FSDirectory directory = FSDirectory.open(indexPath);
                     IndexWriter writer = new IndexWriter(directory, indexWriterConfig(analyzer))) {
-                for (KnowledgeResourceChunk chunk : chunks) {
-                    indexChunk(writer, resource, conversion, chunk);
-                }
+                writer.updateDocument(
+                        new Term(FIELD_DOCUMENT_ID, documentId),
+                        document(resource, conversion, documentId)
+                );
                 writer.commit();
             }
-            log.debug("Indexed local knowledge resource {} with {} chunks.", resource.getReference(), chunks.size());
+            // The whole resource is one Lucene document now (BM25 ranks resources, not chunks);
+            // mark every chunk indexed so the scan's reuse check still treats it as fully processed.
+            chunks.forEach(chunk -> markIndexed(chunk, documentId));
+            log.debug("Indexed knowledge resource {}.", resource.getReference());
         } catch (IOException | RuntimeException exception) {
-            log.warn("Could not index local knowledge resource {}.", resource.getReference(), exception);
+            log.warn("Could not index knowledge resource {}.", resource.getReference(), exception);
             chunks.forEach(chunk -> markFailed(chunk, "Could not index resource"));
         }
     }
@@ -125,7 +128,7 @@ public class KnowledgeIndexingService {
                 Document document = storedFields.document(hit.doc);
                 results.add(new KnowledgeIndexHit(
                         document.get(FIELD_DOCUMENT_ID),
-                        UUID.fromString(document.get(FIELD_CHUNK_ID)),
+                        UUID.fromString(document.get(FIELD_RESOURCE_ID)),
                         hit.score
                 ));
             }
@@ -146,47 +149,17 @@ public class KnowledgeIndexingService {
         return config;
     }
 
-    private void indexChunk(
-            IndexWriter writer,
-            KnowledgeResource resource,
-            KnowledgeResourceConversion conversion,
-            KnowledgeResourceChunk chunk
-    ) throws IOException {
-        String documentId = documentId(resource, chunk);
-        KnowledgeResourceIndex index = markInProgress(chunk, documentId);
-        try {
-            writer.updateDocument(
-                    new Term(FIELD_DOCUMENT_ID, documentId),
-                    document(resource, conversion, chunk, documentId)
-            );
-            index.setStatus(WorkStatus.DONE);
-            index.setSuccess(true);
-            index.setReason(null);
-            index.setMessage("");
-            index.setIndexedAt(Instant.now());
-            pipelineRepository.saveIndex(index);
-        } catch (IOException | RuntimeException exception) {
-            index.setStatus(WorkStatus.DONE);
-            index.setSuccess(false);
-            index.setReason(KnowledgePipelineReason.INDEX_FAILED);
-            index.setMessage("Could not index chunk");
-            index.setIndexedAt(Instant.now());
-            pipelineRepository.saveIndex(index);
-            throw exception;
-        }
-    }
-
-    private KnowledgeResourceIndex markInProgress(KnowledgeResourceChunk chunk, String documentId) {
+    private void markIndexed(KnowledgeResourceChunk chunk, String documentId) {
         KnowledgeResourceIndex index = pipelineRepository.findIndexByChunkId(chunk.getId())
                 .orElseGet(KnowledgeResourceIndex::new);
         index.setChunkId(chunk.getId());
-        index.setStatus(WorkStatus.IN_PROGRESS);
-        index.setSuccess(null);
+        index.setStatus(WorkStatus.DONE);
+        index.setSuccess(true);
         index.setReason(null);
         index.setMessage("");
         index.setIndexReference(documentId);
-        index.setIndexedAt(null);
-        return pipelineRepository.saveIndex(index);
+        index.setIndexedAt(Instant.now());
+        pipelineRepository.saveIndex(index);
     }
 
     private void markFailed(KnowledgeResourceChunk chunk, String message) {
@@ -204,25 +177,18 @@ public class KnowledgeIndexingService {
     private Document document(
             KnowledgeResource resource,
             KnowledgeResourceConversion conversion,
-            KnowledgeResourceChunk chunk,
             String documentId
     ) {
         Document document = new Document();
         document.add(new StringField(FIELD_DOCUMENT_ID, documentId, Field.Store.YES));
         document.add(new StringField(FIELD_RESOURCE_ID, resource.getId().toString(), Field.Store.YES));
-        document.add(new StringField(FIELD_CHUNK_ID, chunk.getId().toString(), Field.Store.YES));
-        document.add(new StringField(FIELD_CHUNK_INDEX, String.valueOf(chunk.getChunkIndex()), Field.Store.YES));
         document.add(new StringField(FIELD_RESOURCE_REFERENCE, resource.getReference(), Field.Store.YES));
-        document.add(new TextField(
-                FIELD_CONTENT,
-                conversion.getValue().substring(chunk.getStartOffset(), chunk.getEndOffset()),
-                Field.Store.NO
-        ));
+        document.add(new TextField(FIELD_CONTENT, conversion.getValue(), Field.Store.NO));
         return document;
     }
 
-    private String documentId(KnowledgeResource resource, KnowledgeResourceChunk chunk) {
-        return resource.getId() + ":" + chunk.getChunkIndex();
+    private String documentId(KnowledgeResource resource) {
+        return resource.getId() + ":0";
     }
 
     public static class KnowledgeIndexException extends RuntimeException {
@@ -232,6 +198,6 @@ public class KnowledgeIndexingService {
         }
     }
 
-    public record KnowledgeIndexHit(String documentId, UUID chunkId, float score) {
+    public record KnowledgeIndexHit(String documentId, UUID resourceId, float score) {
     }
 }

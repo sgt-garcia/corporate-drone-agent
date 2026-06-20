@@ -76,7 +76,8 @@ import reactor.core.publisher.Flux;
 public class AiChatService {
 
     private static final Logger log = LoggerFactory.getLogger(AiChatService.class);
-    private static final int KNOWLEDGE_SEARCH_LIMIT = 5;
+    private static final int KNOWLEDGE_SEARCH_LIMIT = 10;
+    private static final int KNOWLEDGE_RESULT_LENGTH = 3000;
     // Spring AI's RestClient-backed providers default to an infinite read timeout,
     // so a provider that accepts the connection but never responds blocks the
     // calling thread forever and holds an LLM permit until the app restarts. These
@@ -124,7 +125,7 @@ public class AiChatService {
 
     private List<KnowledgeContextSnippet> knowledgeContext(String userContent) {
         try {
-            return knowledgeSearchService.search(userContent, KNOWLEDGE_SEARCH_LIMIT);
+            return knowledgeSearchService.search(userContent, KNOWLEDGE_SEARCH_LIMIT, KNOWLEDGE_RESULT_LENGTH);
         } catch (RuntimeException exception) {
             log.warn("Knowledge retrieval failed; continuing without knowledge context.", exception);
             return List.of();

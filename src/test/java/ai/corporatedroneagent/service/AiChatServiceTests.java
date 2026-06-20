@@ -173,7 +173,7 @@ class AiChatServiceTests {
         when(settingsService.getWithSecrets()).thenReturn(settings);
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
-        when(knowledgeSearchService.search("hello", 5)).thenThrow(new IllegalStateException("index unavailable"));
+        when(knowledgeSearchService.search("hello", 10, 3000)).thenThrow(new IllegalStateException("index unavailable"));
         AiChatService service = new AiChatService(
                 settingsService,
                 conversationRepository,
@@ -208,7 +208,7 @@ class AiChatServiceTests {
         when(settingsService.getWithSecrets()).thenReturn(settings);
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
-        when(knowledgeSearchService.search("hello", 5)).thenReturn(List.of());
+        when(knowledgeSearchService.search("hello", 10, 3000)).thenReturn(List.of());
         AiChatService service = new AiChatService(
                 settingsService,
                 conversationRepository,
@@ -240,7 +240,7 @@ class AiChatServiceTests {
         when(settingsService.getWithSecrets()).thenReturn(settings);
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
-        when(knowledgeSearchService.search("hello", 5)).thenReturn(List.of());
+        when(knowledgeSearchService.search("hello", 10, 3000)).thenReturn(List.of());
         AiChatService service = new AiChatService(
                 settingsService,
                 conversationRepository,
