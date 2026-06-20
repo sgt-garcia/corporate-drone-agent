@@ -350,8 +350,7 @@ public class ConfluencePageFetchService {
     }
 
     private URI confluenceUri(String instanceUrl, String path) {
-        String base = instanceUrl.endsWith("/") ? instanceUrl.substring(0, instanceUrl.length() - 1) : instanceUrl;
-        return URI.create(base + path);
+        return URI.create(ConfluenceKnowledgeReferences.apiBaseUrl(instanceUrl) + path);
     }
 
     private String basicAuth(String email, String token) {

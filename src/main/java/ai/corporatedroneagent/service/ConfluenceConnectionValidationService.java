@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.service;
 
+import ai.corporatedroneagent.model.knowledge.ConfluenceKnowledgeReferences;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -67,8 +68,7 @@ public class ConfluenceConnectionValidationService {
     }
 
     private URI spacesUri(String instanceUrl) {
-        String base = instanceUrl.endsWith("/") ? instanceUrl.substring(0, instanceUrl.length() - 1) : instanceUrl;
-        return URI.create(base + "/rest/api/space?limit=1");
+        return URI.create(ConfluenceKnowledgeReferences.apiBaseUrl(instanceUrl) + "/rest/api/space?limit=1");
     }
 
     private String basicAuth(String email, String token) {
