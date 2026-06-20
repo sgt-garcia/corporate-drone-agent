@@ -79,6 +79,7 @@
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
+  --radius-2xl: 16px;
   --radius-pill: 999px;
 
   /* Elevation */
@@ -93,8 +94,10 @@
 
   /* Motion */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --dur-fast: 120ms;
   --dur-base: 160ms;
+  --dur-slow: 240ms;
 
   color: var(--fg-default);
   background: var(--bg-canvas);
@@ -294,6 +297,9 @@ a {
 .btn-secondary:hover {
   background: var(--gray-100);
 }
+.btn-secondary:active {
+  background: var(--gray-150);
+}
 .btn-ghost {
   background: transparent;
   color: var(--gray-700);
@@ -450,7 +456,7 @@ select.input {
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  padding: 22px;
+  padding: 20px;
 }
 
 /* =====================================================================

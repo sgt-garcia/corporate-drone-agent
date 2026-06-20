@@ -3,6 +3,14 @@ import ReactMarkdown from "react-markdown";
 import { Icon } from "./Icon.jsx";
 import { Logomark } from "./Logomark.jsx";
 
+// Open links in agent replies in a new tab, mirroring the design's Markdown
+// renderer — a citation link shouldn't navigate the user away from the agent.
+const markdownComponents = {
+  a: ({ node, ...props }) => (
+    <a {...props} target="_blank" rel="noopener noreferrer" />
+  )
+};
+
 // How close to the bottom (px) still counts as "following" the conversation.
 // A short status turn scrolled to its top stays within this; a long reply does
 // not, so a late event won't yank a reader who's working through it.
@@ -243,7 +251,9 @@ function Turn({ message, echoMode = false, onRetry, onRegenerate }) {
         ) : (
           <>
             <div className="turn-text turn-text--markdown">
-              <ReactMarkdown>{message.content}</ReactMarkdown>
+              <ReactMarkdown components={markdownComponents}>
+                {message.content}
+              </ReactMarkdown>
             </div>
             {echoMode ? (
               <>
@@ -432,27 +442,28 @@ function SourcePreview({ source, onClose }) {
           <div className="source-preview-excerpt">{preview.excerpt}</div>
         )}
       </div>
-      {(source.kind === "draft" || source.url) && (
-        <div className="source-preview-foot">
-          {source.kind === "draft" && (
-            <span className="badge badge-warning">
-              <span className="dot" /> Not sent
-            </span>
-          )}
-          <span className="source-preview-foot-spacer" />
-          {source.url && (
-            <a
-              className="source-link"
-              href={source.url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {source.actionLabel || "Open"}{" "}
-              <Icon name="external-link" size={13} color="var(--blue-600)" />
-            </a>
-          )}
-        </div>
-      )}
+      <div className="source-preview-foot">
+        {source.kind === "draft" && (
+          <span className="badge badge-warning">
+            <span className="dot" /> Not sent
+          </span>
+        )}
+        <span className="source-preview-foot-spacer" />
+        <a
+          className="source-link"
+          href={source.url || "#"}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => {
+            if (!source.url) {
+              event.preventDefault();
+            }
+          }}
+        >
+          {source.actionLabel || "Open"}{" "}
+          <Icon name="external-link" size={13} color="var(--blue-600)" />
+        </a>
+      </div>
     </div>
   );
 }
@@ -636,6 +647,7 @@ function Composer({ placeholder, value, onChange, onSend, disabled = false }) {
         disabled
         aria-disabled="true"
         aria-label="Attach (unavailable)"
+        title="Attachments aren’t available yet"
         tabIndex={-1}
       >
         <Icon name="paperclip" size={18} color="var(--gray-500)" />

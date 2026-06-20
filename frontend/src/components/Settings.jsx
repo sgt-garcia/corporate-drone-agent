@@ -756,7 +756,7 @@ function KnowledgeOverview({ folders, jira, confluence, onOpenFolders, onOpenJir
       : jiraErrors
         ? `${jiraErrors} need attention`
         : jiraProjects.length
-          ? "Connected · ready to scan"
+          ? "Auto-scanning · up to date"
           : "No projects yet";
 
   const confSpaces = confluence?.spaces ?? [];
@@ -769,7 +769,7 @@ function KnowledgeOverview({ folders, jira, confluence, onOpenFolders, onOpenJir
       : confErrors
         ? `${confErrors} need attention`
         : confSpaces.length
-          ? "Connected · ready to scan"
+          ? "Auto-scanning · up to date"
           : "No spaces yet";
 
   return (
@@ -777,9 +777,8 @@ function KnowledgeOverview({ folders, jira, confluence, onOpenFolders, onOpenJir
       <div className="settings-intro">
         <h2 className="ds-h3">Knowledge</h2>
         <p className="ds-body">
-          Sources the agent draws on to understand your work context. Local
-          folders, Jira issues, and Confluence pages are indexed locally after
-          you choose what to scan.
+          Sources the agent draws on to understand your work context. Everything
+          is indexed locally on this device.
         </p>
       </div>
       <div className="providers-grid">
@@ -823,7 +822,7 @@ function KnowledgeOverview({ folders, jira, confluence, onOpenFolders, onOpenJir
             <div className="provider-id">
               <div className="provider-name">Jira (API)</div>
               <div className="provider-region">
-                {jiraProjects.length} of {JIRA_MAX} project slots · manual scans
+                {jiraProjects.length} of {JIRA_MAX} projects · continuously scanned
               </div>
             </div>
           </div>
@@ -858,7 +857,7 @@ function KnowledgeOverview({ folders, jira, confluence, onOpenFolders, onOpenJir
             <div className="provider-id">
               <div className="provider-name">Confluence (API)</div>
               <div className="provider-region">
-                {confSpaces.length} of {CONFLUENCE_MAX} space slots · manual scans
+                {confSpaces.length} of {CONFLUENCE_MAX} spaces · continuously scanned
               </div>
             </div>
           </div>
@@ -1077,7 +1076,7 @@ function LocalFoldersConfig({
 
       <div className="knowledge-privacy">
         <Icon name="shield-check" size={14} color="var(--success-600)" />
-        Files are indexed locally on this device.
+        Files are indexed locally on this device — nothing is uploaded.
       </div>
     </div>
   );
@@ -1355,8 +1354,8 @@ function JiraConfig({
         <div className="provider-id">
           <h2 className="ds-h3">Jira (API)</h2>
           <div className="provider-region">
-            Validate Jira credentials, choose projects, and manually scan issues
-            into the local knowledge index. Up to {JIRA_MAX} projects.
+            The agent scans issues and project context from Jira so it can
+            reference them. Up to {JIRA_MAX} projects.
           </div>
         </div>
         {cfg.connected ? (
@@ -1372,7 +1371,7 @@ function JiraConfig({
       {cfg.connected && projects.length > 0 && (
         <SourceStats
           items={[
-            { label: "Jira issues", value: fmtNum(totalIssues) },
+            { label: "Issues indexed", value: fmtNum(totalIssues) },
             { label: "Projects", value: `${projects.length} / ${JIRA_MAX}` },
             {
               // Errors take precedence over scanning/paused, matching the design.
@@ -1511,7 +1510,7 @@ function JiraConfig({
             type="button"
             onClick={() => setDisconnectConfirm(true)}
           >
-            Clear setup
+            Disconnect
           </button>
         )}
         {cfg.connected && disconnectConfirm && (
@@ -1527,7 +1526,7 @@ function JiraConfig({
               Cancel
             </button>
             <button className="btn btn-danger btn-sm" type="button" onClick={disconnect}>
-              <Icon name="trash" size={14} color="#fff" /> Clear setup
+              <Icon name="trash" size={14} color="#fff" /> Disconnect
             </button>
           </>
         )}
@@ -1556,10 +1555,10 @@ function JiraConfig({
           renderStatus={(project) => <JiraProjectStatus status={project.status} />}
           tickerItems={(project) => scanProgressById?.[project.id] ?? []}
           metaScanned={(project) =>
-            `${fmtNum(project.issues)} indexed Jira issues · scanned ${project.checked || "just now"}`
+            `${fmtNum(project.issues)} issues · checked ${project.checked || "just now"}`
           }
           metaPaused={(project) =>
-            `Paused · ${fmtNum(project.issues)} indexed Jira issues`
+            `Paused · ${fmtNum(project.issues)} issues`
           }
           metaError={(project) =>
             project.message ||
@@ -1645,7 +1644,7 @@ function JiraConfig({
 
       <div className="knowledge-privacy">
         <Icon name="shield-check" size={14} color="var(--success-600)" />
-        Jira issues are fetched, chunked, and indexed locally on this device.
+        Issues are indexed locally on this device — nothing is uploaded.
       </div>
     </div>
   );
@@ -1923,8 +1922,8 @@ function ConfluenceConfig({
         <div className="provider-id">
           <h2 className="ds-h3">Confluence (API)</h2>
           <div className="provider-region">
-            Validate Confluence credentials, choose spaces, and manually scan
-            pages into the local knowledge index. Up to {CONFLUENCE_MAX} spaces.
+            The agent scans pages and space context from Confluence so it can
+            reference them. Up to {CONFLUENCE_MAX} spaces.
           </div>
         </div>
         {cfg.connected ? (
@@ -1940,7 +1939,7 @@ function ConfluenceConfig({
       {cfg.connected && spaces.length > 0 && (
         <SourceStats
           items={[
-            { label: "Confluence pages", value: fmtNum(totalPages) },
+            { label: "Pages indexed", value: fmtNum(totalPages) },
             { label: "Spaces", value: `${spaces.length} / ${CONFLUENCE_MAX}` },
             {
               // Errors take precedence over scanning/paused, matching the design.
@@ -2079,7 +2078,7 @@ function ConfluenceConfig({
             type="button"
             onClick={() => setDisconnectConfirm(true)}
           >
-            Clear setup
+            Disconnect
           </button>
         )}
         {cfg.connected && disconnectConfirm && (
@@ -2095,7 +2094,7 @@ function ConfluenceConfig({
               Cancel
             </button>
             <button className="btn btn-danger btn-sm" type="button" onClick={disconnect}>
-              <Icon name="trash" size={14} color="#fff" /> Clear setup
+              <Icon name="trash" size={14} color="#fff" /> Disconnect
             </button>
           </>
         )}
@@ -2121,10 +2120,10 @@ function ConfluenceConfig({
           renderTitle={(space) => space.name}
           tickerItems={(space) => scanProgressById?.[space.id] ?? []}
           metaScanned={(space) =>
-            `${fmtNum(space.pages)} indexed Confluence pages · scanned ${space.checked || "just now"}`
+            `${fmtNum(space.pages)} pages · checked ${space.checked || "just now"}`
           }
           metaPaused={(space) =>
-            `Paused · ${fmtNum(space.pages)} indexed Confluence pages`
+            `Paused · ${fmtNum(space.pages)} pages`
           }
           metaError={(space) =>
             space.message ||
@@ -2210,7 +2209,7 @@ function ConfluenceConfig({
 
       <div className="knowledge-privacy">
         <Icon name="shield-check" size={14} color="var(--success-600)" />
-        Confluence pages are fetched, chunked, and indexed locally on this device.
+        Pages are indexed locally on this device — nothing is uploaded.
       </div>
     </div>
   );
@@ -2725,7 +2724,7 @@ function GeneralSettings({ draft, setDraft, onSave }) {
         </Field>
         <Field
           label="Default model provider"
-          hint="Used for new conversations unless a project overrides it."
+          hint="Used for new conversations unless a project overrides it. “None” leaves it unset until you choose a provider."
         >
           <select
             className="input"
