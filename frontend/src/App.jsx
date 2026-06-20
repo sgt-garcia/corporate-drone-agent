@@ -54,6 +54,10 @@ const emptySettings = {
   customInstructions:
     "Answer with concise, practical guidance using available local project context first.",
   filesystemToolEnabled: true,
+  knowledgeTool: {
+    auto: { enabled: true, results: 10, length: 3000 },
+    search: { enabled: false, results: 10, length: 3000 }
+  },
   knowledgeFolders: [],
   openAi: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },
   openAiSdk: { apiKey: "", apiKeyConfigured: false, apiKeyLastFour: "", model: "" },

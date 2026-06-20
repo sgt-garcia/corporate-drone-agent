@@ -385,6 +385,17 @@ textarea.input {
   resize: vertical;
   line-height: 1.5;
 }
+/* The Knowledge tool steppers supply their own −/+ buttons, so suppress the
+   native number-input spinners. */
+.num-stepper-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.num-stepper-input::-webkit-outer-spin-button,
+.num-stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 select.input {
   appearance: none;
   -webkit-appearance: none;

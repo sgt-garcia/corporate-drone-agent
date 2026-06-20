@@ -8,6 +8,7 @@ import ai.corporatedroneagent.model.Conversation;
 import ai.corporatedroneagent.model.DeepSeekSettings;
 import ai.corporatedroneagent.model.GeminiSettings;
 import ai.corporatedroneagent.model.GroqSettings;
+import ai.corporatedroneagent.model.KnowledgeRetrievalMode;
 import ai.corporatedroneagent.model.Message;
 import ai.corporatedroneagent.model.MistralSettings;
 import ai.corporatedroneagent.model.OllamaSettings;
@@ -76,8 +77,6 @@ import reactor.core.publisher.Flux;
 public class AiChatService {
 
     private static final Logger log = LoggerFactory.getLogger(AiChatService.class);
-    private static final int KNOWLEDGE_SEARCH_LIMIT = 10;
-    private static final int KNOWLEDGE_RESULT_LENGTH = 3000;
     // Spring AI's RestClient-backed providers default to an infinite read timeout,
     // so a provider that accepts the connection but never responds blocks the
     // calling thread forever and holds an LLM permit until the app restarts. These
@@ -109,7 +108,7 @@ public class AiChatService {
         ApplicationSettings settings = settingsService.getWithSecrets();
         Conversation conversation = getConversation(conversationId);
         Project project = getProject(conversation.getProjectId());
-        List<KnowledgeContextSnippet> knowledgeContext = knowledgeContext(userContent);
+        List<KnowledgeContextSnippet> knowledgeContext = knowledgeContext(settings, userContent);
 
         ChatProvider chatProvider = chatProviders.get(settings.getAiModel());
         if (chatProvider == null) {
@@ -123,9 +122,15 @@ public class AiChatService {
         return reply;
     }
 
-    private List<KnowledgeContextSnippet> knowledgeContext(String userContent) {
+    // Automatic retrieval (RAG): runs on every message when enabled, pulling auto.results
+    // snippets of up to auto.length characters. The on-demand search tool is a separate mode.
+    private List<KnowledgeContextSnippet> knowledgeContext(ApplicationSettings settings, String userContent) {
+        KnowledgeRetrievalMode auto = settings.getKnowledgeTool().getAuto();
+        if (!auto.isEnabled()) {
+            return List.of();
+        }
         try {
-            return knowledgeSearchService.search(userContent, KNOWLEDGE_SEARCH_LIMIT, KNOWLEDGE_RESULT_LENGTH);
+            return knowledgeSearchService.search(userContent, auto.getResults(), auto.getLength());
         } catch (RuntimeException exception) {
             log.warn("Knowledge retrieval failed; continuing without knowledge context.", exception);
             return List.of();

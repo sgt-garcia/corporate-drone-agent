@@ -13,6 +13,8 @@ import ai.corporatedroneagent.dto.KnowledgeFolderRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.ConfluenceSettings;
 import ai.corporatedroneagent.model.JiraSettings;
+import ai.corporatedroneagent.model.KnowledgeRetrievalMode;
+import ai.corporatedroneagent.model.KnowledgeToolSettings;
 import ai.corporatedroneagent.model.knowledge.ConfluenceKnowledgeReferences;
 import ai.corporatedroneagent.model.knowledge.ConfluenceKnowledgeRootConfig;
 import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
@@ -51,6 +53,11 @@ public class SettingsService {
     private static final int JIRA_PROJECT_SEARCH_LIMIT = 25;
     private static final int MAX_CONFLUENCE_SPACES = 10;
     private static final int CONFLUENCE_SPACE_SEARCH_LIMIT = 25;
+    // Bounds for the knowledge retrieval knobs, kept in step with the Settings UI steppers.
+    private static final int MIN_KNOWLEDGE_RESULTS = 1;
+    private static final int MAX_KNOWLEDGE_RESULTS = 50;
+    private static final int MIN_KNOWLEDGE_LENGTH = 500;
+    private static final int MAX_KNOWLEDGE_LENGTH = 20000;
 
     private final SettingsRepository settingsRepository;
     private final KnowledgeRootRepository knowledgeRootRepository;
@@ -171,6 +178,7 @@ public class SettingsService {
         current.setAiModel(Strings.defaultIfBlank(settings.getAiModel(), "none"));
         current.setCustomInstructions(Strings.emptyIfNull(settings.getCustomInstructions()));
         current.setFilesystemToolEnabled(settings.isFilesystemToolEnabled());
+        current.setKnowledgeTool(sanitizeKnowledgeTool(settings.getKnowledgeTool()));
         current.setOpenAi(settings.getOpenAi());
         current.setOpenAiSdk(settings.getOpenAiSdk());
         current.setAzureOpenAi(settings.getAzureOpenAi());
@@ -1244,6 +1252,35 @@ public class SettingsService {
         sanitized.setApiVersion(sanitizeJiraApiVersion(jira.getApiVersion()));
         sanitized.setTokenExpiresDays(jira.getTokenExpiresDays());
         return sanitized;
+    }
+
+    // Clamp the retrieval knobs to the same bounds the UI enforces, so a hand-crafted or
+    // stale payload can't push out-of-range results/length into the live settings. Missing
+    // modes fall back to their defaults rather than disabling retrieval.
+    private KnowledgeToolSettings sanitizeKnowledgeTool(KnowledgeToolSettings knowledgeTool) {
+        KnowledgeToolSettings source = knowledgeTool == null ? new KnowledgeToolSettings() : knowledgeTool;
+        KnowledgeToolSettings sanitized = new KnowledgeToolSettings();
+        sanitized.setAuto(sanitizeRetrievalMode(source.getAuto(), sanitized.getAuto()));
+        sanitized.setSearch(sanitizeRetrievalMode(source.getSearch(), sanitized.getSearch()));
+        return sanitized;
+    }
+
+    private KnowledgeRetrievalMode sanitizeRetrievalMode(KnowledgeRetrievalMode mode, KnowledgeRetrievalMode fallback) {
+        if (mode == null) {
+            return fallback;
+        }
+        return new KnowledgeRetrievalMode(
+                mode.isEnabled(),
+                clamp(mode.getResults(), MIN_KNOWLEDGE_RESULTS, MAX_KNOWLEDGE_RESULTS, fallback.getResults()),
+                clamp(mode.getLength(), MIN_KNOWLEDGE_LENGTH, MAX_KNOWLEDGE_LENGTH, fallback.getLength())
+        );
+    }
+
+    private int clamp(int value, int min, int max, int fallback) {
+        if (value <= 0) {
+            return fallback;
+        }
+        return Math.max(min, Math.min(max, value));
     }
 
     private boolean samePath(String first, String second) {

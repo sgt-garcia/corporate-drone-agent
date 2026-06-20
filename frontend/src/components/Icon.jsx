@@ -2,6 +2,7 @@
 // Stroke style matches the brand: 1.75px, round caps/joins.
 const ICON_PATHS = {
   plus: ["M5 12h14", "M12 5v14"],
+  minus: ["M5 12h14"],
   search: ["m21 21-4.34-4.34", "circle:11,11,8"],
   "file-text": [
     "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z",

@@ -10,6 +10,7 @@ public class ApplicationSettings {
     private String aiModel = "none";
     private String customInstructions = "Answer with concise, practical guidance using available local project context first.";
     private boolean filesystemToolEnabled = true;
+    private KnowledgeToolSettings knowledgeTool = new KnowledgeToolSettings();
     private List<KnowledgeFolderDto> knowledgeFolders = new ArrayList<>();
     private OpenAiSettings openAi = new OpenAiSettings();
     private OpenAiSdkSettings openAiSdk = new OpenAiSdkSettings();
@@ -54,6 +55,14 @@ public class ApplicationSettings {
 
     public void setFilesystemToolEnabled(boolean filesystemToolEnabled) {
         this.filesystemToolEnabled = filesystemToolEnabled;
+    }
+
+    public KnowledgeToolSettings getKnowledgeTool() {
+        return knowledgeTool;
+    }
+
+    public void setKnowledgeTool(KnowledgeToolSettings knowledgeTool) {
+        this.knowledgeTool = knowledgeTool == null ? new KnowledgeToolSettings() : knowledgeTool;
     }
 
     public List<KnowledgeFolderDto> getKnowledgeFolders() {

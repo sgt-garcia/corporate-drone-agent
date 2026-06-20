@@ -137,11 +137,46 @@ const TOOLS = [
     summary: "Read, write, and edit files in a project’s working folder.",
     description:
       "Exposes the current project’s working folder to the agent as the virtual root “/” — allowing safe file reads, writes, line-based edits, directory listing and tree views, file search, metadata inspection, media reads, and moves. Local absolute paths, traversal outside the folder, and unsafe symlinks are always rejected."
+  },
+  {
+    id: "knowledge",
+    name: "Knowledge",
+    icon: "database",
+    kind: "knowledge",
+    summary: "Draw on your connected knowledge sources to answer with your work context."
   }
 ];
 
 function toolEnabled(tool, settings) {
   return settings?.[tool.enabledKey] !== false;
+}
+
+// A tool is "active" when it's on. The Knowledge tool has no single enable flag —
+// it's active when either of its two retrieval modes is enabled.
+function toolIsActive(tool, settings) {
+  if (tool.kind === "knowledge") {
+    const modes = settings?.knowledgeTool;
+    return Boolean(modes && (modes.auto?.enabled || modes.search?.enabled));
+  }
+  return toolEnabled(tool, settings);
+}
+
+// Reads the knowledge-tool modes from settings, defaulting each field so the
+// drill-in never renders undefined values before the first server sync.
+function knowledgeModes(settings) {
+  const knowledgeTool = settings?.knowledgeTool ?? {};
+  return {
+    auto: {
+      enabled: knowledgeTool.auto?.enabled ?? true,
+      results: knowledgeTool.auto?.results ?? 10,
+      length: knowledgeTool.auto?.length ?? 3000
+    },
+    search: {
+      enabled: knowledgeTool.search?.enabled ?? false,
+      results: knowledgeTool.search?.results ?? 10,
+      length: knowledgeTool.search?.length ?? 3000
+    }
+  };
 }
 
 // Maximum number of continuously-scanned local folders / Jira projects / Confluence spaces.
@@ -295,6 +330,14 @@ export function Settings({
     onSave(next);
   }
 
+  // The Knowledge drill-in has no Save button (like the tool toggle), so each mode
+  // change persists immediately.
+  function updateKnowledgeTool(modes) {
+    const next = { ...draft, knowledgeTool: modes };
+    setDraft(next);
+    onSave(next);
+  }
+
   function updateProviderConfig(settingsKey, patch) {
     setDraft((current) => ({
       ...current,
@@ -416,13 +459,23 @@ export function Settings({
             ))}
           {section === "tools" &&
             (openTool ? (
-              <ToolConfig
-                key={openTool.id}
-                tool={openTool}
-                enabled={toolEnabled(openTool, draft)}
-                onBack={() => setOpenToolId(null)}
-                onToggle={(enabled) => toggleTool(openTool, enabled)}
-              />
+              openTool.kind === "knowledge" ? (
+                <KnowledgeToolConfig
+                  key={openTool.id}
+                  tool={openTool}
+                  modes={knowledgeModes(draft)}
+                  onBack={() => setOpenToolId(null)}
+                  onChangeModes={updateKnowledgeTool}
+                />
+              ) : (
+                <ToolConfig
+                  key={openTool.id}
+                  tool={openTool}
+                  enabled={toolEnabled(openTool, draft)}
+                  onBack={() => setOpenToolId(null)}
+                  onToggle={(enabled) => toggleTool(openTool, enabled)}
+                />
+              )
             ) : (
               <ToolsOverview
                 settings={draft}
@@ -2635,7 +2688,7 @@ function ToolsOverview({ settings, onOpen }) {
               </div>
             </div>
             <div className="provider-card-foot">
-              <ToolStatus enabled={toolEnabled(tool, settings)} />
+              <ToolStatus enabled={toolIsActive(tool, settings)} />
               <span className="provider-configure">
                 Configure
                 <Icon name="chevron-right" size={13} color="var(--blue-600)" />
@@ -2693,6 +2746,294 @@ function ToolConfig({ tool, enabled, onBack, onToggle }) {
       <div className="knowledge-privacy">
         <Icon name="shield-check" size={14} color="var(--success-600)" />
         Runs locally on this device, sandboxed to the folders you grant.
+      </div>
+    </div>
+  );
+}
+
+// A bounded number control with −/+ steppers and an optional unit suffix. While
+// focused it holds a free-text draft so a value can be typed without a per-keystroke
+// clamp fighting the cursor; it commits (clamped to [min, max]) on blur, Enter, and
+// every stepper click.
+function NumStepper({ value, onChange, min, max, step, unit, disabled, ariaLabel }) {
+  const clamp = (n) => Math.max(min, Math.min(max, n));
+  const [draft, setDraft] = useState(String(value));
+  const [hovered, setHovered] = useState(null); // "dec" | "inc" | null
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = (n) => {
+    if (Number.isNaN(n)) {
+      setDraft(String(value));
+      return;
+    }
+    const clamped = clamp(n);
+    onChange(clamped);
+    setDraft(String(clamped));
+  };
+
+  const decOff = disabled || value <= min;
+  const incOff = disabled || value >= max;
+  const stepBtn = (key, off) => ({
+    width: 34,
+    border: "none",
+    cursor: off ? "not-allowed" : "pointer",
+    background: !off && hovered === key ? "var(--gray-100)" : "transparent",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    transition: "background var(--dur-fast)"
+  });
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "stretch",
+          height: 38,
+          width: 148,
+          border: "1px solid var(--gray-300)",
+          borderRadius: "var(--radius-lg)",
+          overflow: "hidden",
+          background: disabled ? "var(--gray-100)" : "var(--white)"
+        }}
+      >
+        <button
+          type="button"
+          style={stepBtn("dec", decOff)}
+          disabled={decOff}
+          aria-label={`Decrease ${ariaLabel}`}
+          onClick={() => commit(value - step)}
+          onMouseEnter={() => setHovered("dec")}
+          onMouseLeave={() => setHovered(null)}
+        >
+          <Icon name="minus" size={15} color={decOff ? "var(--gray-400)" : "var(--gray-600)"} />
+        </button>
+        <input
+          className="input num-stepper-input"
+          type="number"
+          inputMode="numeric"
+          min={min}
+          max={max}
+          step={step}
+          value={draft}
+          disabled={disabled}
+          aria-label={ariaLabel}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => commit(parseInt(draft, 10))}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+          }}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            height: "100%",
+            border: "none",
+            borderRadius: 0,
+            textAlign: "center",
+            padding: "0 2px",
+            font: "600 14px var(--font-mono)",
+            color: disabled ? "var(--gray-400)" : "var(--gray-900)",
+            background: "transparent",
+            boxShadow: "none",
+            borderLeft: "1px solid var(--border-divider)",
+            borderRight: "1px solid var(--border-divider)",
+            MozAppearance: "textfield"
+          }}
+        />
+        <button
+          type="button"
+          style={stepBtn("inc", incOff)}
+          disabled={incOff}
+          aria-label={`Increase ${ariaLabel}`}
+          onClick={() => commit(value + step)}
+          onMouseEnter={() => setHovered("inc")}
+          onMouseLeave={() => setHovered(null)}
+        >
+          <Icon name="plus" size={15} color={incOff ? "var(--gray-400)" : "var(--gray-600)"} />
+        </button>
+      </div>
+      {unit && (
+        <span style={{ font: "400 12px var(--font-sans)", color: "var(--gray-500)", whiteSpace: "nowrap" }}>
+          {unit}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Like Field, but a <div> rather than a <label>: the stepper's −/+ buttons must not
+// live inside a label (clicking one would also activate the labelled input).
+function StepperField({ label, hint, children }) {
+  return (
+    <div className="field">
+      <span className="field-label">{label}</span>
+      {children}
+      {hint && <span className="field-hint">{hint}</span>}
+    </div>
+  );
+}
+
+// One configurable retrieval mode (automatic or on-demand). The header carries the
+// enable switch; the result/length controls dim and disable when the mode is off, so
+// the structure stays visible without implying it's live.
+function KnowledgeMode({ icon, title, blurb, mode, onChange }) {
+  const on = mode.enabled;
+  return (
+    <div
+      className="ds-card"
+      style={{ display: "flex", flexDirection: "column", gap: 0, padding: 0, overflow: "hidden" }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 13,
+          padding: "16px 18px",
+          background: "var(--gray-50)",
+          borderBottom: "1px solid var(--border-divider)"
+        }}
+      >
+        <span
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: "var(--radius-md)",
+            background: "var(--white)",
+            border: "1px solid var(--border-default)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            marginTop: 1
+          }}
+        >
+          <Icon name={icon} size={17} color={on ? "var(--blue-600)" : "var(--gray-500)"} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ font: "600 14px var(--font-sans)", color: "var(--gray-900)" }}>{title}</span>
+            {on ? (
+              <span className="badge badge-success" style={{ padding: "1px 7px" }}>
+                <span className="dot" />
+                On
+              </span>
+            ) : (
+              <span className="badge badge-neutral" style={{ padding: "1px 7px" }}>
+                Off
+              </span>
+            )}
+          </div>
+          <p
+            style={{
+              margin: "3px 0 0",
+              font: "400 12px var(--font-sans)",
+              color: "var(--gray-500)",
+              lineHeight: 1.5
+            }}
+          >
+            {blurb}
+          </p>
+        </div>
+        <Switch checked={on} onChange={(v) => onChange({ ...mode, enabled: v })} label={`${title} mode`} />
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 24, padding: 18, opacity: on ? 1 : 0.6 }}>
+        <StepperField label="Number of results" hint="Snippets retrieved each time it runs.">
+          <NumStepper
+            value={mode.results}
+            min={1}
+            max={50}
+            step={1}
+            unit="results"
+            disabled={!on}
+            ariaLabel={`${title} number of results`}
+            onChange={(v) => onChange({ ...mode, results: v })}
+          />
+        </StepperField>
+        <StepperField label="Length of each result" hint="Characters kept from each snippet.">
+          <NumStepper
+            value={mode.length}
+            min={500}
+            max={20000}
+            step={500}
+            unit="characters"
+            disabled={!on}
+            ariaLabel={`${title} length of each result`}
+            onChange={(v) => onChange({ ...mode, length: v })}
+          />
+        </StepperField>
+      </div>
+    </div>
+  );
+}
+
+function KnowledgeToolConfig({ tool, modes, onBack, onChangeModes }) {
+  const active = modes.auto.enabled || modes.search.enabled;
+  const setMode = (key, next) => onChangeModes({ ...modes, [key]: next });
+  return (
+    <div className="settings-section">
+      <button className="config-back" type="button" onClick={onBack}>
+        <Icon name="arrow-left" size={15} color="var(--gray-600)" /> All tools
+      </button>
+
+      <div className="config-head">
+        <span className="provider-icon local lg">
+          <Icon name={tool.icon} size={22} color="var(--coffee-700)" />
+        </span>
+        <div className="provider-id">
+          <h2 className="ds-h3">{tool.name}</h2>
+          <div className="provider-region">{tool.summary}</div>
+        </div>
+        <ToolStatus enabled={active} />
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 8,
+          padding: "12px 14px",
+          background: "var(--blue-50)",
+          border: "1px solid color-mix(in srgb, var(--blue-300) 50%, transparent)",
+          borderRadius: "var(--radius-lg)",
+          font: "400 12px var(--font-sans)",
+          color: "var(--blue-800)",
+          lineHeight: 1.5
+        }}
+      >
+        <Icon name="database" size={15} color="var(--blue-600)" style={{ marginTop: 1, flexShrink: 0 }} />
+        <span>
+          Both modes draw on the same connected sources —{" "}
+          <strong style={{ fontWeight: 600 }}>Local Folders, Jira, and Confluence</strong> under
+          Settings → Knowledge. Enable either, both, or neither.
+        </span>
+      </div>
+
+      <KnowledgeMode
+        icon="refresh-cw"
+        title="Automatic retrieval"
+        blurb="Runs on every message. Relevant snippets are fetched and added to the prompt before the agent answers — no decision needed."
+        mode={modes.auto}
+        onChange={(next) => setMode("auto", next)}
+      />
+
+      <KnowledgeMode
+        icon="search"
+        title="Knowledge search tool"
+        blurb="The agent calls this on demand when it decides it needs more information, choosing what to look for mid-task."
+        mode={modes.search}
+        onChange={(next) => setMode("search", next)}
+      />
+
+      <div className="knowledge-privacy">
+        <Icon name="shield-check" size={14} color="var(--success-600)" />
+        Sources are indexed locally on this device — nothing is uploaded.
       </div>
     </div>
   );
