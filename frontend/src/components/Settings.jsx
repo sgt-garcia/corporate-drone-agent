@@ -589,7 +589,6 @@ function SourceStats({ items }) {
 // everything else lives here so the two surfaces can't drift apart.
 function KnowledgeSourceList({
   items,
-  max,
   noun,
   emptyText,
   confirmLabel,
@@ -617,8 +616,7 @@ function KnowledgeSourceList({
       <div className="folder-add" ref={addRowRef}>
         <div className="folder-add-row">
           <span className="folder-count">
-            {items.length}{" "}
-            <span className="folder-count-max">/ {max} {noun}</span>
+            {items.length} <span className="folder-count-noun">{noun}</span>
           </span>
           {addControl}
         </div>
@@ -1006,7 +1004,6 @@ function LocalFoldersConfig({
 
       <KnowledgeSourceList
         items={folders}
-        max={KNOWLEDGE_MAX}
         noun="folders"
         emptyText="No folders yet. Add one above to start building local context."
         confirmLabel="Remove folder?"
@@ -1450,7 +1447,7 @@ function JiraConfig({
             <span className="saved-key-row">
               <span className="token-clear-warning">
                 <Icon name="alert-triangle" size={13} color="var(--warning-700)" />
-                Token and selected projects will be cleared on save.
+                Token will be cleared on save.
               </span>
               <button
                 className="btn btn-ghost btn-sm"
@@ -1474,7 +1471,7 @@ function JiraConfig({
                 color={expirySoon ? "var(--warning-700)" : "var(--gray-400)"}
               />
               {expirySoon
-                ? `Token expires in ${expiry} days — generate a new one before enabling live sync.`
+                ? `Token expires in ${expiry} days — generate a new one to avoid interrupted scans.`
                 : `Token expires in ${expiry} days.`}
             </span>
           )}
@@ -1535,10 +1532,9 @@ function JiraConfig({
       {cfg.connected && (
         <KnowledgeSourceList
           items={projects}
-          max={JIRA_MAX}
           noun="projects"
           addRowRef={pickerRef}
-          emptyText="No projects yet. Add a Jira project above to scan its issues."
+          emptyText="No projects yet. Add a Jira project above to start scanning."
           confirmLabel="Remove project?"
           removeLabel="Remove project"
           onScanNow={scanNow}
@@ -2018,7 +2014,7 @@ function ConfluenceConfig({
             <span className="saved-key-row">
               <span className="token-clear-warning">
                 <Icon name="alert-triangle" size={13} color="var(--warning-700)" />
-                Token and selected spaces will be cleared on save.
+                Token will be cleared on save.
               </span>
               <button
                 className="btn btn-ghost btn-sm"
@@ -2042,7 +2038,7 @@ function ConfluenceConfig({
                 color={expirySoon ? "var(--warning-700)" : "var(--gray-400)"}
               />
               {expirySoon
-                ? `Token expires in ${expiry} days — generate a new one before enabling live sync.`
+                ? `Token expires in ${expiry} days — generate a new one to avoid interrupted scans.`
                 : `Token expires in ${expiry} days.`}
             </span>
           )}
@@ -2103,10 +2099,9 @@ function ConfluenceConfig({
       {cfg.connected && (
         <KnowledgeSourceList
           items={spaces}
-          max={CONFLUENCE_MAX}
           noun="spaces"
           addRowRef={pickerRef}
-          emptyText="No spaces yet. Add a Confluence space above to scan its pages."
+          emptyText="No spaces yet. Add a Confluence space above to start scanning."
           confirmLabel="Remove space?"
           removeLabel="Remove space"
           onScanNow={scanNow}
@@ -2412,7 +2407,7 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
           label="Secret access key"
           type="password"
           placeholder="AWS secret access key"
-          hint="Stored encrypted on this device - never synced."
+          hint="Stored encrypted on this device — never synced."
           value={config.secretKey ?? ""}
           configured={Boolean(config.secretKeyConfigured)}
           clear={Boolean(config.clearSecretKey)}

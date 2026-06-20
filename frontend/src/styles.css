@@ -1730,7 +1730,7 @@ select.input {
   color: var(--gray-700);
   white-space: nowrap;
 }
-.folder-count-max {
+.folder-count-noun {
   color: var(--gray-400);
   font-weight: 400;
 }
@@ -1951,12 +1951,16 @@ select.input {
   border-radius: var(--radius-sm);
   padding: 2px 7px;
   flex-shrink: 0;
+  box-sizing: border-box;
+  min-width: 46px;
+  display: inline-flex;
+  justify-content: center;
 }
 /* An unreachable Jira project flags its key chip red to match the error row. */
 .jira-key.error {
   color: var(--danger-700);
   background: var(--danger-50);
-  border-color: color-mix(in srgb, var(--danger-500) 45%, transparent);
+  border-color: color-mix(in srgb, var(--danger-500) 60%, transparent);
 }
 .jira-expiry {
   display: flex;
