@@ -1315,15 +1315,11 @@ function JiraConfig({
       }));
       setPickerSearch("");
       try {
-        const scannedProject = await onScanProject(project.id);
-        setCfg((current) => ({
-          ...current,
-          projects: current.projects.map((item) =>
-            item.id === scannedProject.id ? scannedProject : item
-          )
-        }));
+        // The scan runs in the background; its status arrives via SSE, so don't apply
+        // the trigger response here — it would clobber the live "scanning" status.
+        await onScanProject(project.id);
       } catch (error) {
-        setConnectError(error.message || "Project added, but Jira scan failed.");
+        setConnectError(error.message || "Project added, but the Jira scan couldn't start.");
       }
     } catch (error) {
       setConnectError(error.message || "Could not add Jira project.");
@@ -1367,13 +1363,7 @@ function JiraConfig({
     // pushes it over SSE, so there's no client-side scanning state to track here —
     // this mirrors the local-folder scan handler.
     try {
-      const savedProject = await onScanProject(id);
-      setCfg((current) => ({
-        ...current,
-        projects: current.projects.map((project) =>
-          project.id === savedProject.id ? savedProject : project
-        )
-      }));
+      await onScanProject(id);
     } catch (error) {
       setConnectError(error.message || "Could not scan Jira project.");
     }
@@ -1871,15 +1861,11 @@ function ConfluenceConfig({
       }));
       setPickerSearch("");
       try {
-        const scannedSpace = await onScanSpace(space.id);
-        setCfg((current) => ({
-          ...current,
-          spaces: current.spaces.map((item) =>
-            item.id === scannedSpace.id ? scannedSpace : item
-          )
-        }));
+        // The scan runs in the background; its status arrives via SSE, so don't apply
+        // the trigger response here — it would clobber the live "scanning" status.
+        await onScanSpace(space.id);
       } catch (error) {
-        setConnectError(error.message || "Space added, but Confluence scan failed.");
+        setConnectError(error.message || "Space added, but the Confluence scan couldn't start.");
       }
     } catch (error) {
       setConnectError(error.message || "Could not add Confluence space.");
@@ -1923,13 +1909,7 @@ function ConfluenceConfig({
     // it over SSE, so there's no client-side scanning state to track here — this mirrors
     // the Jira project scan handler.
     try {
-      const savedSpace = await onScanSpace(id);
-      setCfg((current) => ({
-        ...current,
-        spaces: current.spaces.map((space) =>
-          space.id === savedSpace.id ? savedSpace : space
-        )
-      }));
+      await onScanSpace(id);
     } catch (error) {
       setConnectError(error.message || "Could not scan Confluence space.");
     }

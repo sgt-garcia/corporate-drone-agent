@@ -754,15 +754,10 @@ export default function App() {
   async function scanJiraProject(projectId) {
     clearScanProgress(projectId);
     try {
-      const project = await scanJiraProjectRequest(projectId);
-      setSettings((currentSettings) => ({
-        ...currentSettings,
-        jira: {
-          ...(currentSettings.jira ?? emptySettings.jira),
-          projects: upsertById(currentSettings.jira?.projects ?? [], project)
-        }
-      }));
-      return project;
+      // Fire-and-forget: the scan runs in the background and its live status
+      // (scanning → scanned) arrives via SSE. Applying the immediate response here
+      // races with — and can clobber — that SSE status, hiding the scanning ticker.
+      await scanJiraProjectRequest(projectId);
     } catch (error) {
       setStatusText(error.message);
       throw error;
@@ -870,15 +865,10 @@ export default function App() {
   async function scanConfluenceSpace(spaceId) {
     clearScanProgress(spaceId);
     try {
-      const space = await scanConfluenceSpaceRequest(spaceId);
-      setSettings((currentSettings) => ({
-        ...currentSettings,
-        confluence: {
-          ...(currentSettings.confluence ?? emptySettings.confluence),
-          spaces: upsertById(currentSettings.confluence?.spaces ?? [], space)
-        }
-      }));
-      return space;
+      // Fire-and-forget: the scan runs in the background and its live status
+      // (scanning → scanned) arrives via SSE. Applying the immediate response here
+      // races with — and can clobber — that SSE status, hiding the scanning ticker.
+      await scanConfluenceSpaceRequest(spaceId);
     } catch (error) {
       setStatusText(error.message);
       throw error;
