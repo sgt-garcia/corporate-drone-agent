@@ -90,7 +90,7 @@ public class ConfluenceKnowledgeController {
                 .filter(candidate -> spaceId.equals(ConfluenceKnowledgeRootConfig.readSpaceId(candidate)))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Confluence space not found"));
-        ingestionService.scan(root);
+        ingestionService.scanInBackground(root);
         return settingsService.getConfluenceSettings().getSpaces().stream()
                 .filter(space -> spaceId.equals(space.getId()))
                 .findFirst()

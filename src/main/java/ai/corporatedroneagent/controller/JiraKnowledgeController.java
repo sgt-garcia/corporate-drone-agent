@@ -90,7 +90,7 @@ public class JiraKnowledgeController {
                 .filter(candidate -> projectId.equals(JiraKnowledgeRootConfig.readProjectId(candidate)))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found"));
-        ingestionService.scan(root);
+        ingestionService.scanInBackground(root);
         return settingsService.getJiraSettings().getProjects().stream()
                 .filter(project -> projectId.equals(project.getId()))
                 .findFirst()
