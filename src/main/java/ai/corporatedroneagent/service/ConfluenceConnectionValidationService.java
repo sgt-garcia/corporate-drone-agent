@@ -6,9 +6,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Base64;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -27,10 +25,7 @@ public class ConfluenceConnectionValidationService {
     private final HttpClient httpClient;
 
     public ConfluenceConnectionValidationService() {
-        this(HttpClient.newBuilder()
-                .connectTimeout(REQUEST_TIMEOUT)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build());
+        this(AtlassianHttp.newHttpClient(REQUEST_TIMEOUT));
     }
 
     ConfluenceConnectionValidationService(HttpClient httpClient) {
@@ -41,7 +36,7 @@ public class ConfluenceConnectionValidationService {
         HttpRequest request = HttpRequest.newBuilder(spacesUri(instanceUrl))
                 .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/json")
-                .header("Authorization", basicAuth(email, token))
+                .header("Authorization", AtlassianHttp.basicAuth(email, token))
                 .GET()
                 .build();
         try {
@@ -69,11 +64,6 @@ public class ConfluenceConnectionValidationService {
 
     private URI spacesUri(String instanceUrl) {
         return URI.create(ConfluenceKnowledgeReferences.apiBaseUrl(instanceUrl) + "/rest/api/space?limit=1");
-    }
-
-    private String basicAuth(String email, String token) {
-        String credentials = email + ":" + token;
-        return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
     }
 
     public record ValidationResult(

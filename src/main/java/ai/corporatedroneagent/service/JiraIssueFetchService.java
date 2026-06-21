@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -21,7 +20,6 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -77,10 +75,7 @@ public class JiraIssueFetchService {
     @Autowired
     public JiraIssueFetchService(ObjectMapper objectMapper) {
         this(
-                HttpClient.newBuilder()
-                        .connectTimeout(REQUEST_TIMEOUT)
-                        .followRedirects(HttpClient.Redirect.NORMAL)
-                        .build(),
+                AtlassianHttp.newHttpClient(REQUEST_TIMEOUT),
                 objectMapper
         );
     }
@@ -293,7 +288,7 @@ public class JiraIssueFetchService {
                     instanceUrl,
                     email,
                     token,
-                    "/rest/api/" + normalizedApiVersion + "/issue/" + urlEncodePathSegment(issueKey)
+                    "/rest/api/" + normalizedApiVersion + "/issue/" + AtlassianHttp.urlEncodePathSegment(issueKey)
                             + "/comment?startAt=" + startAt
                             + "&maxResults=" + COMMENT_PAGE_SIZE,
                     "Jira issue comments"
@@ -314,53 +309,53 @@ public class JiraIssueFetchService {
 
     private String issueText(String key, JsonNode fields, JsonNode comments) {
         StringBuilder text = new StringBuilder();
-        appendLine(text, "# " + displayName(key, fields.path("summary").asText("")));
-        appendField(text, "Issue key", key);
-        appendField(text, "Summary", fields.path("summary").asText(""));
-        appendField(text, "Project", projectName(fields.path("project")));
-        appendField(text, "Parent", parentName(fields.path("parent")));
-        appendField(text, "Type", fields.path("issuetype").path("name").asText(""));
-        appendField(text, "Status", fields.path("status").path("name").asText(""));
-        appendField(text, "Status category", fields.path("status").path("statusCategory").path("name").asText(""));
-        appendField(text, "Priority", fields.path("priority").path("name").asText(""));
-        appendField(text, "Resolution", fields.path("resolution").path("name").asText(""));
-        appendField(text, "Assignee", displayName(fields.path("assignee")));
-        appendField(text, "Reporter", displayName(fields.path("reporter")));
-        appendField(text, "Creator", displayName(fields.path("creator")));
-        appendField(text, "Labels", names(fields.path("labels"), ""));
-        appendField(text, "Components", names(fields.path("components"), "name"));
-        appendField(text, "Fix versions", names(fields.path("fixVersions"), "name"));
-        appendField(text, "Affected versions", names(fields.path("versions"), "name"));
-        appendField(text, "Created", fields.path("created").asText(""));
-        appendField(text, "Updated", fields.path("updated").asText(""));
-        appendField(text, "Resolved", fields.path("resolutiondate").asText(""));
-        appendField(text, "Due", fields.path("duedate").asText(""));
+        MarkdownLines.appendLine(text, "# " + displayName(key, fields.path("summary").asText("")));
+        MarkdownLines.appendField(text, "Issue key", key);
+        MarkdownLines.appendField(text, "Summary", fields.path("summary").asText(""));
+        MarkdownLines.appendField(text, "Project", projectName(fields.path("project")));
+        MarkdownLines.appendField(text, "Parent", parentName(fields.path("parent")));
+        MarkdownLines.appendField(text, "Type", fields.path("issuetype").path("name").asText(""));
+        MarkdownLines.appendField(text, "Status", fields.path("status").path("name").asText(""));
+        MarkdownLines.appendField(text, "Status category", fields.path("status").path("statusCategory").path("name").asText(""));
+        MarkdownLines.appendField(text, "Priority", fields.path("priority").path("name").asText(""));
+        MarkdownLines.appendField(text, "Resolution", fields.path("resolution").path("name").asText(""));
+        MarkdownLines.appendField(text, "Assignee", displayName(fields.path("assignee")));
+        MarkdownLines.appendField(text, "Reporter", displayName(fields.path("reporter")));
+        MarkdownLines.appendField(text, "Creator", displayName(fields.path("creator")));
+        MarkdownLines.appendField(text, "Labels", names(fields.path("labels"), ""));
+        MarkdownLines.appendField(text, "Components", names(fields.path("components"), "name"));
+        MarkdownLines.appendField(text, "Fix versions", names(fields.path("fixVersions"), "name"));
+        MarkdownLines.appendField(text, "Affected versions", names(fields.path("versions"), "name"));
+        MarkdownLines.appendField(text, "Created", fields.path("created").asText(""));
+        MarkdownLines.appendField(text, "Updated", fields.path("updated").asText(""));
+        MarkdownLines.appendField(text, "Resolved", fields.path("resolutiondate").asText(""));
+        MarkdownLines.appendField(text, "Due", fields.path("duedate").asText(""));
 
         String description = extractDocumentText(fields.path("description"));
         if (!description.isBlank()) {
-            appendLine(text, "");
-            appendLine(text, "## Description");
-            appendLine(text, "");
-            appendLine(text, description);
+            MarkdownLines.appendLine(text, "");
+            MarkdownLines.appendLine(text, "## Description");
+            MarkdownLines.appendLine(text, "");
+            MarkdownLines.appendLine(text, description);
         }
 
         if (comments.isArray() && !comments.isEmpty()) {
-            appendLine(text, "");
-            appendLine(text, "## Comments");
+            MarkdownLines.appendLine(text, "");
+            MarkdownLines.appendLine(text, "## Comments");
             for (JsonNode comment : comments) {
-                appendLine(text, "");
+                MarkdownLines.appendLine(text, "");
                 String heading = "### " + Strings.defaultIfBlank(displayName(comment.path("author")), "Unknown author");
                 String created = Strings.defaultIfBlank(comment.path("created").asText(""), "").trim();
                 if (!created.isBlank()) {
                     heading += " at " + created;
                 }
-                appendLine(text, heading);
-                appendField(text, "Updated", comment.path("updated").asText(""));
-                appendField(text, "Updated by", displayName(comment.path("updateAuthor")));
-                appendField(text, "Visibility", visibility(comment.path("visibility")));
+                MarkdownLines.appendLine(text, heading);
+                MarkdownLines.appendField(text, "Updated", comment.path("updated").asText(""));
+                MarkdownLines.appendField(text, "Updated by", displayName(comment.path("updateAuthor")));
+                MarkdownLines.appendField(text, "Visibility", visibility(comment.path("visibility")));
                 String body = extractDocumentText(comment.path("body"));
                 if (!body.isBlank()) {
-                    appendLine(text, body);
+                    MarkdownLines.appendLine(text, body);
                 }
             }
         }
@@ -368,23 +363,12 @@ public class JiraIssueFetchService {
     }
 
     private String issuePath(String apiVersion, String issueKey) {
-        return "/rest/api/" + apiVersion + "/issue/" + urlEncodePathSegment(issueKey)
-                + "?fields=" + urlEncode(READ_FIELDS);
+        return "/rest/api/" + apiVersion + "/issue/" + AtlassianHttp.urlEncodePathSegment(issueKey)
+                + "?fields=" + AtlassianHttp.urlEncode(READ_FIELDS);
     }
 
     private long manifestSizeBytes(String key, String summary) {
         return (key + "\n" + Strings.defaultIfBlank(summary, "")).getBytes(StandardCharsets.UTF_8).length;
-    }
-
-    private void appendField(StringBuilder builder, String label, String value) {
-        String trimmed = Strings.defaultIfBlank(value, "").trim();
-        if (!trimmed.isBlank()) {
-            appendLine(builder, label + ": " + trimmed);
-        }
-    }
-
-    private void appendLine(StringBuilder builder, String line) {
-        builder.append(line).append('\n');
     }
 
     private String displayName(String key, String summary) {
@@ -512,12 +496,12 @@ public class JiraIssueFetchService {
             jql += " AND updated >= \"" + JQL_TIMESTAMP.format(safeUpdatedSince.atOffset(ZoneOffset.UTC)) + "\"";
         }
         jql += " ORDER BY updated DESC";
-        String path = "/rest/api/3/search/jql?jql=" + urlEncode(jql)
+        String path = "/rest/api/3/search/jql?jql=" + AtlassianHttp.urlEncode(jql)
                 + "&maxResults=" + maxResults
-                + "&fields=" + urlEncode(MANIFEST_FIELDS)
+                + "&fields=" + AtlassianHttp.urlEncode(MANIFEST_FIELDS)
                 + "&failFast=false";
         if (!Strings.defaultIfBlank(nextPageToken, "").isBlank()) {
-            path += "&nextPageToken=" + urlEncode(nextPageToken);
+            path += "&nextPageToken=" + AtlassianHttp.urlEncode(nextPageToken);
         }
         return path;
     }
@@ -529,10 +513,10 @@ public class JiraIssueFetchService {
             jql += " AND updated >= \"" + JQL_TIMESTAMP.format(safeUpdatedSince.atOffset(ZoneOffset.UTC)) + "\"";
         }
         jql += " ORDER BY updated DESC";
-        return "/rest/api/2/search?jql=" + urlEncode(jql)
+        return "/rest/api/2/search?jql=" + AtlassianHttp.urlEncode(jql)
                 + "&startAt=" + Math.max(0, startAt)
                 + "&maxResults=" + maxResults
-                + "&fields=" + urlEncode(MANIFEST_FIELDS);
+                + "&fields=" + AtlassianHttp.urlEncode(MANIFEST_FIELDS);
     }
 
     private String jqlProjectLiteral(String projectKey) {
@@ -546,7 +530,7 @@ public class JiraIssueFetchService {
         HttpRequest request = HttpRequest.newBuilder(jiraUri(instanceUrl, path))
                 .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/json")
-                .header("Authorization", basicAuth(email, token))
+                .header("Authorization", AtlassianHttp.basicAuth(email, token))
                 .GET()
                 .build();
         try {
@@ -578,19 +562,6 @@ public class JiraIssueFetchService {
     private URI jiraUri(String instanceUrl, String path) {
         String base = instanceUrl.endsWith("/") ? instanceUrl.substring(0, instanceUrl.length() - 1) : instanceUrl;
         return URI.create(base + path);
-    }
-
-    private String basicAuth(String email, String token) {
-        String credentials = email + ":" + token;
-        return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private String urlEncode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
-
-    private String urlEncodePathSegment(String value) {
-        return urlEncode(value).replace("+", "%20");
     }
 
     private String normalizeApiVersion(String apiVersion) {

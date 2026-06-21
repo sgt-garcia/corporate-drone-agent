@@ -6,14 +6,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,10 +29,7 @@ public class JiraProjectDiscoveryService {
     @Autowired
     public JiraProjectDiscoveryService(ObjectMapper objectMapper) {
         this(
-                HttpClient.newBuilder()
-                        .connectTimeout(REQUEST_TIMEOUT)
-                        .followRedirects(HttpClient.Redirect.NORMAL)
-                        .build(),
+                AtlassianHttp.newHttpClient(REQUEST_TIMEOUT),
                 objectMapper
         );
     }
@@ -68,7 +62,7 @@ public class JiraProjectDiscoveryService {
         String normalizedApiVersion = normalizeApiVersion(apiVersion);
         String path = "/rest/api/" + normalizedApiVersion + "/project/search?maxResults=" + limit;
         if (!trimmedQuery.isBlank()) {
-            path += "&query=" + urlEncode(trimmedQuery);
+            path += "&query=" + AtlassianHttp.urlEncode(trimmedQuery);
         }
         JsonNode response = getJson(
                 instanceUrl,
@@ -110,7 +104,7 @@ public class JiraProjectDiscoveryService {
                 instanceUrl,
                 email,
                 token,
-                "/rest/api/" + normalizedApiVersion + "/project/" + urlEncodePathSegment(normalizedKey),
+                "/rest/api/" + normalizedApiVersion + "/project/" + AtlassianHttp.urlEncodePathSegment(normalizedKey),
                 "Jira project lookup"
         );
         return toProject(response, "just now")
@@ -121,7 +115,7 @@ public class JiraProjectDiscoveryService {
         HttpRequest request = HttpRequest.newBuilder(jiraUri(instanceUrl, path))
                 .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/json")
-                .header("Authorization", basicAuth(email, token))
+                .header("Authorization", AtlassianHttp.basicAuth(email, token))
                 .GET()
                 .build();
         try {
@@ -172,19 +166,6 @@ public class JiraProjectDiscoveryService {
     private URI jiraUri(String instanceUrl, String path) {
         String base = instanceUrl.endsWith("/") ? instanceUrl.substring(0, instanceUrl.length() - 1) : instanceUrl;
         return URI.create(base + path);
-    }
-
-    private String basicAuth(String email, String token) {
-        String credentials = email + ":" + token;
-        return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private String urlEncode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
-
-    private String urlEncodePathSegment(String value) {
-        return urlEncode(value).replace("+", "%20");
     }
 
     private String normalizeApiVersion(String apiVersion) {

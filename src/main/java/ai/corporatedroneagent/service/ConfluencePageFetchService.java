@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -20,7 +19,6 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -49,10 +47,7 @@ public class ConfluencePageFetchService {
     @Autowired
     public ConfluencePageFetchService(ObjectMapper objectMapper) {
         this(
-                HttpClient.newBuilder()
-                        .connectTimeout(REQUEST_TIMEOUT)
-                        .followRedirects(HttpClient.Redirect.NORMAL)
-                        .build(),
+                AtlassianHttp.newHttpClient(REQUEST_TIMEOUT),
                 objectMapper
         );
     }
@@ -170,19 +165,19 @@ public class ConfluencePageFetchService {
     private String pageText(JsonNode page) {
         StringBuilder text = new StringBuilder();
         String title = Strings.defaultIfBlank(page.path("title").asText(""), "").trim();
-        appendLine(text, "# " + (title.isBlank() ? "Untitled page" : title));
-        appendField(text, "Space", spaceName(page.path("space")));
-        appendField(text, "Breadcrumb", ancestors(page.path("ancestors")));
-        appendField(text, "Version", versionLabel(page.path("version")));
-        appendField(text, "Last updated", page.path("version").path("when").asText(""));
-        appendField(text, "Updated by", page.path("version").path("by").path("displayName").asText(""));
+        MarkdownLines.appendLine(text, "# " + (title.isBlank() ? "Untitled page" : title));
+        MarkdownLines.appendField(text, "Space", spaceName(page.path("space")));
+        MarkdownLines.appendField(text, "Breadcrumb", ancestors(page.path("ancestors")));
+        MarkdownLines.appendField(text, "Version", versionLabel(page.path("version")));
+        MarkdownLines.appendField(text, "Last updated", page.path("version").path("when").asText(""));
+        MarkdownLines.appendField(text, "Updated by", page.path("version").path("by").path("displayName").asText(""));
 
         String body = stripStorageMarkup(page.path("body").path("storage").path("value").asText(""));
         if (!body.isBlank()) {
-            appendLine(text, "");
-            appendLine(text, "## Content");
-            appendLine(text, "");
-            appendLine(text, body);
+            MarkdownLines.appendLine(text, "");
+            MarkdownLines.appendLine(text, "## Content");
+            MarkdownLines.appendLine(text, "");
+            MarkdownLines.appendLine(text, body);
         }
         return text.toString().strip();
     }
@@ -190,8 +185,8 @@ public class ConfluencePageFetchService {
     private String pagePath(String pageId) {
         // `version` already carries the author (`by`) and `when`; a separate `version.by`
         // expand is redundant and rejected with HTTP 400 by some Confluence instances.
-        return "/rest/api/content/" + urlEncodePathSegment(pageId)
-                + "?expand=" + urlEncode("body.storage,version,space,ancestors");
+        return "/rest/api/content/" + AtlassianHttp.urlEncodePathSegment(pageId)
+                + "?expand=" + AtlassianHttp.urlEncode("body.storage,version,space,ancestors");
     }
 
     private String pageSearchPath(String spaceKey, Instant updatedSince) {
@@ -201,9 +196,9 @@ public class ConfluencePageFetchService {
             cql += " and lastModified >= \"" + CQL_TIMESTAMP.format(safeUpdatedSince.atOffset(ZoneOffset.UTC)) + "\"";
         }
         cql += " order by lastModified desc";
-        return "/rest/api/content/search?cql=" + urlEncode(cql)
+        return "/rest/api/content/search?cql=" + AtlassianHttp.urlEncode(cql)
                 + "&limit=" + PAGE_SIZE
-                + "&expand=" + urlEncode("version");
+                + "&expand=" + AtlassianHttp.urlEncode("version");
     }
 
     // The CQL "next" cursor link Confluence returns is relative to the wiki context base, so it
@@ -289,17 +284,6 @@ public class ConfluencePageFetchService {
         return value.strip();
     }
 
-    private void appendField(StringBuilder builder, String label, String value) {
-        String trimmed = Strings.defaultIfBlank(value, "").trim();
-        if (!trimmed.isBlank()) {
-            appendLine(builder, label + ": " + trimmed);
-        }
-    }
-
-    private void appendLine(StringBuilder builder, String line) {
-        builder.append(line).append('\n');
-    }
-
     private java.util.Optional<Instant> parseTimestamp(String value) {
         String trimmed = Strings.defaultIfBlank(value, "").trim();
         if (trimmed.isBlank()) {
@@ -320,7 +304,7 @@ public class ConfluencePageFetchService {
         HttpRequest request = HttpRequest.newBuilder(confluenceUri(instanceUrl, path))
                 .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/json")
-                .header("Authorization", basicAuth(email, token))
+                .header("Authorization", AtlassianHttp.basicAuth(email, token))
                 .GET()
                 .build();
         try {
@@ -351,19 +335,6 @@ public class ConfluencePageFetchService {
 
     private URI confluenceUri(String instanceUrl, String path) {
         return URI.create(ConfluenceKnowledgeReferences.apiBaseUrl(instanceUrl) + path);
-    }
-
-    private String basicAuth(String email, String token) {
-        String credentials = email + ":" + token;
-        return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private String urlEncode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
-
-    private String urlEncodePathSegment(String value) {
-        return urlEncode(value).replace("+", "%20");
     }
 
     public record ConfluencePageManifest(
