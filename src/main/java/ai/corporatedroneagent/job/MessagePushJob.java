@@ -305,15 +305,13 @@ public class MessagePushJob {
     }
 
     private void publishStatus(UUID conversationId) {
-        MessageDto status = new MessageDto(
-                UUID.randomUUID(),
-                "status",
-                "...",
-                Instant.now(),
-                List.of()
-        );
+        MessageDto status = transientMessageDto("status", "...");
         eventService.publish("message-created", new MessageEventDto(conversationId, status));
         setConversationStatus(conversationId, "running");
+    }
+
+    private MessageDto transientMessageDto(String role, String content) {
+        return new MessageDto(UUID.randomUUID(), role, content, Instant.now(), List.of());
     }
 
     // Persist the conversation's run status and notify the sidebar. States:
@@ -374,13 +372,7 @@ public class MessagePushJob {
     }
 
     private void publishTransientMessage(UUID conversationId, String role, String content) {
-        MessageDto message = new MessageDto(
-                UUID.randomUUID(),
-                role,
-                content,
-                Instant.now(),
-                List.of()
-        );
+        MessageDto message = transientMessageDto(role, content);
         eventService.publish("message-created", new MessageEventDto(conversationId, message));
         // Transient messages are always failure replies (error/busy/saturated/
         // shutting-down), so the conversation lands in the error state.

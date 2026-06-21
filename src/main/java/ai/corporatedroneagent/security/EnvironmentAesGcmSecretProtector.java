@@ -13,6 +13,7 @@ import javax.crypto.spec.SecretKeySpec;
 class EnvironmentAesGcmSecretProtector implements SecretProtector {
 
     private static final String ALGORITHM = "aes-gcm-env-v1";
+    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
     private static final int GCM_TAG_BITS = 128;
     private static final int IV_BYTES = 12;
 
@@ -29,7 +30,7 @@ class EnvironmentAesGcmSecretProtector implements SecretProtector {
             byte[] iv = new byte[IV_BYTES];
             secureRandom.nextBytes(iv);
 
-            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] ciphertext = cipher.doFinal(secret.getBytes(StandardCharsets.UTF_8));
 
@@ -44,9 +45,7 @@ class EnvironmentAesGcmSecretProtector implements SecretProtector {
 
     @Override
     public String unprotect(StoredSecret secret) {
-        if (!ALGORITHM.equals(secret.algorithm())) {
-            throw new IllegalArgumentException("Unsupported secret algorithm: " + secret.algorithm());
-        }
+        requireAlgorithm(secret, ALGORITHM);
 
         try {
             byte[] payload = Base64.getDecoder().decode(secret.value());
@@ -56,7 +55,7 @@ class EnvironmentAesGcmSecretProtector implements SecretProtector {
             byte[] ciphertext = new byte[buffer.remaining()];
             buffer.get(ciphertext);
 
-            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] plaintext = cipher.doFinal(ciphertext);
             return new String(plaintext, StandardCharsets.UTF_8);

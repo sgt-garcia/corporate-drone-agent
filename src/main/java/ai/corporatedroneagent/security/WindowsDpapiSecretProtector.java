@@ -43,15 +43,9 @@ class WindowsDpapiSecretProtector implements SecretProtector {
 
     @Override
     public String unprotect(StoredSecret secret) {
-        ensureAlgorithm(secret);
+        requireAlgorithm(secret, ALGORITHM);
         byte[] bytes = Base64.getDecoder().decode(runPowerShell(UNPROTECT_SCRIPT, secret.value()));
         return new String(bytes, StandardCharsets.UTF_8);
-    }
-
-    private void ensureAlgorithm(StoredSecret secret) {
-        if (!ALGORITHM.equals(secret.algorithm())) {
-            throw new IllegalArgumentException("Unsupported secret algorithm: " + secret.algorithm());
-        }
     }
 
     private String runPowerShell(String script, String input) {
