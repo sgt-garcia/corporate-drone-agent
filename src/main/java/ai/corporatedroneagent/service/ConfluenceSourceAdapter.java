@@ -42,6 +42,12 @@ public class ConfluenceSourceAdapter implements KnowledgeSourceAdapter {
         return new Session(connectionResolver.resolve(root), spaceFromRoot(root));
     }
 
+    @Override
+    public String scanProgressId(KnowledgeRoot root) {
+        // A Confluence space's settings row keys on the external space id, not the root id.
+        return ConfluenceKnowledgeRootConfig.readSpaceId(root);
+    }
+
     private ConfluenceSpaceDto spaceFromRoot(KnowledgeRoot root) {
         ConfluenceSpaceDto space = new ConfluenceSpaceDto();
         space.setId(ConfluenceKnowledgeRootConfig.readSpaceId(root));

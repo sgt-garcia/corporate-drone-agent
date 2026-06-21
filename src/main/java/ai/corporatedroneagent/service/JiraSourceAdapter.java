@@ -38,6 +38,12 @@ public class JiraSourceAdapter implements KnowledgeSourceAdapter {
         return new Session(connectionResolver.resolve(root), projectFromRoot(root));
     }
 
+    @Override
+    public String scanProgressId(KnowledgeRoot root) {
+        // A Jira project's settings row keys on the external project id, not the root id.
+        return JiraKnowledgeRootConfig.readProjectId(root);
+    }
+
     private JiraProjectDto projectFromRoot(KnowledgeRoot root) {
         JiraProjectDto project = new JiraProjectDto();
         project.setId(JiraKnowledgeRootConfig.readProjectId(root));

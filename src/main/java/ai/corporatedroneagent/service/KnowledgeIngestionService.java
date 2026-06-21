@@ -56,7 +56,7 @@ public class KnowledgeIngestionService {
                     root,
                     adapter,
                     () -> rootId != null && coordinator.isScanCancelled(rootId),
-                    KnowledgeScanProgress.emitter(eventService, String.valueOf(rootId)));
+                    KnowledgeScanProgress.emitter(eventService, adapter.scanProgressId(root)));
         } finally {
             if (rootId != null) {
                 coordinator.finishScan(rootId);

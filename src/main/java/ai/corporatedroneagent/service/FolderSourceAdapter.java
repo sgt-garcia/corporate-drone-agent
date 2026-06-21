@@ -59,6 +59,12 @@ public class FolderSourceAdapter implements KnowledgeSourceAdapter {
         return new Session(folderPath);
     }
 
+    @Override
+    public String scanProgressId(KnowledgeRoot root) {
+        // A folder's settings row keys on the root id (SettingsService maps folder.id = root id).
+        return String.valueOf(root.getId());
+    }
+
     private Path folderPath(String reference) {
         try {
             return Path.of(reference);
