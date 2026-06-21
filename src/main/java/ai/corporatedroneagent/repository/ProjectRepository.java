@@ -1,5 +1,9 @@
 package ai.corporatedroneagent.repository;
 
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.instant;
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.queryForOptional;
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.timestamp;
+
 import ai.corporatedroneagent.model.Project;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -8,7 +12,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,15 +30,7 @@ public class ProjectRepository {
     }
 
     public Optional<Project> findById(UUID id) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM projects WHERE id = ?",
-                    this::mapProject,
-                    id
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(jdbcTemplate, "SELECT * FROM projects WHERE id = ?", this::mapProject, id);
     }
 
     @Transactional
@@ -124,14 +119,5 @@ public class ProjectRepository {
                     project.getId()
             );
         }
-    }
-
-    private Timestamp timestamp(Instant instant) {
-        return instant == null ? null : Timestamp.from(instant);
-    }
-
-    private Instant instant(ResultSet resultSet, String columnName) throws SQLException {
-        Timestamp timestamp = resultSet.getTimestamp(columnName);
-        return timestamp == null ? null : timestamp.toInstant();
     }
 }

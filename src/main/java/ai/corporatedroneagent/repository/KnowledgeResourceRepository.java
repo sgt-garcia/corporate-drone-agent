@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.repository;
 
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.instant;
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.queryForOptional;
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.timestamp;
 
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
@@ -13,7 +14,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -27,28 +27,17 @@ public class KnowledgeResourceRepository {
     }
 
     public Optional<KnowledgeResource> findById(UUID id) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM knowledge_resources WHERE id = ?",
-                    this::mapResource,
-                    id
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(jdbcTemplate, "SELECT * FROM knowledge_resources WHERE id = ?", this::mapResource, id);
     }
 
     public Optional<KnowledgeResource> findByRootIdAndReference(UUID rootId, String reference) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM knowledge_resources WHERE root_id = ? AND resource_reference = ?",
-                    this::mapResource,
-                    rootId,
-                    reference
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(
+                jdbcTemplate,
+                "SELECT * FROM knowledge_resources WHERE root_id = ? AND resource_reference = ?",
+                this::mapResource,
+                rootId,
+                reference
+        );
     }
 
     public List<KnowledgeResource> findByRootId(UUID rootId) {

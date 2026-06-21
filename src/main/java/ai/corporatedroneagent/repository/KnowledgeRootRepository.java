@@ -1,16 +1,19 @@
 package ai.corporatedroneagent.repository;
 
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.instant;
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.nullableBoolean;
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.queryForOptional;
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.timestamp;
+
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
 import ai.corporatedroneagent.model.knowledge.WorkStatus;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -32,28 +35,17 @@ public class KnowledgeRootRepository {
     }
 
     public Optional<KnowledgeRoot> findById(UUID id) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM knowledge_roots WHERE id = ?",
-                    this::mapRoot,
-                    id
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(jdbcTemplate, "SELECT * FROM knowledge_roots WHERE id = ?", this::mapRoot, id);
     }
 
     public Optional<KnowledgeRoot> findByIdAndSource(UUID id, KnowledgeSource source) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM knowledge_roots WHERE id = ? AND source_type = ?",
-                    this::mapRoot,
-                    id,
-                    source.name()
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(
+                jdbcTemplate,
+                "SELECT * FROM knowledge_roots WHERE id = ? AND source_type = ?",
+                this::mapRoot,
+                id,
+                source.name()
+        );
     }
 
     public List<KnowledgeRoot> findBySource(KnowledgeSource source) {
@@ -69,16 +61,13 @@ public class KnowledgeRootRepository {
     }
 
     public Optional<KnowledgeRoot> findBySourceAndReference(KnowledgeSource source, String reference) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM knowledge_roots WHERE source_type = ? AND root_reference = ?",
-                    this::mapRoot,
-                    source.name(),
-                    reference
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(
+                jdbcTemplate,
+                "SELECT * FROM knowledge_roots WHERE source_type = ? AND root_reference = ?",
+                this::mapRoot,
+                source.name(),
+                reference
+        );
     }
 
     public KnowledgeRoot save(KnowledgeRoot root) {
@@ -183,17 +172,4 @@ public class KnowledgeRootRepository {
         return root;
     }
 
-    private Boolean nullableBoolean(ResultSet resultSet, String columnName) throws SQLException {
-        boolean value = resultSet.getBoolean(columnName);
-        return resultSet.wasNull() ? null : value;
-    }
-
-    private Timestamp timestamp(Instant instant) {
-        return instant == null ? null : Timestamp.from(instant);
-    }
-
-    private Instant instant(ResultSet resultSet, String columnName) throws SQLException {
-        Timestamp timestamp = resultSet.getTimestamp(columnName);
-        return timestamp == null ? null : timestamp.toInstant();
-    }
 }

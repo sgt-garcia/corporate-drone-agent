@@ -2,6 +2,7 @@ package ai.corporatedroneagent.repository;
 
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.instant;
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.nullableBoolean;
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.queryForOptional;
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.timestamp;
 
 import ai.corporatedroneagent.model.knowledge.KnowledgeRootScan;
@@ -12,7 +13,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -26,15 +26,7 @@ public class KnowledgeRootScanRepository {
     }
 
     public Optional<KnowledgeRootScan> findById(UUID id) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM knowledge_root_scans WHERE id = ?",
-                    this::mapScan,
-                    id
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(jdbcTemplate, "SELECT * FROM knowledge_root_scans WHERE id = ?", this::mapScan, id);
     }
 
     public Optional<KnowledgeRootScan> findLatestByRootId(UUID rootId) {

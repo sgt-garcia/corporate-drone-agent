@@ -2,6 +2,7 @@ package ai.corporatedroneagent.repository;
 
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.instant;
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.nullableBoolean;
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.queryForOptional;
 import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.timestamp;
 
 import ai.corporatedroneagent.model.knowledge.KnowledgePipelineReason;
@@ -20,7 +21,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -86,15 +86,12 @@ public class KnowledgeResourcePipelineRepository {
     }
 
     public Optional<KnowledgeResourceRead> findReadByResourceId(UUID resourceId) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM knowledge_resource_reads WHERE resource_id = ?",
-                    this::mapRead,
-                    resourceId
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(
+                jdbcTemplate,
+                "SELECT * FROM knowledge_resource_reads WHERE resource_id = ?",
+                this::mapRead,
+                resourceId
+        );
     }
 
     public Set<UUID> findReusablePipelineResourceIdsByRootId(UUID rootId) {
@@ -180,15 +177,12 @@ public class KnowledgeResourcePipelineRepository {
     }
 
     public Optional<KnowledgeResourceConversion> findConversionByResourceId(UUID resourceId) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM knowledge_resource_conversions WHERE resource_id = ?",
-                    this::mapConversion,
-                    resourceId
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(
+                jdbcTemplate,
+                "SELECT * FROM knowledge_resource_conversions WHERE resource_id = ?",
+                this::mapConversion,
+                resourceId
+        );
     }
 
     public KnowledgeResourceConversion saveConversion(KnowledgeResourceConversion conversion) {
@@ -238,15 +232,12 @@ public class KnowledgeResourcePipelineRepository {
     }
 
     public Optional<KnowledgeResourceIndex> findIndexByChunkId(UUID chunkId) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM knowledge_resource_indexes WHERE chunk_id = ?",
-                    this::mapIndex,
-                    chunkId
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(
+                jdbcTemplate,
+                "SELECT * FROM knowledge_resource_indexes WHERE chunk_id = ?",
+                this::mapIndex,
+                chunkId
+        );
     }
 
     public KnowledgeResourceIndex saveIndex(KnowledgeResourceIndex index) {

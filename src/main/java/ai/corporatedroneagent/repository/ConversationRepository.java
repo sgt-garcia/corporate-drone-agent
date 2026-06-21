@@ -1,5 +1,8 @@
 package ai.corporatedroneagent.repository;
 
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.instant;
+import static ai.corporatedroneagent.repository.KnowledgeRepositorySupport.queryForOptional;
+
 import ai.corporatedroneagent.dto.ConversationSummaryDto;
 import ai.corporatedroneagent.dto.MessageSourceDto;
 import ai.corporatedroneagent.model.Conversation;
@@ -16,7 +19,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,15 +57,7 @@ public class ConversationRepository {
     }
 
     public Optional<Conversation> findById(UUID id) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM conversations WHERE id = ?",
-                    this::mapConversation,
-                    id
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
+        return queryForOptional(jdbcTemplate, "SELECT * FROM conversations WHERE id = ?", this::mapConversation, id);
     }
 
     public List<ConversationSummaryDto> findSummariesByProjectId(UUID projectId) {
@@ -319,22 +313,17 @@ public class ConversationRepository {
     }
 
     private boolean lastMessageMatches(UUID conversationId, UUID expectedMessageId, String expectedRole) {
-        try {
-            Boolean matches = jdbcTemplate.queryForObject("""
-                    SELECT id, role
-                    FROM conversation_messages
-                    WHERE conversation_id = ?
-                    ORDER BY message_index DESC, created_at DESC
-                    LIMIT 1
-                    """,
-                    (resultSet, rowNumber) -> expectedMessageId.equals(resultSet.getObject("id", UUID.class))
-                            && expectedRole.equals(resultSet.getString("role")),
-                    conversationId
-            );
-            return Boolean.TRUE.equals(matches);
-        } catch (EmptyResultDataAccessException exception) {
-            return false;
-        }
+        return queryForOptional(jdbcTemplate, """
+                SELECT id, role
+                FROM conversation_messages
+                WHERE conversation_id = ?
+                ORDER BY message_index DESC, created_at DESC
+                LIMIT 1
+                """,
+                (resultSet, rowNumber) -> expectedMessageId.equals(resultSet.getObject("id", UUID.class))
+                        && expectedRole.equals(resultSet.getString("role")),
+                conversationId
+        ).orElse(false);
     }
 
     private boolean exists(UUID conversationId) {
@@ -348,10 +337,5 @@ public class ConversationRepository {
 
     private Timestamp timestamp(Instant instant) {
         return instant == null ? Timestamp.from(Instant.now()) : Timestamp.from(instant);
-    }
-
-    private Instant instant(ResultSet resultSet, String columnName) throws SQLException {
-        Timestamp timestamp = resultSet.getTimestamp(columnName);
-        return timestamp == null ? null : timestamp.toInstant();
     }
 }
