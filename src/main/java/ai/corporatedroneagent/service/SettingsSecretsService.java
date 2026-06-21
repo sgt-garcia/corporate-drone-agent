@@ -2,11 +2,12 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.model.ApiKeySettings;
 import ai.corporatedroneagent.model.ApplicationSettings;
-import ai.corporatedroneagent.model.BedrockSettings;
 import ai.corporatedroneagent.security.SecretStore;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -24,15 +25,52 @@ public class SettingsSecretsService {
     private static final String DEEPSEEK_API_KEY = "settings.deepSeek.apiKey";
     private static final String JIRA_API_TOKEN = "settings.jira.token";
     private static final String CONFLUENCE_API_TOKEN = "settings.confluence.token";
-    private static final List<SecretBinding> SECRET_BINDINGS = List.of(
-            new SecretBinding(OPENAI_API_KEY, ApplicationSettings::getOpenAi),
-            new SecretBinding(OPENAI_SDK_API_KEY, ApplicationSettings::getOpenAiSdk),
-            new SecretBinding(AZURE_OPENAI_API_KEY, ApplicationSettings::getAzureOpenAi),
-            new SecretBinding(MISTRAL_API_KEY, ApplicationSettings::getMistral),
-            new SecretBinding(GEMINI_API_KEY, ApplicationSettings::getGemini),
-            new SecretBinding(ANTHROPIC_API_KEY, ApplicationSettings::getAnthropic),
-            new SecretBinding(GROQ_API_KEY, ApplicationSettings::getGroq),
-            new SecretBinding(DEEPSEEK_API_KEY, ApplicationSettings::getDeepSeek)
+
+    // Every persisted secret, in one place. The eight provider API keys share the
+    // ApiKeySettings interface (via apiKey(...)); Bedrock's two keys and the Jira/Confluence
+    // tokens use their own accessors. Bedrock's secret key has no last-four, so its setter is
+    // null and the status pass skips it.
+    private static final List<SecretField> SECRETS = List.of(
+            apiKey(OPENAI_API_KEY, ApplicationSettings::getOpenAi),
+            apiKey(OPENAI_SDK_API_KEY, ApplicationSettings::getOpenAiSdk),
+            apiKey(AZURE_OPENAI_API_KEY, ApplicationSettings::getAzureOpenAi),
+            apiKey(MISTRAL_API_KEY, ApplicationSettings::getMistral),
+            apiKey(GEMINI_API_KEY, ApplicationSettings::getGemini),
+            apiKey(ANTHROPIC_API_KEY, ApplicationSettings::getAnthropic),
+            apiKey(GROQ_API_KEY, ApplicationSettings::getGroq),
+            apiKey(DEEPSEEK_API_KEY, ApplicationSettings::getDeepSeek),
+            new SecretField(
+                    BEDROCK_ACCESS_KEY,
+                    s -> s.getBedrock().getAccessKey(),
+                    s -> s.getBedrock().isClearAccessKey(),
+                    (s, v) -> s.getBedrock().setAccessKey(v),
+                    (s, b) -> s.getBedrock().setClearAccessKey(b),
+                    (s, b) -> s.getBedrock().setAccessKeyConfigured(b),
+                    (s, v) -> s.getBedrock().setAccessKeyLastFour(v)),
+            new SecretField(
+                    BEDROCK_SECRET_KEY,
+                    s -> s.getBedrock().getSecretKey(),
+                    s -> s.getBedrock().isClearSecretKey(),
+                    (s, v) -> s.getBedrock().setSecretKey(v),
+                    (s, b) -> s.getBedrock().setClearSecretKey(b),
+                    (s, b) -> s.getBedrock().setSecretKeyConfigured(b),
+                    null),
+            new SecretField(
+                    JIRA_API_TOKEN,
+                    s -> s.getJira().getToken(),
+                    s -> s.getJira().isClearToken(),
+                    (s, v) -> s.getJira().setToken(v),
+                    (s, b) -> s.getJira().setClearToken(b),
+                    (s, b) -> s.getJira().setTokenConfigured(b),
+                    (s, v) -> s.getJira().setTokenLastFour(v)),
+            new SecretField(
+                    CONFLUENCE_API_TOKEN,
+                    s -> s.getConfluence().getToken(),
+                    s -> s.getConfluence().isClearToken(),
+                    (s, v) -> s.getConfluence().setToken(v),
+                    (s, b) -> s.getConfluence().setClearToken(b),
+                    (s, b) -> s.getConfluence().setTokenConfigured(b),
+                    (s, v) -> s.getConfluence().setTokenLastFour(v))
     );
 
     private final SecretStore secretStore;
@@ -42,127 +80,38 @@ public class SettingsSecretsService {
     }
 
     public void saveSubmittedSecrets(ApplicationSettings settings) {
-        SECRET_BINDINGS.forEach(binding -> saveSubmittedSecret(settings, binding));
-        saveSubmittedBedrockSecrets(settings);
-        saveSubmittedJiraToken(settings);
-        saveSubmittedConfluenceToken(settings);
+        SECRETS.forEach(secret -> {
+            if (secret.clearRequested().test(settings)) {
+                secretStore.delete(secret.secretKey());
+                return;
+            }
+            String value = secret.value().apply(settings);
+            if (hasText(value)) {
+                secretStore.put(secret.secretKey(), value);
+            }
+        });
     }
 
     public void applySecretValues(ApplicationSettings settings) {
-        SECRET_BINDINGS.forEach(binding -> {
-            String apiKey = secretStore.get(binding.secretKey()).orElse("");
-            binding.providerSettings(settings).setApiKey(apiKey);
-        });
-        applyBedrockSecretValues(settings);
-        settings.getJira().setToken(secretStore.get(JIRA_API_TOKEN).orElse(""));
-        settings.getConfluence().setToken(secretStore.get(CONFLUENCE_API_TOKEN).orElse(""));
+        SECRETS.forEach(secret ->
+                secret.setValue().accept(settings, secretStore.get(secret.secretKey()).orElse("")));
     }
 
     public void applySecretStatus(ApplicationSettings settings) {
-        SECRET_BINDINGS.forEach(binding -> applyStatus(settings, binding));
-        applyBedrockSecretStatus(settings);
-        applyJiraTokenStatus(settings);
-        applyConfluenceTokenStatus(settings);
+        SECRETS.forEach(secret -> {
+            Optional<String> stored = secretStore.get(secret.secretKey());
+            secret.setConfigured().accept(settings, stored.isPresent());
+            if (secret.setLastFour() != null) {
+                secret.setLastFour().accept(settings, stored.map(this::lastFour).orElse(""));
+            }
+        });
     }
 
     public void clearSecretValues(ApplicationSettings settings) {
-        SECRET_BINDINGS.forEach(binding -> {
-            ApiKeySettings providerSettings = binding.providerSettings(settings);
-            providerSettings.setApiKey("");
-            providerSettings.setClearApiKey(false);
+        SECRETS.forEach(secret -> {
+            secret.setValue().accept(settings, "");
+            secret.setClearRequested().accept(settings, false);
         });
-        clearBedrockSecretValues(settings);
-        settings.getJira().setToken("");
-        settings.getJira().setClearToken(false);
-        settings.getConfluence().setToken("");
-        settings.getConfluence().setClearToken(false);
-    }
-
-    private void saveSubmittedSecret(ApplicationSettings settings, SecretBinding binding) {
-        ApiKeySettings providerSettings = binding.providerSettings(settings);
-        String apiKey = providerSettings.getApiKey();
-        if (providerSettings.isClearApiKey()) {
-            secretStore.delete(binding.secretKey());
-        } else if (hasText(apiKey)) {
-            secretStore.put(binding.secretKey(), apiKey);
-        }
-    }
-
-    private void applyStatus(ApplicationSettings settings, SecretBinding binding) {
-        Optional<String> secret = secretStore.get(binding.secretKey());
-        ApiKeySettings providerSettings = binding.providerSettings(settings);
-        providerSettings.setApiKeyConfigured(secret.isPresent());
-        providerSettings.setApiKeyLastFour(secret.map(this::lastFour).orElse(""));
-    }
-
-    private void saveSubmittedBedrockSecrets(ApplicationSettings settings) {
-        BedrockSettings bedrock = settings.getBedrock();
-        if (bedrock.isClearAccessKey()) {
-            secretStore.delete(BEDROCK_ACCESS_KEY);
-        } else if (hasText(bedrock.getAccessKey())) {
-            secretStore.put(BEDROCK_ACCESS_KEY, bedrock.getAccessKey());
-        }
-
-        if (bedrock.isClearSecretKey()) {
-            secretStore.delete(BEDROCK_SECRET_KEY);
-        } else if (hasText(bedrock.getSecretKey())) {
-            secretStore.put(BEDROCK_SECRET_KEY, bedrock.getSecretKey());
-        }
-    }
-
-    private void applyBedrockSecretValues(ApplicationSettings settings) {
-        BedrockSettings bedrock = settings.getBedrock();
-        bedrock.setAccessKey(secretStore.get(BEDROCK_ACCESS_KEY).orElse(""));
-        bedrock.setSecretKey(secretStore.get(BEDROCK_SECRET_KEY).orElse(""));
-    }
-
-    private void applyBedrockSecretStatus(ApplicationSettings settings) {
-        BedrockSettings bedrock = settings.getBedrock();
-        Optional<String> accessKey = secretStore.get(BEDROCK_ACCESS_KEY);
-        Optional<String> secretKey = secretStore.get(BEDROCK_SECRET_KEY);
-        bedrock.setAccessKeyConfigured(accessKey.isPresent());
-        bedrock.setAccessKeyLastFour(accessKey.map(this::lastFour).orElse(""));
-        bedrock.setSecretKeyConfigured(secretKey.isPresent());
-    }
-
-    private void clearBedrockSecretValues(ApplicationSettings settings) {
-        BedrockSettings bedrock = settings.getBedrock();
-        bedrock.setAccessKey("");
-        bedrock.setClearAccessKey(false);
-        bedrock.setSecretKey("");
-        bedrock.setClearSecretKey(false);
-    }
-
-    private void saveSubmittedJiraToken(ApplicationSettings settings) {
-        var jira = settings.getJira();
-        if (jira.isClearToken()) {
-            secretStore.delete(JIRA_API_TOKEN);
-        } else if (hasText(jira.getToken())) {
-            secretStore.put(JIRA_API_TOKEN, jira.getToken());
-        }
-    }
-
-    private void applyJiraTokenStatus(ApplicationSettings settings) {
-        Optional<String> token = secretStore.get(JIRA_API_TOKEN);
-        var jira = settings.getJira();
-        jira.setTokenConfigured(token.isPresent());
-        jira.setTokenLastFour(token.map(this::lastFour).orElse(""));
-    }
-
-    private void saveSubmittedConfluenceToken(ApplicationSettings settings) {
-        var confluence = settings.getConfluence();
-        if (confluence.isClearToken()) {
-            secretStore.delete(CONFLUENCE_API_TOKEN);
-        } else if (hasText(confluence.getToken())) {
-            secretStore.put(CONFLUENCE_API_TOKEN, confluence.getToken());
-        }
-    }
-
-    private void applyConfluenceTokenStatus(ApplicationSettings settings) {
-        Optional<String> token = secretStore.get(CONFLUENCE_API_TOKEN);
-        var confluence = settings.getConfluence();
-        confluence.setTokenConfigured(token.isPresent());
-        confluence.setTokenLastFour(token.map(this::lastFour).orElse(""));
     }
 
     private String lastFour(String value) {
@@ -173,14 +122,30 @@ public class SettingsSecretsService {
         return value != null && !value.isBlank();
     }
 
-    private record SecretBinding(
-            String secretKey,
-            Function<ApplicationSettings, ApiKeySettings> settingsAccessor
-    ) {
-
-        ApiKeySettings providerSettings(ApplicationSettings settings) {
-            return settingsAccessor.apply(settings);
-        }
+    private static SecretField apiKey(String secretKey, Function<ApplicationSettings, ApiKeySettings> accessor) {
+        return new SecretField(
+                secretKey,
+                s -> accessor.apply(s).getApiKey(),
+                s -> accessor.apply(s).isClearApiKey(),
+                (s, v) -> accessor.apply(s).setApiKey(v),
+                (s, b) -> accessor.apply(s).setClearApiKey(b),
+                (s, b) -> accessor.apply(s).setApiKeyConfigured(b),
+                (s, v) -> accessor.apply(s).setApiKeyLastFour(v));
     }
 
+    /**
+     * One persisted secret: how to read its submitted value and clear flag, and how to write
+     * the value, clear flag, configured flag, and (optionally) last-four back onto the settings.
+     * {@code setLastFour} is null for secrets that expose no last-four (Bedrock's secret key).
+     */
+    private record SecretField(
+            String secretKey,
+            Function<ApplicationSettings, String> value,
+            Predicate<ApplicationSettings> clearRequested,
+            BiConsumer<ApplicationSettings, String> setValue,
+            BiConsumer<ApplicationSettings, Boolean> setClearRequested,
+            BiConsumer<ApplicationSettings, Boolean> setConfigured,
+            BiConsumer<ApplicationSettings, String> setLastFour
+    ) {
+    }
 }
