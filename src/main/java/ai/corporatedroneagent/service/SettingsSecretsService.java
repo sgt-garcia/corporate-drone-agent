@@ -41,17 +41,6 @@ public class SettingsSecretsService {
         this.secretStore = secretStore;
     }
 
-    public boolean migratePlaintextSecrets(ApplicationSettings settings) {
-        boolean migrated = false;
-        for (SecretBinding binding : SECRET_BINDINGS) {
-            migrated = migrateSecret(settings, binding) || migrated;
-        }
-        migrated = migrateBedrockSecrets(settings) || migrated;
-        migrated = migrateJiraToken(settings) || migrated;
-        migrated = migrateConfluenceToken(settings) || migrated;
-        return migrated;
-    }
-
     public void saveSubmittedSecrets(ApplicationSettings settings) {
         SECRET_BINDINGS.forEach(binding -> saveSubmittedSecret(settings, binding));
         saveSubmittedBedrockSecrets(settings);
@@ -89,17 +78,6 @@ public class SettingsSecretsService {
         settings.getConfluence().setClearToken(false);
     }
 
-    private boolean migrateSecret(ApplicationSettings settings, SecretBinding binding) {
-        ApiKeySettings providerSettings = binding.providerSettings(settings);
-        String value = providerSettings.getApiKey();
-        if (!hasText(value)) {
-            return false;
-        }
-        secretStore.put(binding.secretKey(), value);
-        providerSettings.setApiKey("");
-        return true;
-    }
-
     private void saveSubmittedSecret(ApplicationSettings settings, SecretBinding binding) {
         ApiKeySettings providerSettings = binding.providerSettings(settings);
         String apiKey = providerSettings.getApiKey();
@@ -115,22 +93,6 @@ public class SettingsSecretsService {
         ApiKeySettings providerSettings = binding.providerSettings(settings);
         providerSettings.setApiKeyConfigured(secret.isPresent());
         providerSettings.setApiKeyLastFour(secret.map(this::lastFour).orElse(""));
-    }
-
-    private boolean migrateBedrockSecrets(ApplicationSettings settings) {
-        BedrockSettings bedrock = settings.getBedrock();
-        boolean migrated = false;
-        if (hasText(bedrock.getAccessKey())) {
-            secretStore.put(BEDROCK_ACCESS_KEY, bedrock.getAccessKey());
-            bedrock.setAccessKey("");
-            migrated = true;
-        }
-        if (hasText(bedrock.getSecretKey())) {
-            secretStore.put(BEDROCK_SECRET_KEY, bedrock.getSecretKey());
-            bedrock.setSecretKey("");
-            migrated = true;
-        }
-        return migrated;
     }
 
     private void saveSubmittedBedrockSecrets(ApplicationSettings settings) {
@@ -171,16 +133,6 @@ public class SettingsSecretsService {
         bedrock.setClearSecretKey(false);
     }
 
-    private boolean migrateJiraToken(ApplicationSettings settings) {
-        String token = settings.getJira().getToken();
-        if (!hasText(token)) {
-            return false;
-        }
-        secretStore.put(JIRA_API_TOKEN, token);
-        settings.getJira().setToken("");
-        return true;
-    }
-
     private void saveSubmittedJiraToken(ApplicationSettings settings) {
         var jira = settings.getJira();
         if (jira.isClearToken()) {
@@ -195,16 +147,6 @@ public class SettingsSecretsService {
         var jira = settings.getJira();
         jira.setTokenConfigured(token.isPresent());
         jira.setTokenLastFour(token.map(this::lastFour).orElse(""));
-    }
-
-    private boolean migrateConfluenceToken(ApplicationSettings settings) {
-        String token = settings.getConfluence().getToken();
-        if (!hasText(token)) {
-            return false;
-        }
-        secretStore.put(CONFLUENCE_API_TOKEN, token);
-        settings.getConfluence().setToken("");
-        return true;
     }
 
     private void saveSubmittedConfluenceToken(ApplicationSettings settings) {

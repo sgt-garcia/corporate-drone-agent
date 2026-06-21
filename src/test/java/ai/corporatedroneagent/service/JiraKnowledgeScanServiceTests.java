@@ -314,37 +314,6 @@ class JiraKnowledgeScanServiceTests {
     }
 
     @Test
-    void scanMetadataDropsLegacyFullReconciliationCursor() throws IOException {
-        JiraSettings jira = jira();
-        JiraProjectDto project = project();
-        JiraIssueFetchService.JiraIssueManifest issue = manifest(jira, "10100", "DEV-7", "Issue 10100");
-        issueFetchService.setManifests(List.of(issue));
-        issueFetchService.putDocument(document(jira, "10100", "DEV-7", "Issue 10100", "firsttoken"));
-        scan(jira, project, "token-1234");
-
-        KnowledgeRoot root = rootRepository.findBySourceAndReference(
-                KnowledgeSource.JIRA,
-                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
-        ).orElseThrow();
-        root.setConfigJson("""
-                {
-                  "lastFullScanFinishedAt": "2026-06-12T00:00:00Z",
-                  "kept": "value"
-                }
-                """);
-        rootRepository.save(root);
-        issueFetchService.setManifests(List.of());
-
-        scan(jira, project, "token-1234");
-
-        KnowledgeRoot updatedRoot = rootRepository.findById(root.getId()).orElseThrow();
-        JsonNode config = objectMapper.readTree(updatedRoot.getConfigJson());
-        assertThat(config.has("lastFullScanFinishedAt")).isFalse();
-        assertThat(config.path("lastSuccessfulScanStartedAt").asText()).isNotBlank();
-        assertThat(config.path("kept").asText()).isEqualTo("value");
-    }
-
-    @Test
     void failedScanDoesNotAdvanceLastSuccessfulCursor() {
         JiraSettings jira = jira();
         JiraProjectDto project = project();

@@ -43,7 +43,6 @@ import org.springframework.stereotype.Service;
 public class KnowledgeScanEngine {
 
     private static final Logger log = LoggerFactory.getLogger(KnowledgeScanEngine.class);
-    private static final String CONFIG_LEGACY_LAST_FULL_SCAN_FINISHED_AT = "lastFullScanFinishedAt";
     private static final String CONFIG_LAST_SUCCESSFUL_SCAN_STARTED_AT = "lastSuccessfulScanStartedAt";
 
     private final KnowledgeRootRepository rootRepository;
@@ -339,7 +338,6 @@ public class KnowledgeScanEngine {
         if (startedAt != null) {
             config.put(CONFIG_LAST_SUCCESSFUL_SCAN_STARTED_AT, startedAt.toString());
         }
-        config.remove(CONFIG_LEGACY_LAST_FULL_SCAN_FINISHED_AT);
         return config.toString();
     }
 

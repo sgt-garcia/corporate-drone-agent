@@ -78,57 +78,6 @@ class SettingsSecretsServiceTests {
         assertThat(json).doesNotContain("\"secretKey\"");
     }
 
-    @Test
-    void migratesPlaintextKeysIntoSecretStoreAndLeavesOnlyStatus() {
-        InMemorySecretStore secretStore = new InMemorySecretStore();
-        SettingsSecretsService service = new SettingsSecretsService(secretStore);
-        ApplicationSettings settings = new ApplicationSettings();
-        settings.getOpenAi().setApiKey("sk-openai-secret");
-        settings.getMistral().setApiKey("mistral-secret");
-        settings.getGemini().setApiKey("google-secret");
-        settings.getAnthropic().setApiKey("anthropic-secret");
-        settings.getBedrock().setAccessKey("bedrock-access");
-        settings.getBedrock().setSecretKey("bedrock-secret");
-        settings.getGroq().setApiKey("groq-secret");
-        settings.getDeepSeek().setApiKey("deepseek-secret");
-
-        boolean migrated = service.migratePlaintextSecrets(settings);
-        service.applySecretStatus(settings);
-
-        assertThat(migrated).isTrue();
-        assertThat(settings.getOpenAi().getApiKey()).isEmpty();
-        assertThat(settings.getOpenAi().isApiKeyConfigured()).isTrue();
-        assertThat(settings.getOpenAi().getApiKeyLastFour()).isEqualTo("cret");
-        assertThat(settings.getMistral().getApiKey()).isEmpty();
-        assertThat(settings.getMistral().isApiKeyConfigured()).isTrue();
-        assertThat(settings.getMistral().getApiKeyLastFour()).isEqualTo("cret");
-        assertThat(settings.getGemini().getApiKey()).isEmpty();
-        assertThat(settings.getGemini().isApiKeyConfigured()).isTrue();
-        assertThat(settings.getGemini().getApiKeyLastFour()).isEqualTo("cret");
-        assertThat(settings.getAnthropic().getApiKey()).isEmpty();
-        assertThat(settings.getAnthropic().isApiKeyConfigured()).isTrue();
-        assertThat(settings.getAnthropic().getApiKeyLastFour()).isEqualTo("cret");
-        assertThat(settings.getBedrock().getAccessKey()).isEmpty();
-        assertThat(settings.getBedrock().isAccessKeyConfigured()).isTrue();
-        assertThat(settings.getBedrock().getAccessKeyLastFour()).isEqualTo("cess");
-        assertThat(settings.getBedrock().getSecretKey()).isEmpty();
-        assertThat(settings.getBedrock().isSecretKeyConfigured()).isTrue();
-        assertThat(settings.getGroq().getApiKey()).isEmpty();
-        assertThat(settings.getGroq().isApiKeyConfigured()).isTrue();
-        assertThat(settings.getGroq().getApiKeyLastFour()).isEqualTo("cret");
-        assertThat(settings.getDeepSeek().getApiKey()).isEmpty();
-        assertThat(settings.getDeepSeek().isApiKeyConfigured()).isTrue();
-        assertThat(settings.getDeepSeek().getApiKeyLastFour()).isEqualTo("cret");
-        assertThat(secretStore.get("settings.openAi.apiKey")).contains("sk-openai-secret");
-        assertThat(secretStore.get("settings.mistral.apiKey")).contains("mistral-secret");
-        assertThat(secretStore.get("settings.gemini.apiKey")).contains("google-secret");
-        assertThat(secretStore.get("settings.anthropic.apiKey")).contains("anthropic-secret");
-        assertThat(secretStore.get("settings.bedrock.accessKey")).contains("bedrock-access");
-        assertThat(secretStore.get("settings.bedrock.secretKey")).contains("bedrock-secret");
-        assertThat(secretStore.get("settings.groq.apiKey")).contains("groq-secret");
-        assertThat(secretStore.get("settings.deepSeek.apiKey")).contains("deepseek-secret");
-    }
-
     private static class InMemorySecretStore implements SecretStore {
 
         private final Map<String, String> secrets = new HashMap<>();

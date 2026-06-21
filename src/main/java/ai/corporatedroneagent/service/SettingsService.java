@@ -145,9 +145,7 @@ public class SettingsService {
 
     public synchronized ApplicationSettings get() {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
         attachKnowledgeFolders(settings);
-        migrateJiraProjectsToRoots(settings);
         settings.setJira(sanitizeJira(settings.getJira()));
         settings.setConfluence(sanitizeConfluence(settings.getConfluence()));
         settingsSecretsService.clearSecretValues(settings);
@@ -159,7 +157,6 @@ public class SettingsService {
 
     public synchronized ApplicationSettings getWithSecrets() {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
         attachKnowledgeFolders(settings);
         settingsSecretsService.applySecretValues(settings);
         return settings;
@@ -167,11 +164,6 @@ public class SettingsService {
 
     public synchronized ApplicationSettings save(ApplicationSettings settings) {
         ApplicationSettings current = settingsRepository.get();
-        migratePlaintextSecrets(current);
-        migrateLegacyKnowledgeFolders(current);
-        // Migrate the server's own stored Jira projects to roots; never import a
-        // client-submitted project list (the root is the source of truth now).
-        migrateJiraProjectsToRoots(current);
         settingsSecretsService.saveSubmittedSecrets(settings);
 
         current.setAgentName(Strings.defaultIfBlank(settings.getAgentName(), "Corporate Drone's Agent"));
@@ -212,8 +204,6 @@ public class SettingsService {
 
     public synchronized KnowledgeFolderDto addKnowledgeFolder(KnowledgeFolderRequest request) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
 
         String path = Strings.defaultIfBlank(request == null ? "" : request.path(), "");
         if (path.isBlank()) {
@@ -245,8 +235,6 @@ public class SettingsService {
 
     public synchronized void removeKnowledgeFolder(UUID folderId) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
 
         KnowledgeRoot removedFolder = findKnowledgeRoot(folderId);
         knowledgeScanCoordinator.cancelScanAndWait(folderId);
@@ -261,8 +249,6 @@ public class SettingsService {
 
     public synchronized KnowledgeFolderDto pauseKnowledgeFolder(UUID folderId) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         KnowledgeRoot root = findKnowledgeRoot(folderId);
         root.setPaused(true);
         root = knowledgeRootRepository.save(root);
@@ -273,8 +259,6 @@ public class SettingsService {
 
     public synchronized KnowledgeFolderDto resumeKnowledgeFolder(UUID folderId) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         KnowledgeRoot root = findKnowledgeRoot(folderId);
         root.setPaused(false);
         root = knowledgeRootRepository.save(root);
@@ -289,8 +273,6 @@ public class SettingsService {
 
     public synchronized JiraConnectionValidationDto validateJiraConnection(JiraConnectionRequest request) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         settingsSecretsService.applySecretStatus(settings);
         boolean hasSavedToken = settings.getJira().isTokenConfigured();
         validateJiraConnectionRequest(request, hasSavedToken);
@@ -310,9 +292,6 @@ public class SettingsService {
 
     public synchronized JiraSettings saveJiraConnection(JiraConnectionRequest request) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
-        migrateJiraProjectsToRoots(settings);
         settingsSecretsService.applySecretStatus(settings);
 
         JiraSettings current = settings.getJira();
@@ -358,8 +337,6 @@ public class SettingsService {
 
     public synchronized JiraSettings clearJiraConnection() {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         JiraSettings cleared = new JiraSettings();
         settings.setJira(cleared);
         removeAllJiraRoots();
@@ -390,9 +367,6 @@ public class SettingsService {
 
     public synchronized JiraProjectDto addJiraProject(JiraProjectRequest request) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
-        migrateJiraProjectsToRoots(settings);
         settingsSecretsService.applySecretStatus(settings);
         JiraSettings jira = settings.getJira();
         requireJiraSetup(jira);
@@ -432,9 +406,6 @@ public class SettingsService {
 
     public synchronized void removeJiraProject(String projectId) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
-        migrateJiraProjectsToRoots(settings);
         settingsSecretsService.applySecretStatus(settings);
         requireJiraSetup(settings.getJira());
         KnowledgeRoot root = findJiraRoot(projectId);
@@ -457,9 +428,6 @@ public class SettingsService {
 
     private JiraProjectDto setJiraProjectPaused(String projectId, boolean paused) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
-        migrateJiraProjectsToRoots(settings);
         settingsSecretsService.applySecretStatus(settings);
         requireJiraSetup(settings.getJira());
         KnowledgeRoot root = findJiraRoot(projectId);
@@ -471,9 +439,6 @@ public class SettingsService {
 
     private JiraSettings currentJiraSettings() {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
-        migrateJiraProjectsToRoots(settings);
         settings.setJira(sanitizeJira(settings.getJira()));
         settingsSecretsService.applySecretStatus(settings);
         attachJiraProjects(settings.getJira());
@@ -492,8 +457,6 @@ public class SettingsService {
 
     public synchronized ConfluenceConnectionValidationDto validateConfluenceConnection(ConfluenceConnectionRequest request) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         settingsSecretsService.applySecretStatus(settings);
         boolean hasSavedToken = settings.getConfluence().isTokenConfigured();
         validateConfluenceConnectionRequest(request, hasSavedToken);
@@ -512,8 +475,6 @@ public class SettingsService {
 
     public synchronized ConfluenceSettings saveConfluenceConnection(ConfluenceConnectionRequest request) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         settingsSecretsService.applySecretStatus(settings);
 
         ConfluenceSettings current = settings.getConfluence();
@@ -556,8 +517,6 @@ public class SettingsService {
 
     public synchronized ConfluenceSettings clearConfluenceConnection() {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         ConfluenceSettings cleared = new ConfluenceSettings();
         settings.setConfluence(cleared);
         removeAllConfluenceRoots();
@@ -587,8 +546,6 @@ public class SettingsService {
 
     public synchronized ConfluenceSpaceDto addConfluenceSpace(ConfluenceSpaceRequest request) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         settingsSecretsService.applySecretStatus(settings);
         ConfluenceSettings confluence = settings.getConfluence();
         requireConfluenceSetup(confluence);
@@ -627,8 +584,6 @@ public class SettingsService {
 
     public synchronized void removeConfluenceSpace(String spaceId) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         settingsSecretsService.applySecretStatus(settings);
         requireConfluenceSetup(settings.getConfluence());
         KnowledgeRoot root = findConfluenceRoot(spaceId);
@@ -651,8 +606,6 @@ public class SettingsService {
 
     private ConfluenceSpaceDto setConfluenceSpacePaused(String spaceId, boolean paused) {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         settingsSecretsService.applySecretStatus(settings);
         requireConfluenceSetup(settings.getConfluence());
         KnowledgeRoot root = findConfluenceRoot(spaceId);
@@ -664,8 +617,6 @@ public class SettingsService {
 
     private ConfluenceSettings currentConfluenceSettings() {
         ApplicationSettings settings = settingsRepository.get();
-        migratePlaintextSecrets(settings);
-        migrateLegacyKnowledgeFolders(settings);
         settings.setConfluence(sanitizeConfluence(settings.getConfluence()));
         settingsSecretsService.applySecretStatus(settings);
         attachConfluenceSpaces(settings.getConfluence());
@@ -933,67 +884,6 @@ public class SettingsService {
         return project;
     }
 
-    // One-time migration of legacy settings.json Jira projects into roots, mirroring
-    // migrateLegacyKnowledgeFolders. Idempotent: re-finds roots by reference, only seeds
-    // pause/error/totals on a brand-new root, and clears the stored list only after every
-    // root is saved so a mid-migration crash is safe to retry.
-    private void migrateJiraProjectsToRoots(ApplicationSettings settings) {
-        JiraSettings jira = settings.getJira();
-        if (jira == null || !jira.isConnected() || jira.getProjects().isEmpty()) {
-            return;
-        }
-        List<String> seenKeys = new ArrayList<>();
-        for (JiraProjectDto project : jira.getProjects()) {
-            if (project == null) {
-                continue;
-            }
-            String key = Strings.defaultIfBlank(project.getKey(), "").trim();
-            if (key.isBlank() || seenKeys.stream().anyMatch(seen -> seen.equalsIgnoreCase(key))) {
-                continue;
-            }
-            if (seenKeys.size() >= MAX_JIRA_PROJECTS) {
-                break;
-            }
-            seenKeys.add(key);
-
-            String projectId = Strings.defaultIfBlank(project.getId(), "").trim();
-            if (projectId.isBlank()) {
-                projectId = UUID.randomUUID().toString();
-            }
-            String name = Strings.defaultIfBlank(project.getName(), "").trim();
-            String reference = JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), projectId);
-            KnowledgeRoot root = knowledgeRootRepository
-                    .findBySourceAndReference(KnowledgeSource.JIRA, reference)
-                    .orElseGet(KnowledgeRoot::new);
-            boolean newRoot = root.getId() == null;
-            root.setSource(KnowledgeSource.JIRA);
-            root.setReference(reference);
-            root.setDisplayName(jiraDisplayName(key, name));
-            root.setConfigJson(JiraKnowledgeRootConfig.withIdentity(root.getConfigJson(), projectId, key, name));
-            if (newRoot) {
-                seedLegacyJiraScanState(root, project);
-            }
-            knowledgeRootRepository.save(root);
-        }
-        jira.setProjects(List.of());
-        settingsRepository.save(settings);
-    }
-
-    // Preserve the user-visible status of a legacy project on its new root: a pause is a
-    // real user intent; an error stays sticky until the next scan; totals seed the count.
-    private void seedLegacyJiraScanState(KnowledgeRoot root, JiraProjectDto project) {
-        if ("paused".equals(project.getStatus())) {
-            root.setPaused(true);
-        } else if ("error".equals(project.getStatus())) {
-            root.setScanStatus(WorkStatus.DONE);
-            root.setScanSuccess(false);
-            root.setScanMessage(Strings.defaultIfBlank(project.getMessage(), "Could not scan Jira project"));
-            root.setScanFinishedAt(Instant.now());
-        }
-        root.setTotalResources(project.getIssues());
-        root.setTotalSizeBytes(0);
-    }
-
     private KnowledgeRoot findJiraRoot(String projectId) {
         return knowledgeRootRepository.findBySource(KnowledgeSource.JIRA).stream()
                 .filter(root -> projectId.equals(JiraKnowledgeRootConfig.readProjectId(root)))
@@ -1012,14 +902,6 @@ public class SettingsService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira project key is required");
         }
         return normalized;
-    }
-
-    private void migratePlaintextSecrets(ApplicationSettings settings) {
-        boolean migrated = settingsSecretsService.migratePlaintextSecrets(settings);
-        if (migrated) {
-            settingsSecretsService.applySecretStatus(settings);
-            settingsRepository.save(settings);
-        }
     }
 
     private void publishSettingsUpdated() {
@@ -1082,34 +964,7 @@ public class SettingsService {
     }
 
     private void attachKnowledgeFolders(ApplicationSettings settings) {
-        migrateLegacyKnowledgeFolders(settings);
         settings.setKnowledgeFolders(knowledgeFolders());
-    }
-
-    private void migrateLegacyKnowledgeFolders(ApplicationSettings settings) {
-        List<KnowledgeFolderDto> legacyFolders = sanitizeKnowledgeFolders(settings.getKnowledgeFolders());
-        if (legacyFolders.isEmpty()) {
-            return;
-        }
-
-        for (KnowledgeFolderDto folder : legacyFolders) {
-            KnowledgeRoot root = knowledgeRootRepository
-                    .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.getPath())
-                    .orElseGet(KnowledgeRoot::new);
-            if (root.getId() == null) {
-                root.setId(folder.getId());
-            }
-            root.setSource(KnowledgeSource.LOCAL_FOLDER);
-            root.setReference(folder.getPath());
-            root.setDisplayName(displayName(Path.of(folder.getPath())));
-            root.setPaused("paused".equals(folder.getStatus()));
-            root.setTotalResources(folder.getFiles());
-            root.setScanStatus("scanning".equals(folder.getStatus()) ? WorkStatus.DONE : root.getScanStatus());
-            knowledgeRootRepository.save(root);
-        }
-
-        settings.setKnowledgeFolders(List.of());
-        settingsRepository.save(settings);
     }
 
     private List<KnowledgeFolderDto> knowledgeFolders() {
@@ -1210,33 +1065,6 @@ public class SettingsService {
         return String.format(Locale.ROOT, "%.1f %s", value, units[unitIndex]);
     }
 
-    private List<KnowledgeFolderDto> sanitizeKnowledgeFolders(List<KnowledgeFolderDto> folders) {
-        List<KnowledgeFolderDto> sanitized = new ArrayList<>();
-        if (folders == null) {
-            return sanitized;
-        }
-
-        for (KnowledgeFolderDto folder : folders) {
-            if (folder == null || folder.getPath() == null || folder.getPath().isBlank()) {
-                continue;
-            }
-            KnowledgeFolderDto sanitizedFolder = new KnowledgeFolderDto();
-            sanitizedFolder.setId(folder.getId() == null ? UUID.randomUUID() : folder.getId());
-            sanitizedFolder.setPath(folder.getPath().trim());
-            sanitizedFolder.setStatus(sanitizeFolderStatus(folder.getStatus()));
-            sanitizedFolder.setFiles(folder.getFiles());
-            sanitizedFolder.setSize(folder.getSize());
-            sanitizedFolder.setNextScan(folder.getNextScan());
-            if (sanitized.stream().noneMatch(existing -> samePath(existing.getPath(), sanitizedFolder.getPath()))) {
-                sanitized.add(sanitizedFolder);
-            }
-            if (sanitized.size() == MAX_KNOWLEDGE_FOLDERS) {
-                break;
-            }
-        }
-        return sanitized;
-    }
-
     // Persist only the connection the Settings screen needs on reload: trimmed details,
     // api version, token expiry. Projects are NOT persisted here — they live in JIRA
     // roots and are rebuilt by attachJiraProjects on read. The secret token is handled
@@ -1285,14 +1113,6 @@ public class SettingsService {
 
     private boolean samePath(String first, String second) {
         return Strings.defaultIfBlank(first, "").equalsIgnoreCase(Strings.defaultIfBlank(second, ""));
-    }
-
-    private String sanitizeFolderStatus(String status) {
-        String normalized = Strings.defaultIfBlank(status, "scanned");
-        return switch (normalized) {
-            case "paused", "scanning", "error" -> normalized;
-            default -> "scanned";
-        };
     }
 
     private String sanitizeJiraApiVersion(String apiVersion) {
