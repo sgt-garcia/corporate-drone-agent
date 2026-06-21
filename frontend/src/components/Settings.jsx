@@ -1010,7 +1010,7 @@ function LocalFoldersConfig({
   }
 
   return (
-    <div className="settings-section">
+    <div className="settings-section kn-source">
       <button className="config-back" type="button" onClick={onBack}>
         <Icon name="arrow-left" size={15} color="var(--gray-600)" /> All knowledge
       </button>
@@ -1392,7 +1392,7 @@ function JiraConfig({
   }
 
   return (
-    <div className="settings-section">
+    <div className="settings-section kn-source">
       <button className="config-back" type="button" onClick={onBack}>
         <Icon name="arrow-left" size={15} color="var(--gray-600)" /> All knowledge
       </button>
@@ -1439,7 +1439,7 @@ function JiraConfig({
         />
       )}
 
-      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18, padding: 22 }}>
         <Field label="Instance URL" hint="Your Atlassian Cloud or Server base URL.">
           <input
             className="input"
@@ -1959,7 +1959,7 @@ function ConfluenceConfig({
   }
 
   return (
-    <div className="settings-section">
+    <div className="settings-section kn-source">
       <button className="config-back" type="button" onClick={onBack}>
         <Icon name="arrow-left" size={15} color="var(--gray-600)" /> All knowledge
       </button>
@@ -2006,7 +2006,7 @@ function ConfluenceConfig({
         />
       )}
 
-      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18, padding: 22 }}>
         <Field label="Instance URL" hint="Your Atlassian Cloud or Server wiki base URL.">
           <input
             className="input"
@@ -2383,7 +2383,7 @@ function ProviderConfig({
         <ProviderStatus provider={provider} connected={state.connected} />
       </div>
 
-      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18, padding: 22 }}>
         <ProviderFields
           provider={provider}
           config={config}
@@ -2977,7 +2977,7 @@ function KnowledgeToolConfig({ tool, modes, onBack, onChangeModes }) {
   const active = modes.auto.enabled || modes.search.enabled;
   const setMode = (key, next) => onChangeModes({ ...modes, [key]: next });
   return (
-    <div className="settings-section">
+    <div className="settings-section kn-tool">
       <button className="config-back" type="button" onClick={onBack}>
         <Icon name="arrow-left" size={15} color="var(--gray-600)" /> All tools
       </button>
@@ -3046,7 +3046,7 @@ function GeneralSettings({ draft, setDraft, onSave }) {
         <h2 className="ds-h3">General</h2>
         <p className="ds-body">How the agent presents itself and behaves by default.</p>
       </div>
-      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18, padding: 22 }}>
         <Field
           label="Agent name"
           hint="Shown in the workspace and in drafts it prepares."

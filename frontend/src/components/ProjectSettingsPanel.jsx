@@ -24,7 +24,7 @@ export function ProjectSettingsPanel({ onSave, onDelete, project }) {
           </div>
         </div>
 
-        <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18, padding: 22 }}>
           <label className="field">
             <span className="field-label">Project name</span>
             <input

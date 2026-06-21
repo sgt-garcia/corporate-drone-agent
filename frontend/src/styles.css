@@ -662,7 +662,6 @@ select.input {
 /* The per-conversation status word, revealed on the active/hovered row. */
 .conversation-btn .status-word {
   display: none;
-  margin-left: 6px;
   flex-shrink: 0;
   font-size: 10.5px;
   font-weight: 600;
@@ -919,6 +918,11 @@ select.input {
 }
 .turn-text li {
   line-height: 1.55;
+}
+/* The design renders list items in a flex column with a 5px gap; mirror that
+   inter-item spacing here while keeping standard list markers. */
+.turn-text li + li {
+  margin-top: 5px;
 }
 .turn-text h1,
 .turn-text h2,
@@ -1520,6 +1524,15 @@ select.input {
 .settings-section.wide {
   max-width: none;
 }
+/* The Knowledge drill-ins run wider than the 620px default, matching the
+   design: the source configs (Local Folders / Jira / Confluence) at 680, and
+   the Knowledge tool config at 660. */
+.settings-section.kn-source {
+  max-width: 680px;
+}
+.settings-section.kn-tool {
+  max-width: 660px;
+}
 .settings-intro h2 {
   margin: 0 0 4px;
 }
@@ -1796,6 +1809,7 @@ select.input {
   font-size: 12px;
   color: var(--gray-500);
   margin-top: 2px;
+  line-height: 1.45;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2155,6 +2169,7 @@ select.input {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 22px;
   border-color: var(--danger-500);
 }
 .danger-zone-title {
