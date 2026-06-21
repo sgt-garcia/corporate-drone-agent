@@ -2439,7 +2439,7 @@ function ProviderFields({ provider, config, updateProviderConfig }) {
           label="Access key ID"
           type="text"
           placeholder="AKIA…"
-          hint="An IAM key with Bedrock model-list and invoke permissions."
+          hint="An IAM key with the bedrock:InvokeModel permission."
           value={config.accessKey ?? ""}
           configured={Boolean(config.accessKeyConfigured)}
           lastFour={config.accessKeyLastFour ?? ""}
