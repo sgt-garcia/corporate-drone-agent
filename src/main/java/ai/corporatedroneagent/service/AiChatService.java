@@ -155,14 +155,14 @@ public class AiChatService {
                         "openai",
                         "OpenAI",
                         ApplicationSettings::getOpenAi,
-                        AiChatService::openAiValidationMessage,
+                        settings -> apiKeyAndModelValidation("OpenAI", settings.getApiKey(), settings.getModel()),
                         AiChatService::buildOpenAiChatModel
                 ),
                 new ChatModelProvider<>(
                         "openai-sdk",
                         "OpenAI (SDK)",
                         ApplicationSettings::getOpenAiSdk,
-                        AiChatService::openAiSdkValidationMessage,
+                        settings -> apiKeyAndModelValidation("OpenAI (SDK)", settings.getApiKey(), settings.getModel()),
                         AiChatService::buildOpenAiSdkChatModel
                 ),
                 new ChatModelProvider<>(
@@ -183,14 +183,14 @@ public class AiChatService {
                         "mistral",
                         "Mistral",
                         ApplicationSettings::getMistral,
-                        AiChatService::mistralValidationMessage,
+                        settings -> apiKeyAndModelValidation("Mistral", settings.getApiKey(), settings.getModel()),
                         AiChatService::buildMistralChatModel
                 ),
                 new ChatModelProvider<>(
                         "gemini",
                         "Gemini",
                         ApplicationSettings::getGemini,
-                        AiChatService::geminiValidationMessage,
+                        settings -> apiKeyAndModelValidation("Gemini", settings.getApiKey(), settings.getModel()),
                         AiChatService::buildGeminiChatModel,
                         chatModel -> destroyGeminiChatModel((GoogleGenAiChatModel) chatModel)
                 ),
@@ -198,7 +198,7 @@ public class AiChatService {
                         "anthropic",
                         "Anthropic",
                         ApplicationSettings::getAnthropic,
-                        AiChatService::anthropicValidationMessage,
+                        settings -> apiKeyAndModelValidation("Anthropic", settings.getApiKey(), settings.getModel()),
                         AiChatService::buildAnthropicChatModel
                 ),
                 new ChatModelProvider<>(
@@ -213,14 +213,14 @@ public class AiChatService {
                         "groq",
                         "Groq",
                         ApplicationSettings::getGroq,
-                        AiChatService::groqValidationMessage,
+                        settings -> apiKeyAndModelValidation("Groq", settings.getApiKey(), settings.getModel()),
                         AiChatService::buildGroqChatModel
                 ),
                 new ChatModelProvider<>(
                         "deepseek",
                         "DeepSeek",
                         ApplicationSettings::getDeepSeek,
-                        AiChatService::deepSeekValidationMessage,
+                        settings -> apiKeyAndModelValidation("DeepSeek", settings.getApiKey(), settings.getModel()),
                         AiChatService::buildDeepSeekChatModel
                 )
         ).stream().collect(Collectors.toUnmodifiableMap(ChatProvider::providerId, Function.identity()));
@@ -298,15 +298,11 @@ public class AiChatService {
         }
     }
 
-    private static String openAiValidationMessage(OpenAiSettings settings) {
-        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
-                ? "OpenAI is selected, but API key and model are required before I can call it."
-                : "";
-    }
-
-    private static String openAiSdkValidationMessage(OpenAiSdkSettings settings) {
-        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
-                ? "OpenAI (SDK) is selected, but API key and model are required before I can call it."
+    // Most providers need only an API key and a model; they share this message, keyed off the
+    // provider's display name. Azure, Ollama, and Bedrock need a different field set, below.
+    private static String apiKeyAndModelValidation(String displayName, String apiKey, String model) {
+        return isBlank(apiKey) || isBlank(model)
+                ? displayName + " is selected, but API key and model are required before I can call it."
                 : "";
     }
 
@@ -324,42 +320,12 @@ public class AiChatService {
                 : "";
     }
 
-    private static String mistralValidationMessage(MistralSettings settings) {
-        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
-                ? "Mistral is selected, but API key and model are required before I can call it."
-                : "";
-    }
-
-    private static String geminiValidationMessage(GeminiSettings settings) {
-        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
-                ? "Gemini is selected, but API key and model are required before I can call it."
-                : "";
-    }
-
-    private static String anthropicValidationMessage(AnthropicSettings settings) {
-        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
-                ? "Anthropic is selected, but API key and model are required before I can call it."
-                : "";
-    }
-
     private static String bedrockValidationMessage(BedrockSettings settings) {
         return isBlank(settings.getRegion())
                 || isBlank(settings.getAccessKey())
                 || isBlank(settings.getSecretKey())
                 || isBlank(settings.getModel())
                 ? "Amazon Bedrock is selected, but region, access key, secret key, and model are required before I can call it."
-                : "";
-    }
-
-    private static String groqValidationMessage(GroqSettings settings) {
-        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
-                ? "Groq is selected, but API key and model are required before I can call it."
-                : "";
-    }
-
-    private static String deepSeekValidationMessage(DeepSeekSettings settings) {
-        return isBlank(settings.getApiKey()) || isBlank(settings.getModel())
-                ? "DeepSeek is selected, but API key and model are required before I can call it."
                 : "";
     }
 
