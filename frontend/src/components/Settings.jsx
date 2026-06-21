@@ -542,39 +542,6 @@ function ScanStatus({ status }) {
   );
 }
 
-function JiraProjectStatus({ status }) {
-  if (status === "scanning") {
-    return (
-      <span className="badge badge-info">
-        <Icon
-          name="refresh-cw"
-          size={12}
-          color="var(--blue-700)"
-          className="cda-spin"
-        />
-        Scanning
-      </span>
-    );
-  }
-  if (status === "paused") {
-    return <span className="badge badge-neutral">Paused</span>;
-  }
-  if (status === "error") {
-    return (
-      <span className="badge badge-danger">
-        <Icon name="alert-triangle" size={12} color="var(--danger-700)" />
-        Error
-      </span>
-    );
-  }
-  return (
-    <span className="badge badge-success">
-      <span className="dot" />
-      Scanned
-    </span>
-  );
-}
-
 // Inline validation/connection error, shared across folders + Jira so the same
 // screen never teaches the user two different error treatments.
 function InlineError({ children }) {
@@ -651,7 +618,6 @@ function KnowledgeSourceList({
   addRowRef,
   renderLeading,
   renderTitle,
-  renderStatus,
   tickerItems,
   metaScanned,
   metaPaused,
@@ -726,7 +692,7 @@ function KnowledgeSourceList({
             ) : (
               <div className="folder-row-controls">
                 <span className="folder-status-slot">
-                  {renderStatus ? renderStatus(item) : <ScanStatus status={item.status} />}
+                  <ScanStatus status={item.status} />
                 </span>
                 <button
                   className="iconbtn"
@@ -1601,7 +1567,6 @@ function JiraConfig({
             </span>
           )}
           renderTitle={(project) => project.name}
-          renderStatus={(project) => <JiraProjectStatus status={project.status} />}
           tickerItems={(project) => scanProgressById?.[project.id] ?? []}
           metaScanned={(project) =>
             `${fmtNum(project.issues)} issues · checked ${project.checked || "just now"}`

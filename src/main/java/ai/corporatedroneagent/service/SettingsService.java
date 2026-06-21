@@ -203,8 +203,6 @@ public class SettingsService {
     }
 
     public synchronized KnowledgeFolderDto addKnowledgeFolder(KnowledgeFolderRequest request) {
-        ApplicationSettings settings = settingsRepository.get();
-
         String path = Strings.defaultIfBlank(request == null ? "" : request.path(), "");
         if (path.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Folder path is required");
@@ -234,8 +232,6 @@ public class SettingsService {
     }
 
     public synchronized void removeKnowledgeFolder(UUID folderId) {
-        ApplicationSettings settings = settingsRepository.get();
-
         KnowledgeRoot removedFolder = findKnowledgeRoot(folderId);
         knowledgeScanCoordinator.cancelScanAndWait(folderId);
         removedFolder = findKnowledgeRoot(folderId);
@@ -248,7 +244,6 @@ public class SettingsService {
     }
 
     public synchronized KnowledgeFolderDto pauseKnowledgeFolder(UUID folderId) {
-        ApplicationSettings settings = settingsRepository.get();
         KnowledgeRoot root = findKnowledgeRoot(folderId);
         root.setPaused(true);
         root = knowledgeRootRepository.save(root);
@@ -258,7 +253,6 @@ public class SettingsService {
     }
 
     public synchronized KnowledgeFolderDto resumeKnowledgeFolder(UUID folderId) {
-        ApplicationSettings settings = settingsRepository.get();
         KnowledgeRoot root = findKnowledgeRoot(folderId);
         root.setPaused(false);
         root = knowledgeRootRepository.save(root);
@@ -831,15 +825,6 @@ public class SettingsService {
         }
     }
 
-    private String jiraProjectRootReference(JiraSettings jira, JiraProjectDto project) {
-        return JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), jiraProjectReferenceId(project));
-    }
-
-    private String jiraProjectReferenceId(JiraProjectDto project) {
-        String projectId = Strings.defaultIfBlank(project.getId(), "").trim();
-        return projectId.isBlank() ? project.getKey() : projectId;
-    }
-
     private String jiraDisplayName(String key, String name) {
         String trimmedKey = Strings.defaultIfBlank(key, "").trim();
         String trimmedName = Strings.defaultIfBlank(name, "").trim();
@@ -1117,10 +1102,5 @@ public class SettingsService {
 
     private String sanitizeJiraApiVersion(String apiVersion) {
         return "2".equals(Strings.defaultIfBlank(apiVersion, "").trim()) ? "2" : "3";
-    }
-
-    private String statusMessage(ResponseStatusException exception) {
-        String reason = exception.getReason();
-        return reason == null || reason.isBlank() ? "Could not scan Jira project" : reason;
     }
 }

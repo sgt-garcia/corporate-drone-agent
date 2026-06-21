@@ -5,7 +5,6 @@ public record KnowledgeContextSnippet(
         String rootName,
         String resourceReference,
         String resourceName,
-        int chunkIndex,
         String content,
         float score
 ) {

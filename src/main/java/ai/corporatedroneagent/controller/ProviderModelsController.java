@@ -1,12 +1,8 @@
 package ai.corporatedroneagent.controller;
 
-import ai.corporatedroneagent.dto.AnthropicModelsRequest;
+import ai.corporatedroneagent.dto.ApiKeyModelsRequest;
 import ai.corporatedroneagent.dto.AzureOpenAiDeploymentsRequest;
 import ai.corporatedroneagent.dto.BedrockModelsRequest;
-import ai.corporatedroneagent.dto.DeepSeekModelsRequest;
-import ai.corporatedroneagent.dto.GeminiModelsRequest;
-import ai.corporatedroneagent.dto.GroqModelsRequest;
-import ai.corporatedroneagent.dto.MistralModelsRequest;
 import ai.corporatedroneagent.dto.OllamaModelsRequest;
 import ai.corporatedroneagent.dto.OpenAiModelsRequest;
 import ai.corporatedroneagent.service.AnthropicModelsService;
@@ -67,17 +63,17 @@ public class ProviderModelsController {
     }
 
     @PostMapping("/mistral-models")
-    public List<String> listMistralModels(@RequestBody MistralModelsRequest request) {
+    public List<String> listMistralModels(@RequestBody ApiKeyModelsRequest request) {
         return mistralModelsService.listModels(request);
     }
 
     @PostMapping("/anthropic-models")
-    public List<String> listAnthropicModels(@RequestBody AnthropicModelsRequest request) {
+    public List<String> listAnthropicModels(@RequestBody ApiKeyModelsRequest request) {
         return anthropicModelsService.listModels(request);
     }
 
     @PostMapping("/gemini-models")
-    public List<String> listGeminiModels(@RequestBody GeminiModelsRequest request) {
+    public List<String> listGeminiModels(@RequestBody ApiKeyModelsRequest request) {
         return geminiModelsService.listModels(request);
     }
 
@@ -102,12 +98,12 @@ public class ProviderModelsController {
     }
 
     @PostMapping("/groq-models")
-    public List<String> listGroqModels(@RequestBody GroqModelsRequest request) {
+    public List<String> listGroqModels(@RequestBody ApiKeyModelsRequest request) {
         return groqModelsService.listModels(request);
     }
 
     @PostMapping("/deepseek-models")
-    public List<String> listDeepSeekModels(@RequestBody DeepSeekModelsRequest request) {
+    public List<String> listDeepSeekModels(@RequestBody ApiKeyModelsRequest request) {
         return deepSeekModelsService.listModels(request);
     }
 }

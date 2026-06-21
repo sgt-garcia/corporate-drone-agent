@@ -1,6 +1,6 @@
 package ai.corporatedroneagent.service;
 
-import ai.corporatedroneagent.dto.DeepSeekModelsRequest;
+import ai.corporatedroneagent.dto.ApiKeyModelsRequest;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
@@ -20,7 +20,7 @@ public class DeepSeekModelsService {
                 .build();
     }
 
-    public List<String> listModels(DeepSeekModelsRequest request) {
+    public List<String> listModels(ApiKeyModelsRequest request) {
         String apiKey = apiKeyFor(request);
         if (apiKey.isBlank()) {
             return List.of();
@@ -55,12 +55,8 @@ public class DeepSeekModelsService {
                 && !normalizedId.contains("fim");
     }
 
-    private String apiKeyFor(DeepSeekModelsRequest request) {
-        return modelLookupSupport.apiKey(
-                request == null ? "" : request.getApiKey(),
-                request == null || request.isUseSavedKey(),
-                settings -> settings.getDeepSeek().getApiKey()
-        );
+    private String apiKeyFor(ApiKeyModelsRequest request) {
+        return modelLookupSupport.apiKey(request, settings -> settings.getDeepSeek().getApiKey());
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

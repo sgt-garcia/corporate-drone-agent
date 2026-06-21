@@ -1,6 +1,6 @@
 package ai.corporatedroneagent.service;
 
-import ai.corporatedroneagent.dto.AnthropicModelsRequest;
+import ai.corporatedroneagent.dto.ApiKeyModelsRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -21,7 +21,7 @@ public class AnthropicModelsService {
                 .build();
     }
 
-    public List<String> listModels(AnthropicModelsRequest request) {
+    public List<String> listModels(ApiKeyModelsRequest request) {
         String apiKey = apiKeyFor(request);
         if (apiKey.isBlank()) {
             return List.of();
@@ -46,11 +46,7 @@ public class AnthropicModelsService {
         return id != null && id.toLowerCase().startsWith("claude-");
     }
 
-    private String apiKeyFor(AnthropicModelsRequest request) {
-        return modelLookupSupport.apiKey(
-                request == null ? "" : request.getApiKey(),
-                request == null || request.isUseSavedKey(),
-                settings -> settings.getAnthropic().getApiKey()
-        );
+    private String apiKeyFor(ApiKeyModelsRequest request) {
+        return modelLookupSupport.apiKey(request, settings -> settings.getAnthropic().getApiKey());
     }
 }

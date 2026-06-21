@@ -1,6 +1,6 @@
 package ai.corporatedroneagent.service;
 
-import ai.corporatedroneagent.dto.GroqModelsRequest;
+import ai.corporatedroneagent.dto.ApiKeyModelsRequest;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
@@ -20,7 +20,7 @@ public class GroqModelsService {
                 .build();
     }
 
-    public List<String> listModels(GroqModelsRequest request) {
+    public List<String> listModels(ApiKeyModelsRequest request) {
         String apiKey = apiKeyFor(request);
         if (apiKey.isBlank()) {
             return List.of();
@@ -61,12 +61,8 @@ public class GroqModelsService {
                 && !normalizedId.contains("whisper");
     }
 
-    private String apiKeyFor(GroqModelsRequest request) {
-        return modelLookupSupport.apiKey(
-                request == null ? "" : request.getApiKey(),
-                request == null || request.isUseSavedKey(),
-                settings -> settings.getGroq().getApiKey()
-        );
+    private String apiKeyFor(ApiKeyModelsRequest request) {
+        return modelLookupSupport.apiKey(request, settings -> settings.getGroq().getApiKey());
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

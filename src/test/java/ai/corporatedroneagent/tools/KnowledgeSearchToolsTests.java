@@ -20,7 +20,6 @@ class KnowledgeSearchToolsTests {
                         "DEV - Software Development",
                         "DEV-77",
                         "DEV-77 - Checkout telemetry regression",
-                        0,
                         "Renewal terms are net-30.",
                         1.0f)));
         KnowledgeSearchTools tools = new KnowledgeSearchTools(search, 5, 2000);

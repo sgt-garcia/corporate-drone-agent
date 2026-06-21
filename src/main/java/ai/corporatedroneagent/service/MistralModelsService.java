@@ -1,6 +1,6 @@
 package ai.corporatedroneagent.service;
 
-import ai.corporatedroneagent.dto.MistralModelsRequest;
+import ai.corporatedroneagent.dto.ApiKeyModelsRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
@@ -20,7 +20,7 @@ public class MistralModelsService {
                 .build();
     }
 
-    public List<String> listModels(MistralModelsRequest request) {
+    public List<String> listModels(ApiKeyModelsRequest request) {
         String apiKey = apiKeyFor(request);
         if (apiKey.isBlank()) {
             return List.of();
@@ -51,11 +51,7 @@ public class MistralModelsService {
                 && !model.path("archived").asBoolean(false);
     }
 
-    private String apiKeyFor(MistralModelsRequest request) {
-        return modelLookupSupport.apiKey(
-                request == null ? "" : request.getApiKey(),
-                request == null || request.isUseSavedKey(),
-                settings -> settings.getMistral().getApiKey()
-        );
+    private String apiKeyFor(ApiKeyModelsRequest request) {
+        return modelLookupSupport.apiKey(request, settings -> settings.getMistral().getApiKey());
     }
 }

@@ -152,7 +152,6 @@ public class KnowledgeSearchService {
                 root.getDisplayName(),
                 resource.getReference(),
                 resource.getDisplayName(),
-                0,
                 content,
                 score
         );

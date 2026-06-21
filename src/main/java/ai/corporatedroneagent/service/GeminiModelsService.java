@@ -1,6 +1,6 @@
 package ai.corporatedroneagent.service;
 
-import ai.corporatedroneagent.dto.GeminiModelsRequest;
+import ai.corporatedroneagent.dto.ApiKeyModelsRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.stream.StreamSupport;
@@ -20,7 +20,7 @@ public class GeminiModelsService {
                 .build();
     }
 
-    public List<String> listModels(GeminiModelsRequest request) {
+    public List<String> listModels(ApiKeyModelsRequest request) {
         String apiKey = apiKeyFor(request);
         if (apiKey.isBlank()) {
             return List.of();
@@ -64,11 +64,7 @@ public class GeminiModelsService {
         return trimmed.startsWith("models/") ? trimmed.substring("models/".length()) : trimmed;
     }
 
-    private String apiKeyFor(GeminiModelsRequest request) {
-        return modelLookupSupport.apiKey(
-                request == null ? "" : request.getApiKey(),
-                request == null || request.isUseSavedKey(),
-                settings -> settings.getGemini().getApiKey()
-        );
+    private String apiKeyFor(ApiKeyModelsRequest request) {
+        return modelLookupSupport.apiKey(request, settings -> settings.getGemini().getApiKey());
     }
 }

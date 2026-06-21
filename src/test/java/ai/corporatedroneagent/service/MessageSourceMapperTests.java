@@ -12,9 +12,9 @@ class MessageSourceMapperTests {
     void mapsLocalFolderAndJiraSnippetsToPills() {
         List<MessageSourceDto> sources = MessageSourceMapper.toSources(List.of(
                 new KnowledgeContextSnippet(
-                        "LOCAL_FOLDER", "Q2 ops", "~/work/q2/plan.md", "plan.md", 0, "Spend is on track.", 1.0f),
+                        "LOCAL_FOLDER", "Q2 ops", "~/work/q2/plan.md", "plan.md", "Spend is on track.", 1.0f),
                 new KnowledgeContextSnippet(
-                        "JIRA", "Operations", "OPS-1423", "Invoice reconciliation", 0, "Two invoices await a PO.", 0.9f)
+                        "JIRA", "Operations", "OPS-1423", "Invoice reconciliation", "Two invoices await a PO.", 0.9f)
         ));
 
         assertThat(sources).hasSize(2);
@@ -33,9 +33,9 @@ class MessageSourceMapperTests {
     void collapsesMultipleChunksFromTheSameResourceKeepingTheTopRanked() {
         List<MessageSourceDto> sources = MessageSourceMapper.toSources(List.of(
                 new KnowledgeContextSnippet(
-                        "LOCAL_FOLDER", "Q2 ops", "~/work/q2/plan.md", "plan.md", 0, "First chunk.", 1.0f),
+                        "LOCAL_FOLDER", "Q2 ops", "~/work/q2/plan.md", "plan.md", "First chunk.", 1.0f),
                 new KnowledgeContextSnippet(
-                        "LOCAL_FOLDER", "Q2 ops", "~/work/q2/plan.md", "plan.md", 1, "Second chunk.", 0.8f)
+                        "LOCAL_FOLDER", "Q2 ops", "~/work/q2/plan.md", "plan.md", "Second chunk.", 0.8f)
         ));
 
         assertThat(sources).singleElement()
@@ -46,7 +46,7 @@ class MessageSourceMapperTests {
     void truncatesAnOverlongExcerpt() {
         String content = "x".repeat(600);
         List<MessageSourceDto> sources = MessageSourceMapper.toSources(List.of(
-                new KnowledgeContextSnippet("LOCAL_FOLDER", "Docs", "a.md", "a.md", 0, content, 1.0f)));
+                new KnowledgeContextSnippet("LOCAL_FOLDER", "Docs", "a.md", "a.md", content, 1.0f)));
 
         assertThat(sources.get(0).preview().excerpt()).hasSize(501).endsWith("…");
     }

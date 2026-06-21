@@ -26,10 +26,6 @@ export async function deleteProject(projectId) {
   return requestNoContent(`/api/projects/${projectId}`, { method: "DELETE" });
 }
 
-export async function getProjectConversations(projectId) {
-  return request(`/api/projects/${projectId}/conversations`);
-}
-
 export async function createConversation(projectId, conversation) {
   return request(`/api/projects/${projectId}/conversations`, {
     method: "POST",
@@ -94,10 +90,6 @@ export async function saveSettings(settings) {
   });
 }
 
-export async function getKnowledgeFolders() {
-  return request("/api/settings/knowledge/local-folders");
-}
-
 export async function addKnowledgeFolder(path) {
   return request("/api/settings/knowledge/local-folders", {
     method: "POST",
@@ -127,18 +119,6 @@ export async function pauseKnowledgeFolder(folderId) {
 export async function resumeKnowledgeFolder(folderId) {
   return request(`/api/settings/knowledge/local-folders/${folderId}/resume`, {
     method: "POST"
-  });
-}
-
-export async function getJiraSettings() {
-  return request("/api/settings/knowledge/jira");
-}
-
-export async function validateJiraConnection({ instanceUrl, email, token, clearToken }) {
-  return request("/api/settings/knowledge/jira/connection/validate", {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify({ instanceUrl, email, token, clearToken })
   });
 }
 
@@ -190,18 +170,6 @@ export async function pauseJiraProject(projectId) {
 export async function resumeJiraProject(projectId) {
   return request(`/api/settings/knowledge/jira/projects/${projectId}/resume`, {
     method: "POST"
-  });
-}
-
-export async function getConfluenceSettings() {
-  return request("/api/settings/knowledge/confluence");
-}
-
-export async function validateConfluenceConnection({ instanceUrl, email, token, clearToken }) {
-  return request("/api/settings/knowledge/confluence/connection/validate", {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify({ instanceUrl, email, token, clearToken })
   });
 }
 

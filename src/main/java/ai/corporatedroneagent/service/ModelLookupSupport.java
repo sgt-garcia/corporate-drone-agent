@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.service;
 
+import ai.corporatedroneagent.dto.ApiKeyModelsRequest;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,6 +23,14 @@ public class ModelLookupSupport {
 
     public ModelLookupSupport(SettingsService settingsService) {
         this.settingsService = settingsService;
+    }
+
+    public String apiKey(ApiKeyModelsRequest request, Function<ApplicationSettings, String> savedApiKey) {
+        return apiKey(
+                request == null ? "" : request.getApiKey(),
+                request == null || request.isUseSavedKey(),
+                savedApiKey
+        );
     }
 
     public String apiKey(

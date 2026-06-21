@@ -1,6 +1,6 @@
 package ai.corporatedroneagent.dto;
 
-public class MistralModelsRequest {
+public class ApiKeyModelsRequest {
 
     private String apiKey = "";
     private boolean useSavedKey = true;

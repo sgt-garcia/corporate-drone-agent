@@ -75,7 +75,6 @@ class AiChatServiceTests {
                 "Docs",
                 "plans/release.txt",
                 "release.txt",
-                0,
                 "The release name is Aurora.",
                 1.25f
         );
@@ -108,7 +107,6 @@ class AiChatServiceTests {
                 "DEV - Software Development",
                 "jira://example.atlassian.net/issue/10100",
                 "DEV-7 - Checkout fails on empty cart",
-                0,
                 "Status: Blocked\nSummary: Checkout fails on empty cart.",
                 1.25f
         );

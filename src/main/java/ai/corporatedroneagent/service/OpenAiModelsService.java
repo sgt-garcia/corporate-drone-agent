@@ -87,14 +87,10 @@ public class OpenAiModelsService {
 
     private String apiKeyFor(OpenAiModelsRequest request) {
         String provider = request == null ? "openai" : Strings.defaultIfBlank(request.getProvider(), "openai");
-        return modelLookupSupport.apiKey(
-                request == null ? "" : request.getApiKey(),
-                request == null || request.isUseSavedKey(),
-                settings -> switch (provider) {
-                    case "openai-sdk" -> settings.getOpenAiSdk().getApiKey();
-                    default -> settings.getOpenAi().getApiKey();
-                }
-        );
+        return modelLookupSupport.apiKey(request, settings -> switch (provider) {
+            case "openai-sdk" -> settings.getOpenAiSdk().getApiKey();
+            default -> settings.getOpenAi().getApiKey();
+        });
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
