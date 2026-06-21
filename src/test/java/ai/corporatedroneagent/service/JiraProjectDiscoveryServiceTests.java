@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -103,6 +105,42 @@ class JiraProjectDiscoveryServiceTests {
                 .containsExactly("DEV", "HLP");
         assertThat(projects.get(1).getId()).isEqualTo("jira-hlp");
         assertThat(projects.get(1).getIssues()).isZero();
+    }
+
+    @Test
+    void browsesEveryProjectPageForABlankQuery() {
+        List<String> requestedQueries = new CopyOnWriteArrayList<>();
+        server.createContext("/rest/api/3/project/search", exchange -> {
+            String query = exchange.getRequestURI().getQuery();
+            requestedQueries.add(query);
+            if (query.contains("startAt=0")) {
+                // A full page (50) must trigger a follow-up fetch for the rest.
+                StringBuilder values = new StringBuilder();
+                for (int i = 0; i < 50; i++) {
+                    if (i > 0) {
+                        values.append(",");
+                    }
+                    values.append("{\"id\":\"")
+                            .append(10000 + i)
+                            .append("\",\"key\":\"P")
+                            .append(i)
+                            .append("\",\"name\":\"Project ")
+                            .append(i)
+                            .append("\"}");
+                }
+                respond(exchange, 200, "{\"isLast\":false,\"values\":[" + values + "]}");
+            } else {
+                respond(exchange, 200, "{\"isLast\":true,\"values\":["
+                        + "{\"id\":\"20001\",\"key\":\"LAST\",\"name\":\"Last Project\"}]}");
+            }
+        });
+
+        var projects = service.searchProjects(baseUrl(), "me@example.com", "token-1234", "", 25);
+
+        assertThat(projects).hasSize(51);
+        assertThat(projects).extracting(JiraProjectDto::getKey).contains("P0", "P49", "LAST");
+        assertThat(requestedQueries).anyMatch(query -> query.contains("startAt=0"));
+        assertThat(requestedQueries).anyMatch(query -> query.contains("startAt=50"));
     }
 
     @Test

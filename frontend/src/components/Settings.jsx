@@ -556,6 +556,19 @@ function InlineError({ children }) {
   );
 }
 
+// Client-side filter for the Jira/Confluence add pickers. The full instance list is fetched
+// once when the picker opens, then narrowed here on each keystroke — no per-keystroke backend
+// round-trip. Matches a case-insensitive substring against the item's key and name.
+function filterPickerItems(items, query) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return items;
+  }
+  return items.filter((item) =>
+    `${item.key} ${item.name}`.toLowerCase().includes(needle)
+  );
+}
+
 // Cycles through source-specific scan items. While a scan runs, the backend
 // streams the current file name / Jira ticket key over SSE; those land here as
 // `items`, falling back to a static label before the first progress event.
@@ -1212,7 +1225,8 @@ function JiraConfig({
     }
     let cancelled = false;
     setPickerLoading(true);
-    onSearchProjects(pickerSearch)
+    // Fetch the whole instance once per picker session; typing filters it client-side below.
+    onSearchProjects("")
       .then((projects) => {
         if (!cancelled) {
           setAvailable(projects);
@@ -1232,7 +1246,9 @@ function JiraConfig({
     return () => {
       cancelled = true;
     };
-  }, [pickerOpen, pickerSearch, atMax, projects.length]);
+  }, [pickerOpen, atMax, projects.length]);
+
+  const matchingProjects = filterPickerItems(available, pickerSearch);
 
   function saveConnection() {
     const url = instanceUrl.trim();
@@ -1632,11 +1648,11 @@ function JiraConfig({
                   {pickerLoading ? (
                     <div className="jira-picker-empty">Loading projects...</div>
                   ) : available.length === 0 ? (
-                    <div className="jira-picker-empty">
-                      {pickerSearch ? "No matching projects." : "Every project is already added."}
-                    </div>
+                    <div className="jira-picker-empty">Every project is already added.</div>
+                  ) : matchingProjects.length === 0 ? (
+                    <div className="jira-picker-empty">No matching projects.</div>
                   ) : (
-                    available.map((project) => (
+                    matchingProjects.map((project) => (
                       <button
                         key={project.key}
                         type="button"
@@ -1765,7 +1781,8 @@ function ConfluenceConfig({
     }
     let cancelled = false;
     setPickerLoading(true);
-    onSearchSpaces(pickerSearch)
+    // Fetch the whole instance once per picker session; typing filters it client-side below.
+    onSearchSpaces("")
       .then((found) => {
         if (!cancelled) {
           setAvailable(found);
@@ -1785,7 +1802,9 @@ function ConfluenceConfig({
     return () => {
       cancelled = true;
     };
-  }, [pickerOpen, pickerSearch, atMax, spaces.length]);
+  }, [pickerOpen, atMax, spaces.length]);
+
+  const matchingSpaces = filterPickerItems(available, pickerSearch);
 
   function saveConnection() {
     const url = instanceUrl.trim();
@@ -2183,11 +2202,11 @@ function ConfluenceConfig({
                   {pickerLoading ? (
                     <div className="jira-picker-empty">Loading spaces...</div>
                   ) : available.length === 0 ? (
-                    <div className="jira-picker-empty">
-                      {pickerSearch ? "No matching spaces." : "Every space is already added."}
-                    </div>
+                    <div className="jira-picker-empty">Every space is already added.</div>
+                  ) : matchingSpaces.length === 0 ? (
+                    <div className="jira-picker-empty">No matching spaces.</div>
                   ) : (
-                    available.map((space) => (
+                    matchingSpaces.map((space) => (
                       <button
                         key={space.key}
                         type="button"

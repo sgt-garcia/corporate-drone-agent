@@ -81,10 +81,12 @@ public class ConfluenceSpaceDiscoveryService {
             }
         }
 
+        // The picker browses the whole instance and filters client-side, so a blank query
+        // returns every space; a non-blank query keeps the capped server-side fallback.
         return spaces.stream()
                 .filter(space -> trimmedQuery.isBlank()
                         || (space.getKey() + " " + space.getName()).toLowerCase(Locale.ROOT).contains(trimmedQuery))
-                .limit(limit)
+                .limit(trimmedQuery.isBlank() ? Long.MAX_VALUE : limit)
                 .toList();
     }
 

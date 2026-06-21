@@ -22,6 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class JiraProjectDiscoveryService {
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    private static final int PROJECT_PAGE_SIZE = 50;
+    private static final int MAX_PROJECT_PAGES = 20;
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -60,6 +62,12 @@ public class JiraProjectDiscoveryService {
         String trimmedQuery = Strings.defaultIfBlank(query, "").trim();
         int limit = Math.max(1, maxResults);
         String normalizedApiVersion = normalizeApiVersion(apiVersion);
+        // The picker browses the whole instance and filters client-side, so a blank query
+        // returns every project rather than the API's first page. Cloud caps a search page at
+        // 50, so the full list must be paged.
+        if (!"2".equals(normalizedApiVersion) && trimmedQuery.isBlank()) {
+            return browseAllProjects(instanceUrl, email, token);
+        }
         String path = "/rest/api/" + normalizedApiVersion + "/project/search?maxResults=" + limit;
         if (!trimmedQuery.isBlank()) {
             path += "&query=" + AtlassianHttp.urlEncode(trimmedQuery);
@@ -71,14 +79,7 @@ public class JiraProjectDiscoveryService {
                 "2".equals(normalizedApiVersion) ? "/rest/api/2/project" : path,
                 "Jira project search"
         );
-        JsonNode values = response.path("values");
-        if (!values.isArray()) {
-            values = response.isArray() ? response : objectMapper.createArrayNode();
-        }
-        List<JiraProjectDto> projects = new ArrayList<>();
-        for (JsonNode project : values) {
-            toProject(project, "").ifPresent(projects::add);
-        }
+        List<JiraProjectDto> projects = parseProjects(response);
         if (!"2".equals(normalizedApiVersion)) {
             return projects;
         }
@@ -88,6 +89,42 @@ public class JiraProjectDiscoveryService {
                         .contains(trimmedQuery.toLowerCase(Locale.ROOT)))
                 .limit(limit)
                 .toList();
+    }
+
+    // Pages /project/search to gather the instance's full project list. Stops at the last page,
+    // a short page, or a non-paginated (bare array) response from older deployments.
+    private List<JiraProjectDto> browseAllProjects(String instanceUrl, String email, String token) {
+        List<JiraProjectDto> projects = new ArrayList<>();
+        int startAt = 0;
+        for (int page = 0; page < MAX_PROJECT_PAGES; page++) {
+            JsonNode response = getJson(
+                    instanceUrl,
+                    email,
+                    token,
+                    "/rest/api/3/project/search?startAt=" + startAt + "&maxResults=" + PROJECT_PAGE_SIZE,
+                    "Jira project search"
+            );
+            boolean paged = response.path("values").isArray();
+            projects.addAll(parseProjects(response));
+            int returned = (paged ? response.path("values") : response).size();
+            if (!paged || returned < PROJECT_PAGE_SIZE || response.path("isLast").asBoolean(false)) {
+                break;
+            }
+            startAt += returned;
+        }
+        return projects;
+    }
+
+    private List<JiraProjectDto> parseProjects(JsonNode response) {
+        JsonNode values = response.path("values");
+        if (!values.isArray()) {
+            values = response.isArray() ? response : objectMapper.createArrayNode();
+        }
+        List<JiraProjectDto> projects = new ArrayList<>();
+        for (JsonNode project : values) {
+            toProject(project, "").ifPresent(projects::add);
+        }
+        return projects;
     }
 
     public JiraProjectDto getProject(String instanceUrl, String email, String token, String key) {
