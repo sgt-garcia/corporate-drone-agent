@@ -173,6 +173,34 @@ class JiraProjectDiscoveryServiceTests {
     }
 
     @Test
+    void returnsEveryJiraServerProjectForABlankQueryIgnoringTheCap() {
+        server.createContext("/rest/api/2/project", exchange -> {
+            StringBuilder body = new StringBuilder("[");
+            for (int i = 0; i < 30; i++) {
+                if (i > 0) {
+                    body.append(",");
+                }
+                body.append("{\"id\":\"")
+                        .append(10000 + i)
+                        .append("\",\"key\":\"P")
+                        .append(i)
+                        .append("\",\"name\":\"Project ")
+                        .append(i)
+                        .append("\"}");
+            }
+            body.append("]");
+            respond(exchange, 200, body.toString());
+        });
+
+        // The picker sends a blank query and filters client-side, so the cap must not truncate;
+        // P25..P29 would be unreachable in the picker if the 25-limit still applied here.
+        var projects = service.searchProjects(baseUrl(), "me@example.com", "token-1234", "", 25, "2");
+
+        assertThat(projects).hasSize(30);
+        assertThat(projects).extracting(JiraProjectDto::getKey).contains("P0", "P25", "P29");
+    }
+
+    @Test
     void getsProjectByKey() {
         server.createContext("/rest/api/3/project/DEV", exchange -> respond(exchange, 200, """
                 {

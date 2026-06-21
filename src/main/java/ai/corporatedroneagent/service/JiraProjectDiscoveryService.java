@@ -83,11 +83,14 @@ public class JiraProjectDiscoveryService {
         if (!"2".equals(normalizedApiVersion)) {
             return projects;
         }
+        // Jira Server (v2) has no project-search query, so it returns every project and filters
+        // locally. A blank query is the picker browsing the whole instance to filter client-side,
+        // so it must return all — capping it would hide projects past the cap from the picker.
         return projects.stream()
                 .filter(project -> trimmedQuery.isBlank()
                         || (project.getKey() + " " + project.getName()).toLowerCase(Locale.ROOT)
                         .contains(trimmedQuery.toLowerCase(Locale.ROOT)))
-                .limit(limit)
+                .limit(trimmedQuery.isBlank() ? Long.MAX_VALUE : limit)
                 .toList();
     }
 
