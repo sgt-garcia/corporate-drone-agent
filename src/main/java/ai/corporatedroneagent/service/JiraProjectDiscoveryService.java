@@ -13,6 +13,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,9 +23,13 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class JiraProjectDiscoveryService {
 
+    private static final Logger log = LoggerFactory.getLogger(JiraProjectDiscoveryService.class);
+
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private static final int PROJECT_PAGE_SIZE = 50;
-    private static final int MAX_PROJECT_PAGES = 20;
+    // Runaway guard only — the browse loop normally stops on the API's isLast / short page. Set
+    // far above any real instance so every project loads; a hit means a misbehaving API, so we log.
+    private static final int MAX_PROJECT_PAGES = 10_000;
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -94,8 +100,9 @@ public class JiraProjectDiscoveryService {
                 .toList();
     }
 
-    // Pages /project/search to gather the instance's full project list. Stops at the last page,
-    // a short page, or a non-paginated (bare array) response from older deployments.
+    // Pages /project/search to gather the instance's full project list, however large. Stops at
+    // the last page (isLast / short page) or a non-paginated (bare array) response from older
+    // deployments; the page count is only a runaway guard against a misbehaving API.
     private List<JiraProjectDto> browseAllProjects(String instanceUrl, String email, String token) {
         List<JiraProjectDto> projects = new ArrayList<>();
         int startAt = 0;
@@ -111,10 +118,11 @@ public class JiraProjectDiscoveryService {
             projects.addAll(parseProjects(response));
             int returned = (paged ? response.path("values") : response).size();
             if (!paged || returned < PROJECT_PAGE_SIZE || response.path("isLast").asBoolean(false)) {
-                break;
+                return projects;
             }
             startAt += returned;
         }
+        log.warn("Jira project browse hit the {}-page guard; some projects may be omitted.", MAX_PROJECT_PAGES);
         return projects;
     }
 

@@ -14,6 +14,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,9 +29,13 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ConfluenceSpaceDiscoveryService {
 
+    private static final Logger log = LoggerFactory.getLogger(ConfluenceSpaceDiscoveryService.class);
+
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private static final int SPACE_PAGE_SIZE = 100;
-    private static final int MAX_SPACE_PAGES = 10;
+    // Runaway guard only — paging normally stops on a short page / no "next" link. Set far above
+    // any real instance (Confluence's hard ceiling is ~131k spaces) so every space loads.
+    private static final int MAX_SPACE_PAGES = 2_000;
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -59,7 +65,8 @@ public class ConfluenceSpaceDiscoveryService {
         List<ConfluenceSpaceDto> spaces = new ArrayList<>();
 
         int start = 0;
-        for (int page = 0; page < MAX_SPACE_PAGES; page++) {
+        boolean reachedEnd = false;
+        for (int page = 0; page < MAX_SPACE_PAGES && !reachedEnd; page++) {
             JsonNode response = getJson(
                     instanceUrl,
                     email,
@@ -69,6 +76,7 @@ public class ConfluenceSpaceDiscoveryService {
             );
             JsonNode results = response.path("results");
             if (!results.isArray() || results.isEmpty()) {
+                reachedEnd = true;
                 break;
             }
             for (JsonNode space : results) {
@@ -77,8 +85,11 @@ public class ConfluenceSpaceDiscoveryService {
             int size = response.path("size").asInt(results.size());
             start += size;
             if (size < SPACE_PAGE_SIZE || response.path("_links").path("next").asText("").isBlank()) {
-                break;
+                reachedEnd = true;
             }
+        }
+        if (!reachedEnd) {
+            log.warn("Confluence space browse hit the {}-page guard; some spaces may be omitted.", MAX_SPACE_PAGES);
         }
 
         // The picker browses the whole instance and filters client-side, so a blank query
