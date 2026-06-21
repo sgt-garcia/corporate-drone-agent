@@ -118,30 +118,16 @@ class KnowledgeResourcePipelineRepositoryTests {
         chunk.setStartOffset(0);
         chunk.setEndOffset(7);
         chunk.setContentHash("hash");
-        KnowledgeResourceChunk savedChunk = pipelineRepository.saveChunk(chunk);
-
-        assertThat(pipelineRepository.findChunksByResourceId(savedResource.getId())).hasSize(1);
-        assertThat(pipelineRepository.findChunkById(savedChunk.getId()))
-                .hasValueSatisfying(loaded -> assertThat(loaded.getContentHash()).isEqualTo("hash"));
-        assertThat(pipelineRepository.findChunkByResourceIdAndIndex(savedResource.getId(), 0))
-                .hasValueSatisfying(loaded -> assertThat(loaded.getId()).isEqualTo(savedChunk.getId()));
-
-        KnowledgeResourceChunk updatedChunk = new KnowledgeResourceChunk();
-        updatedChunk.setResourceId(savedResource.getId());
-        updatedChunk.setChunkIndex(0);
-        updatedChunk.setStartOffset(1);
-        updatedChunk.setEndOffset(6);
-        updatedChunk.setContentHash("updated-hash");
-        pipelineRepository.saveChunk(updatedChunk);
+        KnowledgeResourceChunk savedChunk = pipelineRepository.insertChunk(chunk);
 
         assertThat(pipelineRepository.findChunksByResourceId(savedResource.getId()))
                 .hasSize(1)
                 .first()
                 .satisfies(loaded -> {
                     assertThat(loaded.getId()).isEqualTo(savedChunk.getId());
-                    assertThat(loaded.getStartOffset()).isEqualTo(1);
-                    assertThat(loaded.getEndOffset()).isEqualTo(6);
-                    assertThat(loaded.getContentHash()).isEqualTo("updated-hash");
+                    assertThat(loaded.getStartOffset()).isEqualTo(0);
+                    assertThat(loaded.getEndOffset()).isEqualTo(7);
+                    assertThat(loaded.getContentHash()).isEqualTo("hash");
                 });
 
         KnowledgeResourceIndex index = new KnowledgeResourceIndex();

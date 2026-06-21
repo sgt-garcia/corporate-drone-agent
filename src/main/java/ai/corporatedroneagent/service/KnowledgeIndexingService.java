@@ -101,12 +101,6 @@ public class KnowledgeIndexingService {
         }
     }
 
-    public List<String> searchTerm(String term, int limit) {
-        return search(term, limit).stream()
-                .map(KnowledgeIndexHit::documentId)
-                .toList();
-    }
-
     public List<KnowledgeIndexHit> search(String query, int limit) {
         String normalizedQuery = query == null ? "" : query.trim();
         if (normalizedQuery.isEmpty() || limit <= 0 || !Files.exists(indexPath)) {

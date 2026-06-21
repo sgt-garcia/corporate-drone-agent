@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -62,6 +63,12 @@ class KnowledgeFolderScanServiceTests {
     private KnowledgeIndexingService indexingService;
     private KnowledgeSearchService searchService;
     private KnowledgeScanCoordinator scanCoordinator;
+
+    private List<String> searchTerm(String term, int limit) {
+        return indexingService.search(term, limit).stream()
+                .map(KnowledgeIndexingService.KnowledgeIndexHit::documentId)
+                .toList();
+    }
 
     @BeforeEach
     void setUp() {
@@ -208,7 +215,7 @@ class KnowledgeFolderScanServiceTests {
                     assertThat(index.getSuccess()).isTrue();
                     assertThat(index.getIndexReference()).isEqualTo(textResource.getId() + ":0");
                 });
-        assertThat(indexingService.searchTerm("hello", 10))
+        assertThat(searchTerm("hello", 10))
                 .containsExactly(textResource.getId() + ":0");
         assertThat(searchService.search("hello", 10))
                 .hasSize(1)
@@ -280,7 +287,7 @@ class KnowledgeFolderScanServiceTests {
                 .findByRootIdAndReference(knowledgeRoot.getId(), "stale.txt")
                 .orElseThrow();
         assertThat(pipelineRepository.findChunksByResourceId(staleResource.getId())).isEmpty();
-        assertThat(indexingService.searchTerm("stale", 10)).isEmpty();
+        assertThat(searchTerm("stale", 10)).isEmpty();
     }
 
     @Test
@@ -296,7 +303,7 @@ class KnowledgeFolderScanServiceTests {
 
         assertThat(knowledgeRootRepository.findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString()))
                 .isEmpty();
-        assertThat(indexingService.searchTerm("remove-token", 10)).isEmpty();
+        assertThat(searchTerm("remove-token", 10)).isEmpty();
         assertThat(searchService.search("remove-token", 10)).isEmpty();
     }
 
@@ -486,8 +493,8 @@ class KnowledgeFolderScanServiceTests {
                             .map(KnowledgeResourceIndex::getSuccess)
                             .contains(true);
                 });
-        assertThat(indexingService.searchTerm("old", 10)).isEmpty();
-        assertThat(indexingService.searchTerm("new", 10)).containsExactly(resource.getId() + ":0");
+        assertThat(searchTerm("old", 10)).isEmpty();
+        assertThat(searchTerm("new", 10)).containsExactly(resource.getId() + ":0");
         assertThat(searchService.search("new", 10))
                 .hasSize(1)
                 .first()
@@ -527,8 +534,8 @@ class KnowledgeFolderScanServiceTests {
                 .findByRootIdAndReference(knowledgeRoot.getId(), "notes.md")
                 .orElseThrow();
         assertThat(reads.get()).isEqualTo(2);
-        assertThat(indexingService.searchTerm("oldtoken", 10)).isEmpty();
-        assertThat(indexingService.searchTerm("newtoken", 10)).containsExactly(resource.getId() + ":0");
+        assertThat(searchTerm("oldtoken", 10)).isEmpty();
+        assertThat(searchTerm("newtoken", 10)).containsExactly(resource.getId() + ":0");
     }
 
     @Test

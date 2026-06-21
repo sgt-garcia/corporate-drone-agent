@@ -56,6 +56,12 @@ class JiraKnowledgeScanServiceTests {
     private FakeJiraIssueFetchService issueFetchService;
     private ObjectMapper objectMapper;
 
+    private List<String> searchTerm(String term, int limit) {
+        return indexingService.search(term, limit).stream()
+                .map(KnowledgeIndexingService.KnowledgeIndexHit::documentId)
+                .toList();
+    }
+
     @BeforeEach
     void setUp() {
         JdbcTemplate jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
@@ -157,7 +163,7 @@ class JiraKnowledgeScanServiceTests {
         assertThat(chunks).hasSize(1);
         assertThat(pipelineRepository.findIndexByChunkId(chunks.getFirst().getId()))
                 .hasValueSatisfying(index -> assertThat(index.getSuccess()).isTrue());
-        assertThat(indexingService.searchTerm("firsttoken", 10))
+        assertThat(searchTerm("firsttoken", 10))
                 .containsExactly(resource.getId() + ":0");
     }
 
@@ -266,8 +272,8 @@ class JiraKnowledgeScanServiceTests {
         assertThat(result.resources()).isEqualTo(2);
         assertThat(resourceRepository.findByRootIdAndReference(root.getId(), stale.reference()))
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
-        assertThat(indexingService.searchTerm("staletoken", 10)).hasSize(1);
-        assertThat(indexingService.searchTerm("changedtoken2", 10)).hasSize(1);
+        assertThat(searchTerm("staletoken", 10)).hasSize(1);
+        assertThat(searchTerm("changedtoken2", 10)).hasSize(1);
     }
 
     @Test
@@ -309,8 +315,8 @@ class JiraKnowledgeScanServiceTests {
         assertThat(result.resources()).isEqualTo(2);
         assertThat(resourceRepository.findByRootIdAndReference(root.getId(), stale.reference()))
                 .hasValueSatisfying(resource -> assertThat(resource.isDeleted()).isFalse());
-        assertThat(indexingService.searchTerm("staletoken", 10)).hasSize(1);
-        assertThat(indexingService.searchTerm("changedtoken2", 10)).hasSize(1);
+        assertThat(searchTerm("staletoken", 10)).hasSize(1);
+        assertThat(searchTerm("changedtoken2", 10)).hasSize(1);
     }
 
     @Test
@@ -473,15 +479,15 @@ class JiraKnowledgeScanServiceTests {
         KnowledgeResource resource = resourceRepository
                 .findByRootIdAndReference(root.getId(), issue.reference())
                 .orElseThrow();
-        assertThat(indexingService.searchTerm("removedtoken", 10))
+        assertThat(searchTerm("removedtoken", 10))
                 .containsExactly(resource.getId() + ":0");
 
         new KnowledgeRootCleanupService(rootRepository, resourceRepository, indexingService)
-                .removeJiraRoot(root.getReference());
+                .removeRoot(KnowledgeSource.JIRA, root.getReference());
 
         assertThat(rootRepository.findById(root.getId())).isEmpty();
         assertThat(resourceRepository.findByRootId(root.getId())).isEmpty();
-        assertThat(indexingService.searchTerm("removedtoken", 10)).isEmpty();
+        assertThat(searchTerm("removedtoken", 10)).isEmpty();
     }
 
     private JiraIssueFetchService.JiraIssueManifest manifest(

@@ -204,64 +204,6 @@ public class KnowledgeResourcePipelineRepository {
                 """, this::mapChunk, resourceId);
     }
 
-    public Optional<KnowledgeResourceChunk> findChunkById(UUID chunkId) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT * FROM knowledge_resource_chunks WHERE id = ?",
-                    this::mapChunk,
-                    chunkId
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
-    }
-
-    public Optional<KnowledgeResourceChunk> findChunkByResourceIdAndIndex(UUID resourceId, int chunkIndex) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject("""
-                    SELECT *
-                    FROM knowledge_resource_chunks
-                    WHERE resource_id = ?
-                      AND chunk_index = ?
-                    """,
-                    this::mapChunk,
-                    resourceId,
-                    chunkIndex
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
-    }
-
-    public KnowledgeResourceChunk saveChunk(KnowledgeResourceChunk chunk) {
-        Instant now = Instant.now();
-        Optional<KnowledgeResourceChunk> existing = findChunkByResourceIdAndIndex(
-                chunk.getResourceId(),
-                chunk.getChunkIndex()
-        );
-        if (existing.isEmpty()) {
-            return insertChunk(chunk, now);
-        }
-        chunk.setId(existing.get().getId());
-        chunk.setCreatedAt(existing.get().getCreatedAt());
-        chunk.setUpdatedAt(now);
-        jdbcTemplate.update("""
-                UPDATE knowledge_resource_chunks
-                SET start_offset = ?,
-                    end_offset = ?,
-                    content_hash = ?,
-                    updated_at = ?
-                WHERE id = ?
-                """,
-                chunk.getStartOffset(),
-                chunk.getEndOffset(),
-                chunk.getContentHash(),
-                timestamp(chunk.getUpdatedAt()),
-                chunk.getId()
-        );
-        return chunk;
-    }
-
     public KnowledgeResourceChunk insertChunk(KnowledgeResourceChunk chunk) {
         return insertChunk(chunk, Instant.now());
     }

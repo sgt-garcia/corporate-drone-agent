@@ -33,10 +33,6 @@ public class KnowledgeRootCleanupService {
         removeRoot(KnowledgeSource.LOCAL_FOLDER, reference);
     }
 
-    public void removeJiraRoot(String reference) {
-        removeRoot(KnowledgeSource.JIRA, reference);
-    }
-
     public void removeRoot(KnowledgeSource source, String reference) {
         if (source == null || reference == null || reference.isBlank()) {
             return;
