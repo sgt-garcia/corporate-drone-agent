@@ -1098,6 +1098,27 @@ function LocalFoldersConfig({
   );
 }
 
+// Front-of-save validation shared by the Jira and Confluence connection forms — identical
+// apart from the source name in the instance-URL prompt. Returns an error message, or "".
+function connectionInputError({ instanceUrl, email, token, hasSaved, pendingClear, sourceName }) {
+  if (!instanceUrl) {
+    return `Enter your ${sourceName} instance URL.`;
+  }
+  if (!/^https?:\/\//.test(instanceUrl)) {
+    return "Instance URL must start with https://";
+  }
+  if (!email) {
+    return "Enter your email address.";
+  }
+  if (!email.includes("@")) {
+    return "Enter a valid email address.";
+  }
+  if (!token && !hasSaved && !pendingClear) {
+    return "Enter an API token.";
+  }
+  return "";
+}
+
 function JiraConfig({
   config,
   scanProgressById,
@@ -1111,10 +1132,7 @@ function JiraConfig({
   onBack
 }) {
   const [cfg, setCfg] = useState(() => ({
-    instanceUrl: config.instanceUrl ?? "",
-    email: config.email ?? "",
     connected: Boolean(config.connected),
-    apiVersion: config.apiVersion ?? "3",
     tokenConfigured: Boolean(config.tokenConfigured),
     tokenLastFour: config.tokenLastFour ?? "",
     tokenExpiresDays: config.tokenExpiresDays ?? null,
@@ -1135,19 +1153,15 @@ function JiraConfig({
   const pickerRef = useRef(null);
 
   useServerSync(config, (next) => {
-    const nextCfg = {
-      instanceUrl: next.instanceUrl ?? "",
-      email: next.email ?? "",
+    setCfg({
       connected: Boolean(next.connected),
-      apiVersion: next.apiVersion ?? "3",
       tokenConfigured: Boolean(next.tokenConfigured),
       tokenLastFour: next.tokenLastFour ?? "",
       tokenExpiresDays: next.tokenExpiresDays ?? null,
       projects: next.projects ?? []
-    };
-    setCfg(nextCfg);
-    setInstanceUrl(nextCfg.instanceUrl);
-    setEmail(nextCfg.email);
+    });
+    setInstanceUrl(next.instanceUrl ?? "");
+    setEmail(next.email ?? "");
   });
 
   const hasSaved = cfg.tokenConfigured;
@@ -1223,25 +1237,17 @@ function JiraConfig({
   function saveConnection() {
     const url = instanceUrl.trim();
     const mail = email.trim();
-    if (!url) {
-      setConnectError("Enter your Jira instance URL.");
-      return;
-    }
-    if (!/^https?:\/\//.test(url)) {
-      setConnectError("Instance URL must start with https://");
-      return;
-    }
-    if (!mail) {
-      setConnectError("Enter your email address.");
-      return;
-    }
-    if (!mail.includes("@")) {
-      setConnectError("Enter a valid email address.");
-      return;
-    }
     const trimmedToken = token.trim();
-    if (!trimmedToken && !hasSaved && !pendingClear) {
-      setConnectError("Enter an API token.");
+    const inputError = connectionInputError({
+      instanceUrl: url,
+      email: mail,
+      token: trimmedToken,
+      hasSaved,
+      pendingClear,
+      sourceName: "Jira"
+    });
+    if (inputError) {
+      setConnectError(inputError);
       return;
     }
     setConnecting(true);
@@ -1679,8 +1685,6 @@ function ConfluenceConfig({
   onBack
 }) {
   const [cfg, setCfg] = useState(() => ({
-    instanceUrl: config.instanceUrl ?? "",
-    email: config.email ?? "",
     connected: Boolean(config.connected),
     tokenConfigured: Boolean(config.tokenConfigured),
     tokenLastFour: config.tokenLastFour ?? "",
@@ -1702,18 +1706,15 @@ function ConfluenceConfig({
   const pickerRef = useRef(null);
 
   useServerSync(config, (next) => {
-    const nextCfg = {
-      instanceUrl: next.instanceUrl ?? "",
-      email: next.email ?? "",
+    setCfg({
       connected: Boolean(next.connected),
       tokenConfigured: Boolean(next.tokenConfigured),
       tokenLastFour: next.tokenLastFour ?? "",
       tokenExpiresDays: next.tokenExpiresDays ?? null,
       spaces: next.spaces ?? []
-    };
-    setCfg(nextCfg);
-    setInstanceUrl(nextCfg.instanceUrl);
-    setEmail(nextCfg.email);
+    });
+    setInstanceUrl(next.instanceUrl ?? "");
+    setEmail(next.email ?? "");
   });
 
   const hasSaved = cfg.tokenConfigured;
@@ -1789,25 +1790,17 @@ function ConfluenceConfig({
   function saveConnection() {
     const url = instanceUrl.trim();
     const mail = email.trim();
-    if (!url) {
-      setConnectError("Enter your Confluence instance URL.");
-      return;
-    }
-    if (!/^https?:\/\//.test(url)) {
-      setConnectError("Instance URL must start with https://");
-      return;
-    }
-    if (!mail) {
-      setConnectError("Enter your email address.");
-      return;
-    }
-    if (!mail.includes("@")) {
-      setConnectError("Enter a valid email address.");
-      return;
-    }
     const trimmedToken = token.trim();
-    if (!trimmedToken && !hasSaved && !pendingClear) {
-      setConnectError("Enter an API token.");
+    const inputError = connectionInputError({
+      instanceUrl: url,
+      email: mail,
+      token: trimmedToken,
+      hasSaved,
+      pendingClear,
+      sourceName: "Confluence"
+    });
+    if (inputError) {
+      setConnectError(inputError);
       return;
     }
     setConnecting(true);

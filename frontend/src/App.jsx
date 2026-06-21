@@ -46,8 +46,6 @@ import { findWorkItem } from "./data.js";
 const defaultProjectInstructions =
   "Use this project context when answering questions about planning, decisions, and follow-up work.";
 
-const defaultKnowledgeFolders = [];
-
 const emptySettings = {
   agentName: "Corporate Drone's Agent",
   aiModel: "none",
@@ -111,7 +109,7 @@ export default function App() {
   const [conversationsById, setConversationsById] = useState({});
   const [draftsByConversationId, setDraftsByConversationId] = useState({});
   const [settings, setSettings] = useState(emptySettings);
-  const [knowledgeFolders, setKnowledgeFolders] = useState(defaultKnowledgeFolders);
+  const [knowledgeFolders, setKnowledgeFolders] = useState([]);
   // Live per-source scan progress: source id -> array of recent file names /
   // ticket keys, streamed over SSE while a folder or Jira project is scanning.
   const [scanProgressById, setScanProgressById] = useState({});
@@ -196,12 +194,9 @@ export default function App() {
       const payload = JSON.parse(event.data);
       removeMessageFromConversation(payload.conversationId, payload.message.id);
     });
-    events.addEventListener("projects-updated", () => {
-      refreshProjectsFromServer();
-    });
-    events.addEventListener("project-updated", () => {
-      refreshProjectsFromServer();
-    });
+    const refreshProjects = () => refreshProjectsFromServer();
+    events.addEventListener("projects-updated", refreshProjects);
+    events.addEventListener("project-updated", refreshProjects);
     events.addEventListener("conversation-created", (event) => {
       const conversation = JSON.parse(event.data);
       setProjects((currentProjects) =>
