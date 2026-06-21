@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -216,7 +217,7 @@ public class KnowledgeScanEngine {
     private Map<String, KnowledgeResource> byReference(List<KnowledgeResource> resources) {
         return resources.stream().collect(Collectors.toMap(
                 KnowledgeResource::getReference,
-                resource -> resource,
+                Function.identity(),
                 (first, second) -> first
         ));
     }

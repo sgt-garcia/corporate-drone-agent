@@ -5,7 +5,7 @@ import ai.corporatedroneagent.model.knowledge.JiraKnowledgeRootConfig;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
-import java.time.Instant;
+import ai.corporatedroneagent.util.Timestamps;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -99,19 +99,12 @@ public class JiraSourceAdapter implements KnowledgeSourceAdapter {
 
         @Override
         public boolean isUnchanged(KnowledgeResource existing, ResourceManifest manifest) {
-            return sameTimestamp(existing.getLastModifiedAt(), manifest.lastModifiedAt());
+            return Timestamps.sameInstant(existing.getLastModifiedAt(), manifest.lastModifiedAt());
         }
 
         @Override
         public boolean reconcilesDeletes() {
             return false;
         }
-    }
-
-    private static boolean sameTimestamp(Instant first, Instant second) {
-        if (first == null || second == null) {
-            return first == second;
-        }
-        return first.toEpochMilli() == second.toEpochMilli();
     }
 }

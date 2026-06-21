@@ -42,7 +42,6 @@ public class KnowledgeIndexingService {
 
     private static final String FIELD_DOCUMENT_ID = "documentId";
     private static final String FIELD_RESOURCE_ID = "resourceId";
-    private static final String FIELD_RESOURCE_REFERENCE = "resourceReference";
     private static final String FIELD_CONTENT = "content";
 
     private final KnowledgeResourcePipelineRepository pipelineRepository;
@@ -182,7 +181,6 @@ public class KnowledgeIndexingService {
         Document document = new Document();
         document.add(new StringField(FIELD_DOCUMENT_ID, documentId, Field.Store.YES));
         document.add(new StringField(FIELD_RESOURCE_ID, resource.getId().toString(), Field.Store.YES));
-        document.add(new StringField(FIELD_RESOURCE_REFERENCE, resource.getReference(), Field.Store.YES));
         document.add(new TextField(FIELD_CONTENT, conversion.getValue(), Field.Store.NO));
         return document;
     }

@@ -3,6 +3,7 @@ package ai.corporatedroneagent.service;
 import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
 import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
+import ai.corporatedroneagent.util.Timestamps;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.FileVisitResult;
@@ -11,7 +12,6 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -108,7 +108,7 @@ public class FolderSourceAdapter implements KnowledgeSourceAdapter {
         @Override
         public boolean isUnchanged(KnowledgeResource existing, ResourceManifest manifest) {
             return existing.getSizeBytes() == manifest.sizeBytes()
-                    && sameTimestamp(existing.getLastModifiedAt(), manifest.lastModifiedAt());
+                    && Timestamps.sameInstant(existing.getLastModifiedAt(), manifest.lastModifiedAt());
         }
 
         @Override
@@ -158,12 +158,5 @@ public class FolderSourceAdapter implements KnowledgeSourceAdapter {
             }
             return fileName.substring(extensionStart + 1).toLowerCase(Locale.ROOT);
         }
-    }
-
-    private static boolean sameTimestamp(Instant first, Instant second) {
-        if (first == null || second == null) {
-            return first == second;
-        }
-        return first.toEpochMilli() == second.toEpochMilli();
     }
 }

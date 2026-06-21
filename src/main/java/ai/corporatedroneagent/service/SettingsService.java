@@ -292,12 +292,7 @@ public class SettingsService {
         boolean wasConnected = current.isConnected();
         String token = Strings.defaultIfBlank(request == null ? "" : request.token(), "");
         if (request != null && request.clearToken() && token.isBlank()) {
-            JiraSettings cleared = new JiraSettings();
-            settings.setJira(cleared);
-            removeAllJiraRoots();
-            persistJiraSettings(settings, cleared, jiraSecretRequest("", true));
-            log.info("Cleared Jira setup.");
-            return currentJiraSettings();
+            return clearJiraConnection();
         }
 
         validateJiraConnectionRequest(request, current.isTokenConfigured());
@@ -388,7 +383,7 @@ public class SettingsService {
         KnowledgeRoot root = new KnowledgeRoot();
         root.setSource(KnowledgeSource.JIRA);
         root.setReference(JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), projectId));
-        root.setDisplayName(jiraDisplayName(discovered.getKey(), discovered.getName()));
+        root.setDisplayName(keyAndName(discovered.getKey(), discovered.getName()));
         root.setTotalResources(discovered.getIssues());
         root.setConfigJson(JiraKnowledgeRootConfig.withIdentity(
                 null, projectId, discovered.getKey(), discovered.getName()));
@@ -475,12 +470,7 @@ public class SettingsService {
         boolean wasConnected = current.isConnected();
         String token = Strings.defaultIfBlank(request == null ? "" : request.token(), "");
         if (request != null && request.clearToken() && token.isBlank()) {
-            ConfluenceSettings cleared = new ConfluenceSettings();
-            settings.setConfluence(cleared);
-            removeAllConfluenceRoots();
-            persistConfluenceSettings(settings, cleared, confluenceSecretRequest("", true));
-            log.info("Cleared Confluence setup.");
-            return currentConfluenceSettings();
+            return clearConfluenceConnection();
         }
 
         validateConfluenceConnectionRequest(request, current.isTokenConfigured());
@@ -566,7 +556,7 @@ public class SettingsService {
         KnowledgeRoot root = new KnowledgeRoot();
         root.setSource(KnowledgeSource.CONFLUENCE);
         root.setReference(ConfluenceKnowledgeReferences.spaceRootReference(confluence.getInstanceUrl(), spaceId));
-        root.setDisplayName(confluenceDisplayName(discovered.getKey(), discovered.getName()));
+        root.setDisplayName(keyAndName(discovered.getKey(), discovered.getName()));
         root.setTotalResources(discovered.getPages());
         root.setConfigJson(ConfluenceKnowledgeRootConfig.withIdentity(
                 null, spaceId, discovered.getKey(), discovered.getName()));
@@ -682,9 +672,9 @@ public class SettingsService {
         }
     }
 
-    private String confluenceDisplayName(String key, String name) {
-        String trimmedKey = Strings.defaultIfBlank(key, "").trim();
-        String trimmedName = Strings.defaultIfBlank(name, "").trim();
+    private String keyAndName(String key, String name) {
+        String trimmedKey = Strings.defaultIfBlank(key, "");
+        String trimmedName = Strings.defaultIfBlank(name, "");
         if (trimmedKey.isBlank()) {
             return trimmedName;
         }
@@ -823,18 +813,6 @@ public class SettingsService {
         if (!jira.isConnected() || !jira.isTokenConfigured()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Save Jira setup before managing projects");
         }
-    }
-
-    private String jiraDisplayName(String key, String name) {
-        String trimmedKey = Strings.defaultIfBlank(key, "").trim();
-        String trimmedName = Strings.defaultIfBlank(name, "").trim();
-        if (trimmedKey.isBlank()) {
-            return trimmedName;
-        }
-        if (trimmedName.isBlank()) {
-            return trimmedKey;
-        }
-        return trimmedKey + " - " + trimmedName;
     }
 
     // The list of configured Jira projects on read, rebuilt from JIRA roots — the
