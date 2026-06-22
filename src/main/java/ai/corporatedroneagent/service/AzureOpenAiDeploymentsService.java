@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.dto.AzureOpenAiDeploymentsRequest;
+import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Optional;
@@ -60,7 +61,7 @@ public class AzureOpenAiDeploymentsService {
 
     private Optional<JsonNode> loadDeployments(String endpoint, String apiKey) {
         RestClient restClient = restClientBuilder
-                .baseUrl(trimTrailingSlashes(endpoint))
+                .baseUrl(Strings.trimTrailingSlashes(endpoint))
                 .build();
 
         for (String apiVersion : FALLBACK_DEPLOYMENTS_API_VERSIONS) {
@@ -155,10 +156,6 @@ public class AzureOpenAiDeploymentsService {
         }
 
         return deployment.path("properties").path("model").path("format").asText("");
-    }
-
-    static String trimTrailingSlashes(String endpoint) {
-        return endpoint.replaceAll("/+$", "");
     }
 
     private String endpointFor(AzureOpenAiDeploymentsRequest request) {

@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.service;
 
+import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
@@ -51,8 +52,7 @@ public class JiraConnectionValidationService {
     }
 
     private URI myselfUri(String instanceUrl, String path) {
-        String base = instanceUrl.endsWith("/") ? instanceUrl.substring(0, instanceUrl.length() - 1) : instanceUrl;
-        return URI.create(base + path);
+        return URI.create(JiraKnowledgeReferences.apiBaseUrl(instanceUrl) + path);
     }
 
     public record ValidationResult(

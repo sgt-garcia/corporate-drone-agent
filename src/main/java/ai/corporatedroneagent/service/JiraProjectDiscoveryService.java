@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.dto.JiraProjectDto;
+import ai.corporatedroneagent.model.knowledge.JiraKnowledgeReferences;
 import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -184,8 +185,7 @@ public class JiraProjectDiscoveryService {
     }
 
     private URI jiraUri(String instanceUrl, String path) {
-        String base = instanceUrl.endsWith("/") ? instanceUrl.substring(0, instanceUrl.length() - 1) : instanceUrl;
-        return URI.create(base + path);
+        return URI.create(JiraKnowledgeReferences.apiBaseUrl(instanceUrl) + path);
     }
 
     private String normalizeApiVersion(String apiVersion) {

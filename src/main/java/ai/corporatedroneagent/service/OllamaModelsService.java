@@ -27,7 +27,7 @@ public class OllamaModelsService {
         JsonNode response = modelLookupSupport.request(
                 "Ollama models",
                 () -> restClientBuilder
-                    .baseUrl(trimTrailingSlashes(baseUrl))
+                    .baseUrl(Strings.trimTrailingSlashes(baseUrl))
                     .build()
                     .get()
                     .uri("/api/tags")
@@ -55,9 +55,5 @@ public class OllamaModelsService {
 
         String normalizedModel = model.toLowerCase();
         return !normalizedModel.contains("embed");
-    }
-
-    static String trimTrailingSlashes(String baseUrl) {
-        return baseUrl.replaceAll("/+$", "");
     }
 }

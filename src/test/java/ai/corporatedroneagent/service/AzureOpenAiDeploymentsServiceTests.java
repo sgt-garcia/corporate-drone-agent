@@ -2,6 +2,7 @@ package ai.corporatedroneagent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -76,7 +77,7 @@ class AzureOpenAiDeploymentsServiceTests {
 
     @Test
     void trimsTrailingSlashesFromEndpoint() {
-        assertThat(AzureOpenAiDeploymentsService.trimTrailingSlashes("https://example.openai.azure.com///"))
+        assertThat(Strings.trimTrailingSlashes("https://example.openai.azure.com///"))
                 .isEqualTo("https://example.openai.azure.com");
     }
 }

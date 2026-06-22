@@ -45,7 +45,7 @@ public class GeminiModelsService {
             return false;
         }
 
-        String id = normalizeModelId(model == null ? "" : model.path("name").asText(""));
+        String id = normalizeModelId(model.path("name").asText(""));
         String normalizedId = id.toLowerCase();
         return normalizedId.startsWith("gemini-")
                 && !normalizedId.contains("embedding")

@@ -2,6 +2,7 @@ package ai.corporatedroneagent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -37,7 +38,7 @@ class OllamaModelsServiceTests {
 
     @Test
     void trimsTrailingSlashesFromBaseUrl() {
-        assertThat(OllamaModelsService.trimTrailingSlashes("http://localhost:11434///"))
+        assertThat(Strings.trimTrailingSlashes("http://localhost:11434///"))
                 .isEqualTo("http://localhost:11434");
     }
 }
