@@ -40,6 +40,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -65,6 +66,7 @@ public class SettingsService {
     private final EventService eventService;
     private final KnowledgeRootCleanupService knowledgeRootCleanupService;
     private final KnowledgeScanCoordinator knowledgeScanCoordinator;
+    private final KnowledgeIngestionService ingestionService;
     private final JiraConnectionValidationService jiraConnectionValidationService;
     private final JiraProjectDiscoveryService jiraProjectDiscoveryService;
     private final ConfluenceConnectionValidationService confluenceConnectionValidationService;
@@ -76,7 +78,8 @@ public class SettingsService {
             SettingsSecretsService settingsSecretsService,
             EventService eventService,
             KnowledgeRootCleanupService knowledgeRootCleanupService,
-            KnowledgeScanCoordinator knowledgeScanCoordinator
+            KnowledgeScanCoordinator knowledgeScanCoordinator,
+            KnowledgeIngestionService ingestionService
     ) {
         this(
                 settingsRepository,
@@ -85,6 +88,7 @@ public class SettingsService {
                 eventService,
                 knowledgeRootCleanupService,
                 knowledgeScanCoordinator,
+                ingestionService,
                 new JiraConnectionValidationService(),
                 new JiraProjectDiscoveryService(new ObjectMapper()),
                 new ConfluenceConnectionValidationService(),
@@ -101,6 +105,7 @@ public class SettingsService {
             EventService eventService,
             KnowledgeRootCleanupService knowledgeRootCleanupService,
             KnowledgeScanCoordinator knowledgeScanCoordinator,
+            KnowledgeIngestionService ingestionService,
             JiraConnectionValidationService jiraConnectionValidationService,
             JiraProjectDiscoveryService jiraProjectDiscoveryService
     ) {
@@ -111,6 +116,7 @@ public class SettingsService {
                 eventService,
                 knowledgeRootCleanupService,
                 knowledgeScanCoordinator,
+                ingestionService,
                 jiraConnectionValidationService,
                 jiraProjectDiscoveryService,
                 new ConfluenceConnectionValidationService(),
@@ -126,6 +132,10 @@ public class SettingsService {
             EventService eventService,
             KnowledgeRootCleanupService knowledgeRootCleanupService,
             KnowledgeScanCoordinator knowledgeScanCoordinator,
+            // @Lazy breaks the construction cycle SettingsService -> KnowledgeIngestionService ->
+            // KnowledgeSourceRegistry -> Jira/ConfluenceSourceAdapter -> Settings*ConnectionResolver
+            // -> SettingsService. The proxy resolves the real bean on first scan call.
+            @Lazy KnowledgeIngestionService ingestionService,
             JiraConnectionValidationService jiraConnectionValidationService,
             JiraProjectDiscoveryService jiraProjectDiscoveryService,
             ConfluenceConnectionValidationService confluenceConnectionValidationService,
@@ -137,6 +147,7 @@ public class SettingsService {
         this.eventService = eventService;
         this.knowledgeRootCleanupService = knowledgeRootCleanupService;
         this.knowledgeScanCoordinator = knowledgeScanCoordinator;
+        this.ingestionService = ingestionService;
         this.jiraConnectionValidationService = jiraConnectionValidationService;
         this.jiraProjectDiscoveryService = jiraProjectDiscoveryService;
         this.confluenceConnectionValidationService = confluenceConnectionValidationService;
@@ -259,6 +270,14 @@ public class SettingsService {
         publishSettingsUpdated();
         log.info("Resumed local knowledge folder {}.", folderId);
         return knowledgeFolder(root);
+    }
+
+    // Not synchronized: a local-folder scan is blocking, and the settings monitor must not be
+    // held for its whole duration. The scan mutates the root through the engine, not through
+    // SettingsService, and returns the refreshed root to map.
+    public KnowledgeFolderDto scanKnowledgeFolder(UUID folderId) {
+        KnowledgeRoot root = findKnowledgeRoot(folderId);
+        return knowledgeFolder(ingestionService.scan(root));
     }
 
     public synchronized JiraSettings getJiraSettings() {
@@ -412,6 +431,12 @@ public class SettingsService {
 
     public synchronized JiraProjectDto resumeJiraProject(String projectId) {
         return setJiraProjectPaused(projectId, false);
+    }
+
+    public synchronized JiraProjectDto scanJiraProject(String projectId) {
+        KnowledgeRoot root = findJiraRoot(projectId);
+        ingestionService.scanInBackground(root);
+        return jiraProject(root);
     }
 
     private JiraProjectDto setJiraProjectPaused(String projectId, boolean paused) {
@@ -584,6 +609,12 @@ public class SettingsService {
 
     public synchronized ConfluenceSpaceDto resumeConfluenceSpace(String spaceId) {
         return setConfluenceSpacePaused(spaceId, false);
+    }
+
+    public synchronized ConfluenceSpaceDto scanConfluenceSpace(String spaceId) {
+        KnowledgeRoot root = findConfluenceRoot(spaceId);
+        ingestionService.scanInBackground(root);
+        return confluenceSpace(root);
     }
 
     private ConfluenceSpaceDto setConfluenceSpacePaused(String spaceId, boolean paused) {

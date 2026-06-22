@@ -108,7 +108,8 @@ class KnowledgeFolderScanServiceTests {
                         knowledgeResourceRepository,
                         indexingService
                 ),
-                scanCoordinator
+                scanCoordinator,
+                mock(KnowledgeIngestionService.class)
         );
         scanService = new FolderScanHarness(new LocalFolderKnowledgeReadService());
     }

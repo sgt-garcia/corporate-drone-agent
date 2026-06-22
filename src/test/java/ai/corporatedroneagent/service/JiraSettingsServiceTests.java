@@ -308,6 +308,7 @@ class JiraSettingsServiceTests {
                 mock(EventService.class),
                 cleanupService,
                 new KnowledgeScanCoordinator(),
+                mock(KnowledgeIngestionService.class),
                 validator,
                 discovery
         );

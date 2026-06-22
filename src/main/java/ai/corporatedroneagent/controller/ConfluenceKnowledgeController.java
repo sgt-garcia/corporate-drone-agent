@@ -5,11 +5,6 @@ import ai.corporatedroneagent.dto.ConfluenceConnectionValidationDto;
 import ai.corporatedroneagent.dto.ConfluenceSpaceDto;
 import ai.corporatedroneagent.dto.ConfluenceSpaceRequest;
 import ai.corporatedroneagent.model.ConfluenceSettings;
-import ai.corporatedroneagent.model.knowledge.ConfluenceKnowledgeRootConfig;
-import ai.corporatedroneagent.model.knowledge.KnowledgeRoot;
-import ai.corporatedroneagent.model.knowledge.KnowledgeSource;
-import ai.corporatedroneagent.repository.KnowledgeRootRepository;
-import ai.corporatedroneagent.service.KnowledgeIngestionService;
 import ai.corporatedroneagent.service.SettingsService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -23,24 +18,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/settings/knowledge/confluence")
 public class ConfluenceKnowledgeController {
 
     private final SettingsService settingsService;
-    private final KnowledgeIngestionService ingestionService;
-    private final KnowledgeRootRepository knowledgeRootRepository;
 
-    public ConfluenceKnowledgeController(
-            SettingsService settingsService,
-            KnowledgeIngestionService ingestionService,
-            KnowledgeRootRepository knowledgeRootRepository
-    ) {
+    public ConfluenceKnowledgeController(SettingsService settingsService) {
         this.settingsService = settingsService;
-        this.ingestionService = ingestionService;
-        this.knowledgeRootRepository = knowledgeRootRepository;
     }
 
     @GetMapping
@@ -86,15 +72,7 @@ public class ConfluenceKnowledgeController {
 
     @PostMapping("/spaces/{spaceId}/scan")
     public ConfluenceSpaceDto scanSpace(@PathVariable String spaceId) {
-        KnowledgeRoot root = knowledgeRootRepository.findBySource(KnowledgeSource.CONFLUENCE).stream()
-                .filter(candidate -> spaceId.equals(ConfluenceKnowledgeRootConfig.readSpaceId(candidate)))
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Confluence space not found"));
-        ingestionService.scanInBackground(root);
-        return settingsService.getConfluenceSettings().getSpaces().stream()
-                .filter(space -> spaceId.equals(space.getId()))
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Confluence space not found"));
+        return settingsService.scanConfluenceSpace(spaceId);
     }
 
     @PostMapping("/spaces/{spaceId}/pause")

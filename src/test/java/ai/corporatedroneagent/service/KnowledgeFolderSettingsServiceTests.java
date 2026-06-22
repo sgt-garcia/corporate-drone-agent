@@ -49,7 +49,8 @@ class KnowledgeFolderSettingsServiceTests {
                 new SettingsSecretsService(new InMemorySecretStore()),
                 eventService,
                 mock(KnowledgeRootCleanupService.class),
-                new KnowledgeScanCoordinator()
+                new KnowledgeScanCoordinator(),
+                mock(KnowledgeIngestionService.class)
         );
     }
 
