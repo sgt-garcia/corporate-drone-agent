@@ -609,23 +609,31 @@ public class SettingsService {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence connection details are required");
         }
-        String instanceUrl = Strings.defaultIfBlank(request.instanceUrl(), "");
+        validateConnectionDetails("Confluence", request.instanceUrl(), request.email(), request.token(), hasSavedToken);
+    }
+
+    // Shared field validation for Jira/Confluence connection requests: the two requests carry the
+    // same instanceUrl/email/token shape and identical rules, differing only in the product name
+    // woven into each message. The null-request check stays with each caller (its message differs too).
+    private void validateConnectionDetails(
+            String product, String instanceUrlRaw, String emailRaw, String tokenRaw, boolean hasSavedToken) {
+        String instanceUrl = Strings.defaultIfBlank(instanceUrlRaw, "");
         if (instanceUrl.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence instance URL is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, product + " instance URL is required");
         }
         if (!instanceUrl.startsWith("https://") && !instanceUrl.startsWith("http://")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence instance URL must start with https://");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, product + " instance URL must start with https://");
         }
-        String email = Strings.defaultIfBlank(request.email(), "");
+        String email = Strings.defaultIfBlank(emailRaw, "");
         if (email.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence email is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, product + " email is required");
         }
         if (!email.contains("@")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence email must be valid");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, product + " email must be valid");
         }
-        String token = Strings.defaultIfBlank(request.token(), "");
+        String token = Strings.defaultIfBlank(tokenRaw, "");
         if (token.isBlank() && !hasSavedToken) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence API token is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, product + " API token is required");
         }
     }
 
@@ -646,11 +654,21 @@ public class SettingsService {
             ConfluenceSettings confluence,
             ApplicationSettings secretRequest
     ) {
+        persistAtlassianSettings(settings, secretRequest, () -> settings.setConfluence(sanitizeConfluence(confluence)));
+    }
+
+    // Shared persist sequence for Jira/Confluence: save any submitted secret, apply the
+    // (type-specific) sanitized settings, then clear/restore secret status, save, and publish.
+    // applySanitized is the only per-product step.
+    private void persistAtlassianSettings(
+            ApplicationSettings settings,
+            ApplicationSettings secretRequest,
+            Runnable applySanitized
+    ) {
         if (secretRequest != null) {
             settingsSecretsService.saveSubmittedSecrets(secretRequest);
         }
-        ConfluenceSettings sanitizedConfluence = sanitizeConfluence(confluence);
-        settings.setConfluence(sanitizedConfluence);
+        applySanitized.run();
         settingsSecretsService.clearSecretValues(settings);
         settingsSecretsService.applySecretStatus(settings);
         settingsRepository.save(settings);
@@ -752,24 +770,7 @@ public class SettingsService {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira connection details are required");
         }
-        String instanceUrl = Strings.defaultIfBlank(request.instanceUrl(), "");
-        if (instanceUrl.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira instance URL is required");
-        }
-        if (!instanceUrl.startsWith("https://") && !instanceUrl.startsWith("http://")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira instance URL must start with https://");
-        }
-        String email = Strings.defaultIfBlank(request.email(), "");
-        if (email.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira email is required");
-        }
-        if (!email.contains("@")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira email must be valid");
-        }
-        String token = Strings.defaultIfBlank(request.token(), "");
-        if (token.isBlank() && !hasSavedToken) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira API token is required");
-        }
+        validateConnectionDetails("Jira", request.instanceUrl(), request.email(), request.token(), hasSavedToken);
     }
 
     private String jiraValidationToken(JiraConnectionRequest request) {
@@ -789,15 +790,7 @@ public class SettingsService {
             JiraSettings jira,
             ApplicationSettings secretRequest
     ) {
-        if (secretRequest != null) {
-            settingsSecretsService.saveSubmittedSecrets(secretRequest);
-        }
-        JiraSettings sanitizedJira = sanitizeJira(jira);
-        settings.setJira(sanitizedJira);
-        settingsSecretsService.clearSecretValues(settings);
-        settingsSecretsService.applySecretStatus(settings);
-        settingsRepository.save(settings);
-        publishSettingsUpdated();
+        persistAtlassianSettings(settings, secretRequest, () -> settings.setJira(sanitizeJira(jira)));
     }
 
     private ApplicationSettings jiraSecretRequest(String token, boolean clearToken) {

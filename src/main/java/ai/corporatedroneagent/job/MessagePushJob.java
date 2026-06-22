@@ -345,7 +345,7 @@ public class MessagePushJob {
                     removeReplacedReply(conversationId, replacedAssistantMessageId);
                     eventService.publish(
                             "message-created",
-                            new MessageEventDto(conversationId, toDto(savedMessage))
+                            new MessageEventDto(conversationId, savedMessage.toDto())
                     );
                     setConversationStatus(conversationId, "review");
                 });
@@ -418,7 +418,7 @@ public class MessagePushJob {
                         savedMessage -> {
                             eventService.publish(
                                     "message-created",
-                                    new MessageEventDto(conversationId, toDto(savedMessage))
+                                    new MessageEventDto(conversationId, savedMessage.toDto())
                             );
                             setConversationStatus(conversationId, "review");
                         },
@@ -464,16 +464,6 @@ public class MessagePushJob {
             current = current.getCause();
         }
         return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
-    }
-
-    private MessageDto toDto(Message message) {
-        return new MessageDto(
-                message.getId(),
-                message.getRole(),
-                message.getContent(),
-                message.getCreatedAt(),
-                message.getSources()
-        );
     }
 
 }

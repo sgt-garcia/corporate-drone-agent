@@ -143,26 +143,28 @@ public class KnowledgeIndexingService {
     }
 
     private void markIndexed(KnowledgeResourceChunk chunk, String documentId) {
-        KnowledgeResourceIndex index = pipelineRepository.findIndexByChunkId(chunk.getId())
-                .orElseGet(KnowledgeResourceIndex::new);
-        index.setChunkId(chunk.getId());
-        index.setStatus(WorkStatus.DONE);
-        index.setSuccess(true);
-        index.setReason(null);
-        index.setMessage("");
-        index.setIndexReference(documentId);
-        index.setIndexedAt(Instant.now());
-        pipelineRepository.saveIndex(index);
+        saveIndexState(chunk.getId(), true, null, "", documentId);
     }
 
     private void markFailed(KnowledgeResourceChunk chunk, String message) {
-        KnowledgeResourceIndex index = pipelineRepository.findIndexByChunkId(chunk.getId())
+        saveIndexState(chunk.getId(), false, KnowledgePipelineReason.INDEX_FAILED, message, null);
+    }
+
+    private void saveIndexState(
+            UUID chunkId,
+            boolean success,
+            KnowledgePipelineReason reason,
+            String message,
+            String indexReference
+    ) {
+        KnowledgeResourceIndex index = pipelineRepository.findIndexByChunkId(chunkId)
                 .orElseGet(KnowledgeResourceIndex::new);
-        index.setChunkId(chunk.getId());
+        index.setChunkId(chunkId);
         index.setStatus(WorkStatus.DONE);
-        index.setSuccess(false);
-        index.setReason(KnowledgePipelineReason.INDEX_FAILED);
+        index.setSuccess(success);
+        index.setReason(reason);
         index.setMessage(message);
+        index.setIndexReference(indexReference);
         index.setIndexedAt(Instant.now());
         pipelineRepository.saveIndex(index);
     }

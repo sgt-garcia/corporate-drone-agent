@@ -43,6 +43,10 @@ public class ProjectFilesystemTools {
             .withZone(ZoneId.systemDefault());
 
     private final String workingFolder;
+    // The working folder is fixed for this tools instance, so its resolved real path never
+    // changes during a session. Cache it (on first successful resolve) instead of re-running
+    // toRealPath() filesystem I/O on every helper call — directoryTree alone calls root() per node.
+    private Path resolvedRoot;
 
     public ProjectFilesystemTools(Project project) {
         this.workingFolder = project == null ? "" : project.getWorkingFolder();
@@ -408,6 +412,9 @@ public class ProjectFilesystemTools {
     }
 
     private Path root() {
+        if (resolvedRoot != null) {
+            return resolvedRoot;
+        }
         if (workingFolder == null || workingFolder.isBlank()) {
             throw new IllegalStateException("Project working folder is not configured.");
         }
@@ -417,7 +424,8 @@ public class ProjectFilesystemTools {
             if (!Files.isDirectory(root)) {
                 throw new IllegalStateException("Project working folder is not a directory.");
             }
-            return root;
+            resolvedRoot = root;
+            return resolvedRoot;
         } catch (IOException exception) {
             throw new UncheckedIOException("Project working folder cannot be accessed.", exception);
         } catch (InvalidPathException exception) {

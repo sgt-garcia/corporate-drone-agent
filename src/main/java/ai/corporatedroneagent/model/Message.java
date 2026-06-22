@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.model;
 
+import ai.corporatedroneagent.dto.MessageDto;
 import ai.corporatedroneagent.dto.MessageSourceDto;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -62,5 +63,9 @@ public class Message {
 
     public void setSources(List<MessageSourceDto> sources) {
         this.sources = sources == null ? new ArrayList<>() : sources;
+    }
+
+    public MessageDto toDto() {
+        return new MessageDto(id, role, content, createdAt, sources);
     }
 }

@@ -131,7 +131,7 @@ public class ConversationService {
 
         conversationRepository.appendMessage(conversationId, message)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
-        MessageDto dto = toDto(message);
+        MessageDto dto = message.toDto();
         eventService.publish("message-created", new MessageEventDto(conversationId, dto));
         messagePushJob.queueAssistantReply(conversationId, message.getId(), message.getContent());
         return dto;
@@ -148,16 +148,7 @@ public class ConversationService {
      * replacement target — symmetric with {@link #regenerateLastReply}.
      */
     public synchronized void retryLastReply(UUID conversationId) {
-        Conversation conversation = getConversation(conversationId);
-        if (replyInFlight(conversation)) {
-            return;
-        }
-        Message lastUserMessage = lastUserMessage(conversation)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "There is no message to retry yet"));
-        UUID replacedReplyId = trailingAssistantReplyId(conversation).orElse(null);
-        messagePushJob.queueAssistantReply(
-                conversationId, lastUserMessage.getId(), lastUserMessage.getContent(), replacedReplyId);
+        requeueLastReply(conversationId, "There is no message to retry yet");
     }
 
     /**
@@ -174,13 +165,19 @@ public class ConversationService {
      * #retryLastReply}.
      */
     public synchronized void regenerateLastReply(UUID conversationId) {
+        requeueLastReply(conversationId, "There is no reply to regenerate yet");
+    }
+
+    // Shared body of retry/regenerate: both re-run the reply for the last user
+    // message and hand any trailing assistant reply to the pipeline as the
+    // replacement target. They differ only in the "nothing to do" wording.
+    private void requeueLastReply(UUID conversationId, String nothingToReplaceMessage) {
         Conversation conversation = getConversation(conversationId);
         if (replyInFlight(conversation)) {
             return;
         }
         Message lastUserMessage = lastUserMessage(conversation)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "There is no reply to regenerate yet"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, nothingToReplaceMessage));
         UUID replacedReplyId = trailingAssistantReplyId(conversation).orElse(null);
         messagePushJob.queueAssistantReply(
                 conversationId, lastUserMessage.getId(), lastUserMessage.getContent(), replacedReplyId);
@@ -234,16 +231,7 @@ public class ConversationService {
                 conversation.getProjectId(),
                 conversation.getName(),
                 conversation.getStatus(),
-                conversation.getMessages().stream().map(this::toDto).toList()
+                conversation.getMessages().stream().map(Message::toDto).toList()
         );
-    }
-
-    private MessageDto toDto(Message message) {
-        return new MessageDto(
-                message.getId(),
-                message.getRole(),
-                message.getContent(),
-                message.getCreatedAt(),
-                message.getSources());
     }
 }
