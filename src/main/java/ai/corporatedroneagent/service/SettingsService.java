@@ -279,7 +279,6 @@ public class SettingsService {
         return new JiraConnectionValidationDto(
                 result.valid(),
                 result.message(),
-                result.liveValidationAvailable(),
                 result.apiVersion()
         );
     }
@@ -457,8 +456,7 @@ public class SettingsService {
         );
         return new ConfluenceConnectionValidationDto(
                 result.valid(),
-                result.message(),
-                result.liveValidationAvailable()
+                result.message()
         );
     }
 

@@ -2,9 +2,7 @@ package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.dto.OpenAiModelsRequest;
 import ai.corporatedroneagent.util.Strings;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -22,27 +20,9 @@ public class OpenAiModelsService {
     }
 
     public List<String> listModels(OpenAiModelsRequest request) {
-        String apiKey = apiKeyFor(request);
-        if (apiKey.isBlank()) {
-            return List.of();
-        }
-
-        OpenAiModelsResponse response = modelLookupSupport.request(
-                "OpenAI models",
-                () -> restClient.get()
-                    .uri("/v1/models")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                    .retrieve()
-                    .body(OpenAiModelsResponse.class)
-        );
-
-        if (response == null || response.data() == null) {
-            return List.of();
-        }
-
-        return modelLookupSupport.sortedDistinct(response.data().stream()
-                .map(OpenAiModel::id)
-                .filter(OpenAiModelsService::isChatModelId));
+        return modelLookupSupport.listBearerModels(
+                restClient, "OpenAI models", "/v1/models", apiKeyFor(request),
+                OpenAiModelsService::isChatModelId);
     }
 
     static boolean isChatModelId(String id) {
@@ -91,13 +71,5 @@ public class OpenAiModelsService {
             case "openai-sdk" -> settings.getOpenAiSdk().getApiKey();
             default -> settings.getOpenAi().getApiKey();
         });
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record OpenAiModelsResponse(List<OpenAiModel> data) {
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record OpenAiModel(String id) {
     }
 }

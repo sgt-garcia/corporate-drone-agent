@@ -1,9 +1,7 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.dto.ApiKeyModelsRequest;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -21,27 +19,9 @@ public class DeepSeekModelsService {
     }
 
     public List<String> listModels(ApiKeyModelsRequest request) {
-        String apiKey = apiKeyFor(request);
-        if (apiKey.isBlank()) {
-            return List.of();
-        }
-
-        DeepSeekModelsResponse response = modelLookupSupport.request(
-                "DeepSeek models",
-                () -> restClient.get()
-                    .uri("/models")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                    .retrieve()
-                    .body(DeepSeekModelsResponse.class)
-        );
-
-        if (response == null || response.data() == null) {
-            return List.of();
-        }
-
-        return modelLookupSupport.sortedDistinct(response.data().stream()
-                .map(DeepSeekModel::id)
-                .filter(DeepSeekModelsService::isChatModelId));
+        return modelLookupSupport.listBearerModels(
+                restClient, "DeepSeek models", "/models", apiKeyFor(request),
+                DeepSeekModelsService::isChatModelId);
     }
 
     static boolean isChatModelId(String id) {
@@ -57,13 +37,5 @@ public class DeepSeekModelsService {
 
     private String apiKeyFor(ApiKeyModelsRequest request) {
         return modelLookupSupport.apiKey(request, settings -> settings.getDeepSeek().getApiKey());
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record DeepSeekModelsResponse(List<DeepSeekModel> data) {
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record DeepSeekModel(String id) {
     }
 }

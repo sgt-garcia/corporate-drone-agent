@@ -5,11 +5,8 @@ import ai.corporatedroneagent.model.knowledge.ConfluenceKnowledgeReferences;
 import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -118,39 +115,14 @@ public class ConfluenceSpaceDiscoveryService {
     }
 
     private JsonNode getJson(String instanceUrl, String email, String token, String path, String requestName) {
-        HttpRequest request = HttpRequest.newBuilder(confluenceUri(instanceUrl, path))
-                .timeout(REQUEST_TIMEOUT)
-                .header("Accept", "application/json")
-                .header("Authorization", AtlassianHttp.basicAuth(email, token))
-                .GET()
-                .build();
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            int status = response.statusCode();
-            if (status >= 200 && status < 300) {
-                return objectMapper.readTree(response.body());
-            }
-            if (status == HttpStatus.UNAUTHORIZED.value()) {
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Confluence rejected the saved credentials");
-            }
-            if (status == HttpStatus.FORBIDDEN.value()) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Confluence does not allow this account to browse spaces");
-            }
-            if (status == HttpStatus.NOT_FOUND.value()) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Confluence space not found");
-            }
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    requestName + " failed with HTTP " + status
-            );
-        } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, requestName + " request failed");
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, requestName + " request was interrupted");
-        } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence instance URL is invalid");
-        }
+        return AtlassianHttp.getJson(
+                httpClient, objectMapper, REQUEST_TIMEOUT, confluenceUri(instanceUrl, path), email, token,
+                new AtlassianHttp.RequestErrors(
+                        requestName,
+                        "Confluence rejected the saved credentials",
+                        "Confluence does not allow this account to browse spaces",
+                        "Confluence space not found",
+                        "Confluence instance URL is invalid"));
     }
 
     private java.util.Optional<ConfluenceSpaceDto> toSpace(JsonNode node, String checked) {

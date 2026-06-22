@@ -4,11 +4,8 @@ import ai.corporatedroneagent.dto.JiraProjectDto;
 import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -160,39 +157,14 @@ public class JiraProjectDiscoveryService {
     }
 
     private JsonNode getJson(String instanceUrl, String email, String token, String path, String requestName) {
-        HttpRequest request = HttpRequest.newBuilder(jiraUri(instanceUrl, path))
-                .timeout(REQUEST_TIMEOUT)
-                .header("Accept", "application/json")
-                .header("Authorization", AtlassianHttp.basicAuth(email, token))
-                .GET()
-                .build();
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            int status = response.statusCode();
-            if (status >= 200 && status < 300) {
-                return objectMapper.readTree(response.body());
-            }
-            if (status == HttpStatus.UNAUTHORIZED.value()) {
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Jira rejected the saved credentials");
-            }
-            if (status == HttpStatus.FORBIDDEN.value()) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Jira does not allow this account to browse projects");
-            }
-            if (status == HttpStatus.NOT_FOUND.value()) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Jira project not found");
-            }
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    requestName + " failed with HTTP " + status
-            );
-        } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, requestName + " request failed");
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, requestName + " request was interrupted");
-        } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira instance URL is invalid");
-        }
+        return AtlassianHttp.getJson(
+                httpClient, objectMapper, REQUEST_TIMEOUT, jiraUri(instanceUrl, path), email, token,
+                new AtlassianHttp.RequestErrors(
+                        requestName,
+                        "Jira rejected the saved credentials",
+                        "Jira does not allow this account to browse projects",
+                        "Jira project not found",
+                        "Jira instance URL is invalid"));
     }
 
     private java.util.Optional<JiraProjectDto> toProject(JsonNode node, String checked) {

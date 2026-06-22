@@ -80,7 +80,7 @@ class JiraSettingsServiceTests {
         settingsService = serviceWith(new JiraConnectionValidationService() {
             @Override
             public ValidationResult validate(String instanceUrl, String email, String token) {
-                return new ValidationResult(true, "ok", true, 200, "2");
+                return new ValidationResult(true, "ok", 200, "2");
             }
         }, fakeDiscovery());
 
@@ -127,7 +127,7 @@ class JiraSettingsServiceTests {
         settingsService = serviceWith(new JiraConnectionValidationService() {
             @Override
             public ValidationResult validate(String instanceUrl, String email, String token) {
-                return new ValidationResult(false, "Jira rejected the email or API token.", true, 401, "3");
+                return new ValidationResult(false, "Jira rejected the email or API token.", 401, "3");
             }
         }, fakeDiscovery());
 
@@ -282,7 +282,6 @@ class JiraSettingsServiceTests {
         );
 
         assertThat(validation.valid()).isTrue();
-        assertThat(validation.liveValidationAvailable()).isTrue();
         assertThat(validation.apiVersion()).isEqualTo("3");
     }
 
@@ -318,7 +317,7 @@ class JiraSettingsServiceTests {
         return new JiraConnectionValidationService() {
             @Override
             public ValidationResult validate(String instanceUrl, String email, String token) {
-                return new ValidationResult(true, "ok", true, 200, "3");
+                return new ValidationResult(true, "ok", 200, "3");
             }
         };
     }

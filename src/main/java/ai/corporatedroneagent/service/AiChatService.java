@@ -420,17 +420,35 @@ public class AiChatService {
     }
 
     private static OpenAiChatModel buildOpenAiChatModel(OpenAiSettings settings) {
-        OpenAiApi openAiApi = OpenAiApi.builder()
-                .apiKey(settings.getApiKey())
-                .restClientBuilder(timeoutRestClientBuilder())
+        return buildOpenAiCompatibleChatModel(settings.getApiKey(), settings.getModel(), null, null);
+    }
+
+    // Groq and DeepSeek expose OpenAI-compatible APIs, so they reuse Spring AI's OpenAI client and
+    // differ only in base URL (and DeepSeek's completions path). A null baseUrl/completionsPath keeps
+    // the client's default (api.openai.com).
+    private static OpenAiChatModel buildOpenAiCompatibleChatModel(
+            String apiKey,
+            String model,
+            String baseUrl,
+            String completionsPath
+    ) {
+        OpenAiApi.Builder apiBuilder = OpenAiApi.builder()
+                .apiKey(apiKey)
+                .restClientBuilder(timeoutRestClientBuilder());
+        if (baseUrl != null) {
+            apiBuilder.baseUrl(baseUrl);
+        }
+        if (completionsPath != null) {
+            apiBuilder.completionsPath(completionsPath);
+        }
+
+        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
+                .model(model)
                 .build();
 
-        OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
-                .model(settings.getModel());
-
         return OpenAiChatModel.builder()
-                .openAiApi(openAiApi)
-                .defaultOptions(optionsBuilder.build())
+                .openAiApi(apiBuilder.build())
+                .defaultOptions(chatOptions)
                 .build();
     }
 
@@ -606,38 +624,13 @@ public class AiChatService {
     }
 
     private static OpenAiChatModel buildGroqChatModel(GroqSettings settings) {
-        OpenAiApi openAiApi = OpenAiApi.builder()
-                .baseUrl("https://api.groq.com/openai")
-                .apiKey(settings.getApiKey())
-                .restClientBuilder(timeoutRestClientBuilder())
-                .build();
-
-        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
-                .model(settings.getModel())
-                .build();
-
-        return OpenAiChatModel.builder()
-                .openAiApi(openAiApi)
-                .defaultOptions(chatOptions)
-                .build();
+        return buildOpenAiCompatibleChatModel(
+                settings.getApiKey(), settings.getModel(), "https://api.groq.com/openai", null);
     }
 
     private static OpenAiChatModel buildDeepSeekChatModel(DeepSeekSettings settings) {
-        OpenAiApi openAiApi = OpenAiApi.builder()
-                .baseUrl("https://api.deepseek.com")
-                .completionsPath("/chat/completions")
-                .apiKey(settings.getApiKey())
-                .restClientBuilder(timeoutRestClientBuilder())
-                .build();
-
-        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
-                .model(settings.getModel())
-                .build();
-
-        return OpenAiChatModel.builder()
-                .openAiApi(openAiApi)
-                .defaultOptions(chatOptions)
-                .build();
+        return buildOpenAiCompatibleChatModel(
+                settings.getApiKey(), settings.getModel(), "https://api.deepseek.com", "/chat/completions");
     }
 
     private ChatReply echoReply(String userContent) {

@@ -10,8 +10,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -527,36 +525,14 @@ public class JiraIssueFetchService {
     }
 
     private JsonNode getJson(String instanceUrl, String email, String token, String path, String requestName) {
-        HttpRequest request = HttpRequest.newBuilder(jiraUri(instanceUrl, path))
-                .timeout(REQUEST_TIMEOUT)
-                .header("Accept", "application/json")
-                .header("Authorization", AtlassianHttp.basicAuth(email, token))
-                .GET()
-                .build();
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            int status = response.statusCode();
-            if (status >= 200 && status < 300) {
-                return objectMapper.readTree(response.body());
-            }
-            if (status == HttpStatus.UNAUTHORIZED.value()) {
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Jira rejected the saved credentials");
-            }
-            if (status == HttpStatus.FORBIDDEN.value()) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Jira does not allow this account to read issues");
-            }
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    requestName + " failed with HTTP " + status
-            );
-        } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, requestName + " request failed");
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, requestName + " request was interrupted");
-        } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira instance URL is invalid");
-        }
+        return AtlassianHttp.getJson(
+                httpClient, objectMapper, REQUEST_TIMEOUT, jiraUri(instanceUrl, path), email, token,
+                new AtlassianHttp.RequestErrors(
+                        requestName,
+                        "Jira rejected the saved credentials",
+                        "Jira does not allow this account to read issues",
+                        null,
+                        "Jira instance URL is invalid"));
     }
 
     private URI jiraUri(String instanceUrl, String path) {
