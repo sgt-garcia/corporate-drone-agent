@@ -644,9 +644,7 @@ public class SettingsService {
 
     // Package-private: the scan orchestrator reads the token to drive a scan.
     String savedConfluenceToken() {
-        ApplicationSettings secretValues = new ApplicationSettings();
-        settingsSecretsService.applySecretValues(secretValues);
-        return secretValues.getConfluence().getToken();
+        return settingsSecretsService.confluenceToken();
     }
 
     private void persistConfluenceSettings(
@@ -780,9 +778,7 @@ public class SettingsService {
 
     // Package-private: the scan orchestrator reads the token to drive a scan.
     String savedJiraToken() {
-        ApplicationSettings secretValues = new ApplicationSettings();
-        settingsSecretsService.applySecretValues(secretValues);
-        return secretValues.getJira().getToken();
+        return settingsSecretsService.jiraToken();
     }
 
     private void persistJiraSettings(

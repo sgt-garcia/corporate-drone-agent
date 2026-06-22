@@ -34,19 +34,24 @@ public final class KnowledgeSnippets {
     }
 
     private static String sourceLabel(KnowledgeContextSnippet snippet) {
-        String source = Strings.defaultIfBlank(snippet.source(), "").trim().toUpperCase(Locale.ROOT);
-        return switch (source) {
+        return switch (sourceKey(snippet)) {
             case "JIRA" -> "Jira";
+            case "CONFLUENCE" -> "Confluence";
             case "LOCAL_FOLDER" -> "Local folder";
             default -> "Knowledge";
         };
     }
 
+    // Jira and Confluence carry the human-friendly title in resourceName; the reference is an
+    // issue key or page URL. Local folders carry the file path in the reference instead.
     private static String resourceLabel(KnowledgeContextSnippet snippet) {
-        String source = Strings.defaultIfBlank(snippet.source(), "").trim().toUpperCase(Locale.ROOT);
-        if ("JIRA".equals(source)) {
-            return Strings.defaultIfBlank(snippet.resourceName(), snippet.resourceReference());
-        }
-        return Strings.defaultIfBlank(snippet.resourceReference(), snippet.resourceName());
+        return switch (sourceKey(snippet)) {
+            case "JIRA", "CONFLUENCE" -> Strings.defaultIfBlank(snippet.resourceName(), snippet.resourceReference());
+            default -> Strings.defaultIfBlank(snippet.resourceReference(), snippet.resourceName());
+        };
+    }
+
+    private static String sourceKey(KnowledgeContextSnippet snippet) {
+        return Strings.defaultIfBlank(snippet.source(), "").trim().toUpperCase(Locale.ROOT);
     }
 }

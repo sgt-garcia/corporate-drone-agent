@@ -97,6 +97,17 @@ public class SettingsSecretsService {
                 secret.setValue().accept(settings, secretStore.get(secret.secretKey()).orElse("")));
     }
 
+    // Decrypt a single token rather than the whole settings blob. Each secretStore.get is an
+    // unprotect call (a PowerShell/DPAPI fork on Windows), so callers that only need one token
+    // should avoid applySecretValues, which decrypts all twelve secrets.
+    public String jiraToken() {
+        return secretStore.get(JIRA_API_TOKEN).orElse("");
+    }
+
+    public String confluenceToken() {
+        return secretStore.get(CONFLUENCE_API_TOKEN).orElse("");
+    }
+
     public void applySecretStatus(ApplicationSettings settings) {
         SECRETS.forEach(secret -> {
             Optional<String> stored = secretStore.get(secret.secretKey());

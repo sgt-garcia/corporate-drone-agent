@@ -13,8 +13,4 @@ public record ScanCursor(Instant updatedSince) {
     public static ScanCursor none() {
         return new ScanCursor(null);
     }
-
-    public boolean isPresent() {
-        return updatedSince != null;
-    }
 }
