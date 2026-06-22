@@ -22,22 +22,11 @@ public class GeminiModelsService {
 
     public List<String> listModels(ApiKeyModelsRequest request) {
         String apiKey = apiKeyFor(request);
-        if (apiKey.isBlank()) {
-            return List.of();
-        }
-
-        JsonNode response = modelLookupSupport.request(
-                "Gemini models",
-                () -> restClient.get()
-                    .uri("/v1beta/models")
-                    .header("x-goog-api-key", apiKey)
-                    .retrieve()
-                    .body(JsonNode.class)
-        );
-
-        return modelLookupSupport.sortedDistinct(modelLookupSupport.elements(response == null ? null : response.path("models"))
-                .filter(GeminiModelsService::isChatModel)
-                .map(model -> normalizeModelId(model.path("name").asText(""))));
+        return modelLookupSupport.listModels(
+                restClient, "Gemini models", "/v1beta/models", apiKey,
+                headers -> headers.add("x-goog-api-key", apiKey),
+                response -> response.path("models"),
+                model -> isChatModel(model) ? normalizeModelId(model.path("name").asText("")) : null);
     }
 
     static boolean isChatModel(JsonNode model) {

@@ -6,6 +6,7 @@ import ai.corporatedroneagent.util.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -90,16 +91,20 @@ public class ModelLookupSupport {
     }
 
     /**
-     * Lists chat model ids from an OpenAI-compatible {@code GET} that returns
-     * {@code {"data": [{"id": ...}]}} behind a {@code Bearer} token. Shared by the OpenAI,
-     * Groq, and DeepSeek services, which differ only in base URL, path, and chat-id filter.
+     * Lists chat model ids from a provider's "list models" {@code GET}. Providers differ only in
+     * their auth {@code headers}, where the model array lives in the response ({@code modelArray}),
+     * and how each element maps to a chat-model id ({@code modelId}). {@code modelId} returns null
+     * or blank for elements that are not selectable chat models, which {@code sortedDistinct} drops.
+     * A blank {@code apiKey} short-circuits to an empty list without a request.
      */
-    public List<String> listBearerModels(
+    public List<String> listModels(
             RestClient restClient,
             String requestName,
             String path,
             String apiKey,
-            Predicate<String> isChatModelId
+            Consumer<HttpHeaders> headers,
+            Function<JsonNode, JsonNode> modelArray,
+            Function<JsonNode, String> modelId
     ) {
         if (apiKey == null || apiKey.isBlank()) {
             return List.of();
@@ -108,13 +113,37 @@ public class ModelLookupSupport {
                 requestName,
                 () -> restClient.get()
                         .uri(path)
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                        .headers(headers)
                         .retrieve()
                         .body(JsonNode.class)
         );
-        JsonNode data = response == null ? null : response.path("data");
-        return sortedDistinct(elements(data)
-                .map(node -> node.path("id").asText(null))
-                .filter(id -> id != null && isChatModelId.test(id)));
+        JsonNode array = response == null ? null : modelArray.apply(response);
+        return sortedDistinct(elements(array).map(modelId));
+    }
+
+    /**
+     * The common case of {@link #listModels}: an OpenAI-compatible endpoint that returns
+     * {@code {"data": [{"id": ...}]}} behind a {@code Bearer} token, selected by an id predicate.
+     * Shared by the OpenAI, Groq, and DeepSeek services.
+     */
+    public List<String> listBearerModels(
+            RestClient restClient,
+            String requestName,
+            String path,
+            String apiKey,
+            Predicate<String> isChatModelId
+    ) {
+        return listModels(
+                restClient,
+                requestName,
+                path,
+                apiKey,
+                headers -> headers.add(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey),
+                response -> response.path("data"),
+                node -> {
+                    String id = node.path("id").asText(null);
+                    return id != null && isChatModelId.test(id) ? id : null;
+                }
+        );
     }
 }

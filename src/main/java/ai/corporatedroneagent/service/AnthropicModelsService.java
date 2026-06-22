@@ -1,7 +1,6 @@
 package ai.corporatedroneagent.service;
 
 import ai.corporatedroneagent.dto.ApiKeyModelsRequest;
-import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -23,23 +22,17 @@ public class AnthropicModelsService {
 
     public List<String> listModels(ApiKeyModelsRequest request) {
         String apiKey = apiKeyFor(request);
-        if (apiKey.isBlank()) {
-            return List.of();
-        }
-
-        JsonNode response = modelLookupSupport.request(
-                "Anthropic models",
-                () -> restClient.get()
-                    .uri("/v1/models?limit=1000")
-                    .header("x-api-key", apiKey)
-                    .header("anthropic-version", ANTHROPIC_VERSION)
-                    .retrieve()
-                    .body(JsonNode.class)
-        );
-
-        return modelLookupSupport.sortedDistinct(modelLookupSupport.elements(response == null ? null : response.path("data"))
-                .map(model -> model.path("id").asText(""))
-                .filter(AnthropicModelsService::isChatModelId));
+        return modelLookupSupport.listModels(
+                restClient, "Anthropic models", "/v1/models?limit=1000", apiKey,
+                headers -> {
+                    headers.add("x-api-key", apiKey);
+                    headers.add("anthropic-version", ANTHROPIC_VERSION);
+                },
+                response -> response.path("data"),
+                model -> {
+                    String id = model.path("id").asText("");
+                    return isChatModelId(id) ? id : null;
+                });
     }
 
     static boolean isChatModelId(String id) {

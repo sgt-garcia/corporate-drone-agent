@@ -22,27 +22,11 @@ public class MistralModelsService {
 
     public List<String> listModels(ApiKeyModelsRequest request) {
         String apiKey = apiKeyFor(request);
-        if (apiKey.isBlank()) {
-            return List.of();
-        }
-
-        JsonNode response = modelLookupSupport.request(
-                "Mistral models",
-                () -> restClient.get()
-                    .uri("/v1/models")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                    .retrieve()
-                    .body(JsonNode.class)
-        );
-
-        if (response == null) {
-            return List.of();
-        }
-
-        JsonNode data = response.isArray() ? response : response.path("data");
-        return modelLookupSupport.sortedDistinct(modelLookupSupport.elements(data)
-                .filter(MistralModelsService::isChatModel)
-                .map(model -> model.path("id").asText("")));
+        return modelLookupSupport.listModels(
+                restClient, "Mistral models", "/v1/models", apiKey,
+                headers -> headers.add(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey),
+                response -> response.isArray() ? response : response.path("data"),
+                model -> isChatModel(model) ? model.path("id").asText("") : null);
     }
 
     static boolean isChatModel(JsonNode model) {
