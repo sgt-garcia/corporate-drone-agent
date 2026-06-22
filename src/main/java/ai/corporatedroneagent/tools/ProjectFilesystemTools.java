@@ -6,50 +6,37 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.Charset;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
-import java.util.Objects;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
+/**
+ * The MCP {@code @Tool} surface over a project's working folder, which it presents to the agent as
+ * {@code /}. Each tool validates its inputs, delegates the filesystem mechanics to
+ * {@link SandboxedFilesystem}, and wraps the result in the tool-output records below.
+ */
 public class ProjectFilesystemTools {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .setSerializationInclusion(JsonInclude.Include.NON_NULL)
             .enable(SerializationFeature.INDENT_OUTPUT);
-    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ISO_OFFSET_DATE_TIME
-            .withZone(ZoneId.systemDefault());
 
-    private final String workingFolder;
-    // The working folder is fixed for this tools instance, so its resolved real path never
-    // changes during a session. Cache it (on first successful resolve) instead of re-running
-    // toRealPath() filesystem I/O on every helper call — directoryTree alone calls root() per node.
-    private Path resolvedRoot;
+    private final SandboxedFilesystem fs;
 
     public ProjectFilesystemTools(Project project) {
-        this.workingFolder = project == null ? "" : project.getWorkingFolder();
+        this.fs = new SandboxedFilesystem(project == null ? "" : project.getWorkingFolder());
     }
 
     @Tool(
@@ -74,8 +61,8 @@ public class ProjectFilesystemTools {
             @ToolParam(required = false, description = "If provided, returns only the first N lines of the file") Integer head
     ) {
         validateLineWindow(head, tail);
-        Path file = existingFile(path);
-        return new ToolContent(window(readText(file), head, tail));
+        Path file = fs.existingFile(path);
+        return new ToolContent(window(fs.readText(file), head, tail));
     }
 
     @Tool(
@@ -85,17 +72,17 @@ public class ProjectFilesystemTools {
     public MediaToolContent readMediaFile(
             @ToolParam(description = "Media file path under /. Example: /assets/logo.png") String path
     ) {
-        Path file = existingFile(path);
+        Path file = fs.existingFile(path);
         try {
             String mimeType = Files.probeContentType(file);
             if (mimeType == null || mimeType.isBlank()) {
                 mimeType = "application/octet-stream";
             }
-            String type = mediaType(mimeType);
+            String type = fs.mediaType(mimeType);
             String data = Base64.getEncoder().encodeToString(Files.readAllBytes(file));
             return new MediaToolContent(List.of(new MediaContent(type, data, mimeType)));
         } catch (IOException exception) {
-            throw new UncheckedIOException("Could not read media file: " + virtualPath(file), exception);
+            throw new UncheckedIOException("Could not read media file: " + fs.virtualPath(file), exception);
         }
     }
 
@@ -112,11 +99,11 @@ public class ProjectFilesystemTools {
 
         List<String> parts = new ArrayList<>();
         for (String path : paths) {
-            String label = displayPath(path);
+            String label = fs.displayPath(path);
             try {
-                Path file = existingFile(path);
-                label = virtualPath(file);
-                parts.add(label + "\n```\n" + readText(file) + "\n```");
+                Path file = fs.existingFile(path);
+                label = fs.virtualPath(file);
+                parts.add(label + "\n```\n" + fs.readText(file) + "\n```");
             } catch (RuntimeException exception) {
                 parts.add(label + "\nERROR: " + exception.getMessage());
             }
@@ -132,8 +119,8 @@ public class ProjectFilesystemTools {
             @ToolParam(description = "File path under /. Example: /notes/todo.txt") String path,
             @ToolParam(description = "Text content to write using UTF-8") String content
     ) {
-        Path file = writablePath(path);
-        rejectExistingSymlink(file, path);
+        Path file = fs.writablePath(path);
+        fs.rejectExistingSymlink(file, path);
         try {
             Path parent = file.getParent();
             if (parent != null) {
@@ -148,9 +135,9 @@ public class ProjectFilesystemTools {
                     StandardOpenOption.WRITE,
                     LinkOption.NOFOLLOW_LINKS
             );
-            return new ToolContent("Successfully wrote " + virtualPath(file) + ".");
+            return new ToolContent("Successfully wrote " + fs.virtualPath(file) + ".");
         } catch (IOException exception) {
-            throw new UncheckedIOException("Could not write file: " + virtualPath(file), exception);
+            throw new UncheckedIOException("Could not write file: " + fs.virtualPath(file), exception);
         }
     }
 
@@ -167,24 +154,25 @@ public class ProjectFilesystemTools {
             throw new IllegalArgumentException("edits must contain at least one edit.");
         }
 
-        Path file = existingFile(path);
-        DecodedText decoded = readDecodedText(file);
+        Path file = fs.existingFile(path);
+        String virtualPath = fs.virtualPath(file);
+        var decoded = fs.readDecodedText(file);
         String original = decoded.content();
-        LineDocument document = parseDocument(original);
+        var document = fs.parseDocument(original);
         for (FileEdit edit : edits) {
             if (edit == null || edit.oldText() == null || edit.newText() == null) {
                 throw new IllegalArgumentException("Each edit requires oldText and newText.");
             }
-            document = applyLineEdit(document, edit, virtualPath(file));
+            document = fs.applyLineEdit(document, edit.oldText(), edit.newText(), virtualPath);
         }
 
-        String updated = renderDocument(document);
-        String diff = diff(virtualPath(file), original, updated);
+        String updated = fs.renderDocument(document);
+        String diff = diff(virtualPath, original, updated);
         if (!Boolean.TRUE.equals(dryRun)) {
             try {
-                Files.write(file, encodeText(updated, decoded), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+                Files.write(file, fs.encodeText(updated, decoded), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
             } catch (IOException exception) {
-                throw new UncheckedIOException("Could not edit file: " + virtualPath(file), exception);
+                throw new UncheckedIOException("Could not edit file: " + virtualPath, exception);
             }
         }
         return new ToolContent(diff);
@@ -197,12 +185,12 @@ public class ProjectFilesystemTools {
     public ToolContent createDirectory(
             @ToolParam(description = "Directory path under /. Example: /docs/plans") String path
     ) {
-        Path directory = writablePath(path);
+        Path directory = fs.writablePath(path);
         try {
             Files.createDirectories(directory);
-            return new ToolContent("Successfully created directory " + virtualPath(directory) + ".");
+            return new ToolContent("Successfully created directory " + fs.virtualPath(directory) + ".");
         } catch (IOException exception) {
-            throw new UncheckedIOException("Could not create directory: " + virtualPath(directory), exception);
+            throw new UncheckedIOException("Could not create directory: " + fs.virtualPath(directory), exception);
         }
     }
 
@@ -213,8 +201,8 @@ public class ProjectFilesystemTools {
     public ToolContent listDirectory(
             @ToolParam(description = "Directory path under /. Example: /src") String path
     ) {
-        return new ToolContent(String.join("\n", directoryEntries(existingDirectory(path)).stream()
-                .map(entry -> prefix(entry) + " " + entry.getFileName())
+        return new ToolContent(String.join("\n", fs.directoryEntries(fs.existingDirectory(path)).stream()
+                .map(entry -> fs.prefix(entry) + " " + entry.getFileName())
                 .toList()));
     }
 
@@ -226,13 +214,13 @@ public class ProjectFilesystemTools {
             @ToolParam(description = "Directory path under /. Example: /src") String path,
             @ToolParam(required = false, description = "Sort entries by name or size") String sortBy
     ) {
-        List<Path> entries = directoryEntries(existingDirectory(path));
+        List<Path> entries = fs.directoryEntries(fs.existingDirectory(path));
         Comparator<Path> comparator = "size".equalsIgnoreCase(sortBy)
-                ? Comparator.comparingLong(this::size).reversed().thenComparing(this::fileNameLower)
-                : Comparator.comparing(this::fileNameLower);
+                ? Comparator.comparingLong(fs::size).reversed().thenComparing(fs::fileNameLower)
+                : Comparator.comparing(fs::fileNameLower);
         entries = entries.stream().sorted(comparator).toList();
         return new ToolContent(String.join("\n", entries.stream()
-                .map(entry -> prefix(entry) + " " + entry.getFileName() + " (" + formatBytes(size(entry)) + ")")
+                .map(entry -> fs.prefix(entry) + " " + entry.getFileName() + " (" + fs.formatBytes(fs.size(entry)) + ")")
                 .toList()));
     }
 
@@ -244,11 +232,11 @@ public class ProjectFilesystemTools {
             @ToolParam(description = "Directory or file path under /. Example: /src") String path,
             @ToolParam(required = false, description = "Glob patterns to exclude, relative to /") List<String> excludePatterns
     ) {
-        Path rootPath = existingPath(path);
+        Path rootPath = fs.existingPath(path);
         try {
-            return new ToolContent(OBJECT_MAPPER.writeValueAsString(treeNode(rootPath, excludePatterns)));
+            return new ToolContent(OBJECT_MAPPER.writeValueAsString(fs.treeNode(rootPath, excludePatterns)));
         } catch (IOException exception) {
-            throw new UncheckedIOException("Could not build directory tree for: " + virtualPath(rootPath), exception);
+            throw new UncheckedIOException("Could not build directory tree for: " + fs.virtualPath(rootPath), exception);
         }
     }
 
@@ -260,10 +248,10 @@ public class ProjectFilesystemTools {
             @ToolParam(description = "Source path under /.") String source,
             @ToolParam(description = "Destination path under /.") String destination
     ) {
-        Path sourcePath = existingPath(source);
-        Path destinationPath = writablePath(destination);
+        Path sourcePath = fs.existingPath(source);
+        Path destinationPath = fs.writablePath(destination);
         if (Files.exists(destinationPath)) {
-            throw new IllegalArgumentException("Destination already exists: " + displayPath(destination));
+            throw new IllegalArgumentException("Destination already exists: " + fs.displayPath(destination));
         }
 
         try {
@@ -272,15 +260,15 @@ public class ProjectFilesystemTools {
                 Files.createDirectories(parent);
             }
             Files.move(sourcePath, destinationPath, StandardCopyOption.ATOMIC_MOVE);
-            return new ToolContent("Successfully moved " + displayPath(source) + " to " + virtualPath(destinationPath) + ".");
+            return new ToolContent("Successfully moved " + fs.displayPath(source) + " to " + fs.virtualPath(destinationPath) + ".");
         } catch (FileAlreadyExistsException exception) {
-            throw new IllegalArgumentException("Destination already exists: " + displayPath(destination), exception);
+            throw new IllegalArgumentException("Destination already exists: " + fs.displayPath(destination), exception);
         } catch (IOException exception) {
             try {
                 Files.move(sourcePath, destinationPath);
-                return new ToolContent("Successfully moved " + displayPath(source) + " to " + virtualPath(destinationPath) + ".");
+                return new ToolContent("Successfully moved " + fs.displayPath(source) + " to " + fs.virtualPath(destinationPath) + ".");
             } catch (IOException fallbackException) {
-                throw new UncheckedIOException("Could not move " + displayPath(source) + " to " + displayPath(destination), fallbackException);
+                throw new UncheckedIOException("Could not move " + fs.displayPath(source) + " to " + fs.displayPath(destination), fallbackException);
             }
         }
     }
@@ -298,19 +286,19 @@ public class ProjectFilesystemTools {
             throw new IllegalArgumentException("pattern is required.");
         }
 
-        Path start = existingDirectory(path);
-        Pattern include = globPattern(pattern);
+        Path start = fs.existingDirectory(path);
+        var include = fs.globPattern(pattern);
         List<String> results = new ArrayList<>();
         try (Stream<Path> stream = Files.walk(start)) {
             stream.filter(candidate -> !candidate.equals(start))
-                    .filter(candidate -> matches(include, candidate)
-                            || matches(include, start.relativize(candidate).toString()))
-                    .filter(candidate -> !isExcluded(candidate, excludePatterns))
-                    .sorted(Comparator.comparing(this::virtualPath))
-                    .map(this::virtualPath)
+                    .filter(candidate -> fs.matches(include, candidate)
+                            || fs.matches(include, start.relativize(candidate).toString()))
+                    .filter(candidate -> !fs.isExcluded(candidate, excludePatterns))
+                    .sorted(Comparator.comparing(fs::virtualPath))
+                    .map(fs::virtualPath)
                     .forEach(results::add);
         } catch (IOException exception) {
-            throw new UncheckedIOException("Could not search files under: " + virtualPath(start), exception);
+            throw new UncheckedIOException("Could not search files under: " + fs.virtualPath(start), exception);
         }
         return new ToolContent(String.join("\n", results));
     }
@@ -322,22 +310,22 @@ public class ProjectFilesystemTools {
     public ToolContent getFileInfo(
             @ToolParam(description = "File or directory path under /. Example: /README.md") String path
     ) {
-        Path file = existingPath(path);
+        Path file = fs.existingPath(path);
         try {
             BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
             List<String> lines = new ArrayList<>();
-            lines.add("Path: " + virtualPath(file));
-            lines.add("Type: " + fileType(attributes));
+            lines.add("Path: " + fs.virtualPath(file));
+            lines.add("Type: " + fs.fileType(attributes));
             lines.add("Size: " + attributes.size() + " bytes");
-            lines.add("Created: " + formatTime(attributes.creationTime()));
-            lines.add("Modified: " + formatTime(attributes.lastModifiedTime()));
-            lines.add("Accessed: " + formatTime(attributes.lastAccessTime()));
+            lines.add("Created: " + fs.formatTime(attributes.creationTime()));
+            lines.add("Modified: " + fs.formatTime(attributes.lastModifiedTime()));
+            lines.add("Accessed: " + fs.formatTime(attributes.lastAccessTime()));
             lines.add("Readable: " + Files.isReadable(file));
             lines.add("Writable: " + Files.isWritable(file));
             lines.add("Executable: " + Files.isExecutable(file));
             return new ToolContent(String.join("\n", lines));
         } catch (IOException exception) {
-            throw new UncheckedIOException("Could not read file info: " + virtualPath(file), exception);
+            throw new UncheckedIOException("Could not read file info: " + fs.virtualPath(file), exception);
         }
     }
 
@@ -346,383 +334,8 @@ public class ProjectFilesystemTools {
             description = "Returns the list of directories this tool can access. The current project working folder appears to the agent as /."
     )
     public ToolContent listAllowedDirectories() {
-        root();
+        fs.root();
         return new ToolContent("/");
-    }
-
-    private Path existingFile(String path) {
-        Path file = existingPath(path);
-        if (!Files.isRegularFile(file)) {
-            throw new IllegalArgumentException("Path is not a file: " + displayPath(path));
-        }
-        return file;
-    }
-
-    private Path existingDirectory(String path) {
-        Path directory = existingPath(path);
-        if (!Files.isDirectory(directory)) {
-            throw new IllegalArgumentException("Path is not a directory: " + displayPath(path));
-        }
-        return directory;
-    }
-
-    private Path existingPath(String path) {
-        Path root = root();
-        Path resolved = resolveInsideRoot(root, path);
-        try {
-            Path realPath = resolved.toRealPath();
-            if (!realPath.startsWith(root)) {
-                throw new IllegalArgumentException("Path is outside the project working folder: " + displayPath(path));
-            }
-            return realPath;
-        } catch (IOException exception) {
-            throw new IllegalArgumentException("Path does not exist or cannot be accessed: " + displayPath(path));
-        }
-    }
-
-    private Path writablePath(String path) {
-        Path root = root();
-        Path resolved = resolveInsideRoot(root, path);
-        Path ancestor = nearestExistingAncestor(resolved);
-        if (ancestor != null) {
-            try {
-                Path realAncestor = ancestor.toRealPath();
-                if (!realAncestor.startsWith(root)) {
-                    throw new IllegalArgumentException("Path is outside the project working folder: " + displayPath(path));
-                }
-            } catch (IOException exception) {
-                throw new IllegalArgumentException("Parent path cannot be accessed: " + displayPath(path));
-            }
-        }
-        return resolved;
-    }
-
-    private void rejectExistingSymlink(Path path, String originalPath) {
-        if (Files.isSymbolicLink(path)) {
-            throw new IllegalArgumentException("Refusing to write through symbolic link: " + displayPath(originalPath));
-        }
-    }
-
-    private Path nearestExistingAncestor(Path path) {
-        Path current = Files.isDirectory(path) ? path : path.getParent();
-        while (current != null && !Files.exists(current)) {
-            current = current.getParent();
-        }
-        return current;
-    }
-
-    private Path root() {
-        if (resolvedRoot != null) {
-            return resolvedRoot;
-        }
-        if (workingFolder == null || workingFolder.isBlank()) {
-            throw new IllegalStateException("Project working folder is not configured.");
-        }
-
-        try {
-            Path root = Path.of(workingFolder).toRealPath();
-            if (!Files.isDirectory(root)) {
-                throw new IllegalStateException("Project working folder is not a directory.");
-            }
-            resolvedRoot = root;
-            return resolvedRoot;
-        } catch (IOException exception) {
-            throw new UncheckedIOException("Project working folder cannot be accessed.", exception);
-        } catch (InvalidPathException exception) {
-            throw new IllegalStateException("Project working folder path is invalid.", exception);
-        }
-    }
-
-    private Path resolveInsideRoot(Path root, String path) {
-        String relativePath = normalizeVirtualPath(path);
-        Path relative;
-        try {
-            relative = relativePath.isEmpty() ? Path.of("") : Path.of(relativePath).normalize();
-        } catch (InvalidPathException exception) {
-            throw new IllegalArgumentException("Path is invalid: " + displayPath(path), exception);
-        }
-
-        if (relative.isAbsolute() || relative.startsWith("..")) {
-            throw new IllegalArgumentException("Path is outside the project working folder: " + displayPath(path));
-        }
-
-        Path resolved = root.resolve(relative).normalize();
-        if (!resolved.startsWith(root)) {
-            throw new IllegalArgumentException("Path is outside the project working folder: " + displayPath(path));
-        }
-        return resolved;
-    }
-
-    private String normalizeVirtualPath(String path) {
-        if (path == null || path.isBlank()) {
-            throw new IllegalArgumentException("Path is required.");
-        }
-
-        String normalized = path.trim().replace('\\', '/');
-        if (normalized.indexOf('\0') >= 0) {
-            throw new IllegalArgumentException("Path is invalid.");
-        }
-        if (normalized.matches("^[A-Za-z]:.*") || normalized.startsWith("//")) {
-            throw new IllegalArgumentException("Use paths under /, not local absolute paths: " + displayPath(path));
-        }
-        while (normalized.startsWith("/")) {
-            normalized = normalized.substring(1);
-        }
-        return normalized;
-    }
-
-    private List<Path> directoryEntries(Path directory) {
-        try (Stream<Path> stream = Files.list(directory)) {
-            return stream.sorted(Comparator.comparing(this::fileNameLower)).toList();
-        } catch (IOException exception) {
-            throw new UncheckedIOException("Could not list directory: " + virtualPath(directory), exception);
-        }
-    }
-
-    private TreeNode treeNode(Path path, List<String> excludePatterns) throws IOException {
-        if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
-            List<TreeNode> children = new ArrayList<>();
-            try (Stream<Path> stream = Files.list(path)) {
-                for (Path child : stream.sorted(Comparator.comparing(this::fileNameLower)).toList()) {
-                    if (!isExcluded(child, excludePatterns)) {
-                        children.add(treeNode(child, excludePatterns));
-                    }
-                }
-            }
-            return new TreeNode(treeNodeName(path), "directory", children);
-        }
-        return new TreeNode(treeNodeName(path), "file", null);
-    }
-
-    private String treeNodeName(Path path) {
-        if (path.equals(root())) {
-            return "/";
-        }
-        return path.getFileName() == null ? "" : path.getFileName().toString();
-    }
-
-    private boolean isExcluded(Path candidate, List<String> excludePatterns) {
-        if (excludePatterns == null || excludePatterns.isEmpty()) {
-            return false;
-        }
-        return excludePatterns.stream()
-                .filter(Objects::nonNull)
-                .filter(pattern -> !pattern.isBlank())
-                .map(this::globPattern)
-                .anyMatch(pattern -> matches(pattern, candidate));
-    }
-
-    private boolean matches(Pattern pattern, Path candidate) {
-        String virtualPath = virtualPath(candidate).substring(1);
-        return pattern.matcher(virtualPath).matches();
-    }
-
-    private boolean matches(Pattern pattern, String relativePath) {
-        return pattern.matcher(relativePath.replace('\\', '/')).matches();
-    }
-
-    private Pattern globPattern(String glob) {
-        StringBuilder regex = new StringBuilder("^");
-        String normalized = glob.trim().replace('\\', '/');
-        if (normalized.startsWith("/")) {
-            normalized = normalized.substring(1);
-        }
-
-        for (int index = 0; index < normalized.length(); index++) {
-            char current = normalized.charAt(index);
-            if (current == '*') {
-                boolean doubleStar = index + 1 < normalized.length() && normalized.charAt(index + 1) == '*';
-                if (doubleStar) {
-                    boolean slashAfter = index + 2 < normalized.length() && normalized.charAt(index + 2) == '/';
-                    regex.append(slashAfter ? "(?:.*/)?" : ".*");
-                    index += slashAfter ? 2 : 1;
-                } else {
-                    regex.append("[^/]*");
-                }
-            } else if (current == '?') {
-                regex.append("[^/]");
-            } else if (current == '{') {
-                regex.append("(?:");
-            } else if (current == '}') {
-                regex.append(")");
-            } else if (current == ',') {
-                regex.append("|");
-            } else {
-                if ("\\.[]()+-^$|".indexOf(current) >= 0) {
-                    regex.append('\\');
-                }
-                regex.append(current);
-            }
-        }
-        regex.append("$");
-        return Pattern.compile(regex.toString());
-    }
-
-    private String readText(Path file) {
-        return readDecodedText(file).content();
-    }
-
-    private DecodedText readDecodedText(Path file) {
-        try {
-            return decodeText(Files.readAllBytes(file));
-        } catch (IOException exception) {
-            throw new UncheckedIOException("Could not read file: " + virtualPath(file), exception);
-        }
-    }
-
-    private DecodedText decodeText(byte[] bytes) throws CharacterCodingException {
-        if (startsWith(bytes, 0xEF, 0xBB, 0xBF)) {
-            return new DecodedText(decode(bytes, 3, StandardCharsets.UTF_8), StandardCharsets.UTF_8, new byte[] {
-                    (byte) 0xEF,
-                    (byte) 0xBB,
-                    (byte) 0xBF
-            });
-        }
-        if (startsWith(bytes, 0xFE, 0xFF)) {
-            return new DecodedText(decode(bytes, 2, StandardCharsets.UTF_16BE), StandardCharsets.UTF_16BE, new byte[] {
-                    (byte) 0xFE,
-                    (byte) 0xFF
-            });
-        }
-        if (startsWith(bytes, 0xFF, 0xFE)) {
-            return new DecodedText(decode(bytes, 2, StandardCharsets.UTF_16LE), StandardCharsets.UTF_16LE, new byte[] {
-                    (byte) 0xFF,
-                    (byte) 0xFE
-            });
-        }
-
-        List<Charset> charsets = List.of(
-                StandardCharsets.UTF_8,
-                Charset.forName("windows-1252"),
-                StandardCharsets.ISO_8859_1
-        );
-        CharacterCodingException lastException = null;
-        for (Charset charset : charsets) {
-            try {
-                return new DecodedText(decode(bytes, 0, charset), charset, new byte[0]);
-            } catch (CharacterCodingException exception) {
-                lastException = exception;
-            }
-        }
-        throw lastException == null ? new CharacterCodingException() : lastException;
-    }
-
-    private boolean startsWith(byte[] bytes, int... prefix) {
-        if (bytes.length < prefix.length) {
-            return false;
-        }
-        for (int index = 0; index < prefix.length; index++) {
-            if ((bytes[index] & 0xFF) != prefix[index]) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private String decode(byte[] bytes, int offset, Charset charset) throws CharacterCodingException {
-        return charset.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(bytes, offset, bytes.length - offset))
-                .toString();
-    }
-
-    private byte[] encodeText(String content, DecodedText original) throws CharacterCodingException {
-        ByteBuffer encoded = original.charset().newEncoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .encode(CharBuffer.wrap(content));
-        byte[] body = new byte[encoded.remaining()];
-        encoded.get(body);
-        byte[] bom = original.bom();
-        byte[] bytes = new byte[bom.length + body.length];
-        System.arraycopy(bom, 0, bytes, 0, bom.length);
-        System.arraycopy(body, 0, bytes, bom.length, body.length);
-        return bytes;
-    }
-
-    private LineDocument applyLineEdit(LineDocument document, FileEdit edit, String path) {
-        List<String> oldLines = parseLineSequence(edit.oldText());
-        if (oldLines.isEmpty()) {
-            throw new IllegalArgumentException("oldText must contain at least one complete line.");
-        }
-
-        List<Integer> matches = lineSequenceMatches(document.lines(), oldLines);
-        if (matches.isEmpty()) {
-            throw new IllegalArgumentException("oldText line sequence was not found in " + path + ".");
-        }
-        if (matches.size() > 1) {
-            throw new IllegalArgumentException("oldText line sequence matched more than once in " + path + ".");
-        }
-
-        List<String> updatedLines = new ArrayList<>(document.lines());
-        int start = matches.getFirst();
-        updatedLines.subList(start, start + oldLines.size()).clear();
-        updatedLines.addAll(start, parseLineSequence(edit.newText()));
-        return new LineDocument(updatedLines, document.trailingLineSeparator(), document.lineSeparator());
-    }
-
-    private List<Integer> lineSequenceMatches(List<String> lines, List<String> sequence) {
-        List<Integer> matches = new ArrayList<>();
-        if (sequence.size() > lines.size()) {
-            return matches;
-        }
-
-        for (int start = 0; start <= lines.size() - sequence.size(); start++) {
-            boolean matched = true;
-            for (int index = 0; index < sequence.size(); index++) {
-                if (!lines.get(start + index).equals(sequence.get(index))) {
-                    matched = false;
-                    break;
-                }
-            }
-            if (matched) {
-                matches.add(start);
-            }
-        }
-        return matches;
-    }
-
-    private LineDocument parseDocument(String content) {
-        String lineSeparator = content.contains("\r\n") ? "\r\n" : "\n";
-        String normalized = normalizeLineSeparators(content);
-        boolean trailingLineSeparator = normalized.endsWith("\n");
-        List<String> lines = splitLines(normalized);
-        return new LineDocument(lines, trailingLineSeparator, lineSeparator);
-    }
-
-    private List<String> parseLineSequence(String content) {
-        return splitLines(normalizeLineSeparators(content));
-    }
-
-    private List<String> splitLines(String normalizedContent) {
-        if (normalizedContent.isEmpty()) {
-            return List.of();
-        }
-
-        String[] parts = normalizedContent.split("\n", -1);
-        int limit = parts.length;
-        if (normalizedContent.endsWith("\n")) {
-            limit--;
-        }
-
-        List<String> lines = new ArrayList<>();
-        for (int index = 0; index < limit; index++) {
-            lines.add(parts[index]);
-        }
-        return lines;
-    }
-
-    private String normalizeLineSeparators(String content) {
-        return content.replace("\r\n", "\n").replace('\r', '\n');
-    }
-
-    private String renderDocument(LineDocument document) {
-        String rendered = String.join(document.lineSeparator(), document.lines());
-        if (document.trailingLineSeparator() && !document.lines().isEmpty()) {
-            rendered += document.lineSeparator();
-        }
-        return rendered;
     }
 
     private void validateLineWindow(Integer head, Integer tail) {
@@ -773,95 +386,6 @@ public class ProjectFilesystemTools {
                 .reduce("", (left, right) -> left + right + "\n");
     }
 
-    private String mediaType(String mimeType) {
-        if (mimeType.startsWith("image/")) {
-            return "image";
-        }
-        if (mimeType.startsWith("audio/")) {
-            return "audio";
-        }
-        return "blob";
-    }
-
-    private String prefix(Path path) {
-        try {
-            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            return attributes.isDirectory() ? "[DIR]" : "[FILE]";
-        } catch (IOException exception) {
-            return "[FILE]";
-        }
-    }
-
-    private long size(Path path) {
-        try {
-            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            return attributes.isDirectory() ? directorySize(path) : attributes.size();
-        } catch (IOException exception) {
-            return 0L;
-        }
-    }
-
-    private long directorySize(Path directory) throws IOException {
-        try (Stream<Path> stream = Files.walk(directory)) {
-            return stream.mapToLong(this::regularFileSizeNoFollow)
-                    .sum();
-        }
-    }
-
-    private long regularFileSizeNoFollow(Path path) {
-        try {
-            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            return attributes.isRegularFile() ? attributes.size() : 0L;
-        } catch (IOException exception) {
-            return 0L;
-        }
-    }
-
-    private String fileType(BasicFileAttributes attributes) {
-        if (attributes.isDirectory()) {
-            return "directory";
-        }
-        if (attributes.isRegularFile()) {
-            return "file";
-        }
-        if (attributes.isSymbolicLink()) {
-            return "symlink";
-        }
-        return "other";
-    }
-
-    private String formatTime(FileTime time) {
-        return time == null ? "" : TIME_FORMATTER.format(time.toInstant());
-    }
-
-    private String formatBytes(long bytes) {
-        if (bytes < 1024) {
-            return bytes + " B";
-        }
-        double kib = bytes / 1024.0;
-        if (kib < 1024) {
-            return String.format(Locale.ROOT, "%.1f KB", kib);
-        }
-        return String.format(Locale.ROOT, "%.1f MB", kib / 1024.0);
-    }
-
-    private String fileNameLower(Path path) {
-        Path fileName = path.getFileName();
-        return fileName == null ? "" : fileName.toString().toLowerCase(Locale.ROOT);
-    }
-
-    private String virtualPath(Path file) {
-        Path root = root();
-        Path normalized = file.normalize();
-        Path relative = root.relativize(normalized);
-        String path = relative.toString().replace('\\', '/');
-        return path.isEmpty() ? "/" : "/" + path;
-    }
-
-    private String displayPath(String path) {
-        return path == null || path.isBlank() ? "<blank>" : path.trim();
-    }
-
     public record ToolContent(String content) {
     }
 
@@ -872,14 +396,5 @@ public class ProjectFilesystemTools {
     }
 
     public record FileEdit(String oldText, String newText) {
-    }
-
-    private record LineDocument(List<String> lines, boolean trailingLineSeparator, String lineSeparator) {
-    }
-
-    private record TreeNode(String name, String type, List<TreeNode> children) {
-    }
-
-    private record DecodedText(String content, Charset charset, byte[] bom) {
     }
 }
