@@ -1132,25 +1132,112 @@ function connectionInputError({ instanceUrl, email, token, hasSaved, pendingClea
   return "";
 }
 
-function JiraConfig({
+// Jira and Confluence share one connect/scan archetype — paste an instance URL + API token,
+// then add up to N projects/spaces that scan in the background. They differ only in copy, the
+// collection/count field names, and the icon, so each is described by data here and rendered by
+// the single AtlassianSourceConfig below. (Confluence Cloud has a single REST API, so there's no
+// apiVersion to carry — that lives in the App-level handlers, not here.)
+const JIRA_SOURCE = {
+  max: JIRA_MAX,
+  collectionKey: "projects",
+  countKey: "issues",
+  headIcon: "ticket",
+  headTitle: "Jira (API)",
+  headDescription:
+    `The agent scans issues and project context from Jira so it can reference them. Up to ${JIRA_MAX} projects.`,
+  statsCountLabel: "Issues indexed",
+  statsCollectionLabel: "Projects",
+  instanceUrlHint: "Your Atlassian Cloud or Server base URL.",
+  instanceUrlPlaceholder: "https://your-org.atlassian.net",
+  emailHint: "The email address tied to your Jira account.",
+  sourceName: "Jira",
+  singular: "project",
+  emptyText: "No projects yet. Add a Jira project above to start scanning.",
+  confirmLabel: "Remove project?",
+  removeLabel: "Remove project",
+  errorMeta: "Couldn’t reach this project — check your access and retry.",
+  pauseActionLabel: "Pause saved project",
+  resumeActionLabel: "Resume saved project",
+  limitReachedLabel: "Project limit reached",
+  addLabel: "Add project",
+  searchPlaceholder: "Search projects in this instance…",
+  loadingText: "Loading projects...",
+  allAddedText: "Every project is already added.",
+  noMatchText: "No matching projects.",
+  privacyText: "Issues are indexed locally on this device — nothing is uploaded.",
+  errLoad: "Could not load Jira projects.",
+  errSave: "Could not save Jira setup.",
+  errClear: "Could not clear Jira setup.",
+  errScanStart: "Project added, but the Jira scan couldn't start.",
+  errAdd: "Could not add Jira project.",
+  errRemove: "Could not remove Jira project.",
+  errUpdate: "Could not update Jira project.",
+  errScan: "Could not scan Jira project."
+};
+
+const CONFLUENCE_SOURCE = {
+  max: CONFLUENCE_MAX,
+  collectionKey: "spaces",
+  countKey: "pages",
+  headIcon: "book-open",
+  headTitle: "Confluence (API)",
+  headDescription:
+    `The agent scans pages and space context from Confluence so it can reference them. Up to ${CONFLUENCE_MAX} spaces.`,
+  statsCountLabel: "Pages indexed",
+  statsCollectionLabel: "Spaces",
+  instanceUrlHint: "Your Atlassian Cloud or Server wiki base URL.",
+  instanceUrlPlaceholder: "https://your-org.atlassian.net/wiki",
+  emailHint: "The email address tied to your Confluence account.",
+  sourceName: "Confluence",
+  singular: "space",
+  emptyText: "No spaces yet. Add a Confluence space above to start scanning.",
+  confirmLabel: "Remove space?",
+  removeLabel: "Remove space",
+  errorMeta: "Couldn’t reach this space — check your access and retry.",
+  pauseActionLabel: "Pause saved space",
+  resumeActionLabel: "Resume saved space",
+  limitReachedLabel: "Space limit reached",
+  addLabel: "Add space",
+  searchPlaceholder: "Search spaces in this instance…",
+  loadingText: "Loading spaces...",
+  allAddedText: "Every space is already added.",
+  noMatchText: "No matching spaces.",
+  privacyText: "Pages are indexed locally on this device — nothing is uploaded.",
+  errLoad: "Could not load Confluence spaces.",
+  errSave: "Could not save Confluence setup.",
+  errClear: "Could not clear Confluence setup.",
+  errScanStart: "Space added, but the Confluence scan couldn't start.",
+  errAdd: "Could not add Confluence space.",
+  errRemove: "Could not remove Confluence space.",
+  errUpdate: "Could not update Confluence space.",
+  errScan: "Could not scan Confluence space."
+};
+
+// Shared connect/scan UI for the Atlassian sources. All per-source differences come in via the
+// `descriptor` (see JIRA_SOURCE / CONFLUENCE_SOURCE); the handlers use generic names that the
+// JiraConfig / ConfluenceConfig wrappers map onto.
+function AtlassianSourceConfig({
   config,
+  descriptor,
   scanProgressById,
   onSaveConnection,
   onClearConnection,
-  onSearchProjects,
-  onAddProject,
-  onRemoveProject,
-  onScanProject,
-  onToggleProjectPause,
+  onSearch,
+  onAdd,
+  onRemove,
+  onScan,
+  onTogglePause,
   onBack
 }) {
-  const [cfg, setCfg] = useState(() => ({
-    connected: Boolean(config.connected),
-    tokenConfigured: Boolean(config.tokenConfigured),
-    tokenLastFour: config.tokenLastFour ?? "",
-    tokenExpiresDays: config.tokenExpiresDays ?? null,
-    projects: config.projects ?? []
-  }));
+  const toCfg = (source) => ({
+    connected: Boolean(source.connected),
+    tokenConfigured: Boolean(source.tokenConfigured),
+    tokenLastFour: source.tokenLastFour ?? "",
+    tokenExpiresDays: source.tokenExpiresDays ?? null,
+    items: source[descriptor.collectionKey] ?? []
+  });
+
+  const [cfg, setCfg] = useState(() => toCfg(config));
   const [instanceUrl, setInstanceUrl] = useState(config.instanceUrl ?? "");
   const [email, setEmail] = useState(config.email ?? "");
   const [token, setToken] = useState("");
@@ -1162,36 +1249,30 @@ function JiraConfig({
   const [pickerSearch, setPickerSearch] = useState("");
   const [available, setAvailable] = useState([]);
   const [pickerLoading, setPickerLoading] = useState(false);
-  const [addingProjectKey, setAddingProjectKey] = useState("");
+  const [addingKey, setAddingKey] = useState("");
   const pickerRef = useRef(null);
 
   useServerSync(config, (next) => {
-    setCfg({
-      connected: Boolean(next.connected),
-      tokenConfigured: Boolean(next.tokenConfigured),
-      tokenLastFour: next.tokenLastFour ?? "",
-      tokenExpiresDays: next.tokenExpiresDays ?? null,
-      projects: next.projects ?? []
-    });
+    setCfg(toCfg(next));
     setInstanceUrl(next.instanceUrl ?? "");
     setEmail(next.email ?? "");
   });
 
   const hasSaved = cfg.tokenConfigured;
-  // Status (scanning/paused/error/scanned) is server-derived from each project's
-  // KnowledgeRoot and synced here, so the list renders it directly — no client-side
-  // "scanning" override, matching how Local Folders work.
-  const projects = cfg.projects;
-  const atMax = projects.length >= JIRA_MAX;
-  const totalIssues = projects.reduce((total, project) => total + Number(project.issues ?? 0), 0);
-  const scanningCount = projects.filter((project) => project.status === "scanning").length;
-  const pausedCount = projects.filter((project) => project.status === "paused").length;
-  const errorCount = projects.filter((project) => project.status === "error").length;
+  // Status (scanning/paused/error/scanned) is server-derived from each item's KnowledgeRoot and
+  // synced here, so the list renders it directly — no client-side "scanning" override, matching
+  // how Local Folders work.
+  const items = cfg.items;
+  const atMax = items.length >= descriptor.max;
+  const totalCount = items.reduce((total, item) => total + Number(item[descriptor.countKey] ?? 0), 0);
+  const scanningCount = items.filter((item) => item.status === "scanning").length;
+  const pausedCount = items.filter((item) => item.status === "paused").length;
+  const errorCount = items.filter((item) => item.status === "error").length;
   // Days until the saved API token expires; under 14 we nudge the user to renew.
   const expiry = cfg.tokenExpiresDays;
   const expirySoon = typeof expiry === "number" && expiry <= 14;
 
-  // Close the project picker on an outside click or the Escape key.
+  // Close the picker on an outside click or the Escape key.
   useEffect(() => {
     if (!pickerOpen) {
       return undefined;
@@ -1226,553 +1307,7 @@ function JiraConfig({
     let cancelled = false;
     setPickerLoading(true);
     // Fetch the whole instance once per picker session; typing filters it client-side below.
-    onSearchProjects("")
-      .then((projects) => {
-        if (!cancelled) {
-          setAvailable(projects);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setConnectError(error.message || "Could not load Jira projects.");
-          setAvailable([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setPickerLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [pickerOpen, atMax, projects.length]);
-
-  const matchingProjects = filterPickerItems(available, pickerSearch);
-
-  function saveConnection() {
-    const url = instanceUrl.trim();
-    const mail = email.trim();
-    const trimmedToken = token.trim();
-    const inputError = connectionInputError({
-      instanceUrl: url,
-      email: mail,
-      token: trimmedToken,
-      hasSaved,
-      pendingClear,
-      sourceName: "Jira"
-    });
-    if (inputError) {
-      setConnectError(inputError);
-      return;
-    }
-    setConnecting(true);
-    setConnectError("");
-    onSaveConnection({
-      instanceUrl: url,
-      email: mail,
-      token: trimmedToken,
-      clearToken: pendingClear
-    })
-      .then((savedCfg) => {
-        setCfg(savedCfg);
-        setToken("");
-        setPendingClear(false);
-      })
-      .catch((error) => {
-        setConnectError(error.message || "Could not save Jira setup.");
-      })
-      .finally(() => {
-        setConnecting(false);
-      });
-  }
-
-  function disconnect() {
-    onClearConnection()
-      .then((savedCfg) => {
-        setCfg(savedCfg);
-        setDisconnectConfirm(false);
-        setToken("");
-        setPendingClear(false);
-      })
-      .catch((error) => {
-        setConnectError(error.message || "Could not clear Jira setup.");
-      });
-  }
-
-  async function addProjectByKey(key) {
-    if (addingProjectKey || atMax || projects.some((project) => project.key === key)) {
-      return;
-    }
-    setAddingProjectKey(key);
-    try {
-      const project = await onAddProject(key);
-      setCfg((prev) => ({
-        ...prev,
-        projects: prev.projects.some((item) => item.id === project.id)
-          ? prev.projects.map((item) => (item.id === project.id ? project : item))
-          : [...prev.projects, project]
-      }));
-      setPickerSearch("");
-      try {
-        // The scan runs in the background; its status arrives via SSE, so don't apply
-        // the trigger response here — it would clobber the live "scanning" status.
-        await onScanProject(project.id);
-      } catch (error) {
-        setConnectError(error.message || "Project added, but the Jira scan couldn't start.");
-      }
-    } catch (error) {
-      setConnectError(error.message || "Could not add Jira project.");
-    } finally {
-      setAddingProjectKey("");
-    }
-  }
-
-  async function removeProject(id) {
-    try {
-      await onRemoveProject(id);
-      setCfg((current) => ({
-        ...current,
-        projects: current.projects.filter((project) => project.id !== id)
-      }));
-    } catch (error) {
-      setConnectError(error.message || "Could not remove Jira project.");
-    }
-  }
-
-  async function togglePause(id) {
-    const project = projects.find((item) => item.id === id);
-    if (!project) {
-      return;
-    }
-    try {
-      const savedProject = await onToggleProjectPause(project);
-      setCfg((current) => ({
-        ...current,
-        projects: current.projects.map((item) =>
-          item.id === savedProject.id ? savedProject : item
-        )
-      }));
-    } catch (error) {
-      setConnectError(error.message || "Could not update Jira project.");
-    }
-  }
-
-  async function scanNow(id) {
-    // The server flips the project to "scanning" (and back) on its KnowledgeRoot and
-    // pushes it over SSE, so there's no client-side scanning state to track here —
-    // this mirrors the local-folder scan handler.
-    try {
-      await onScanProject(id);
-    } catch (error) {
-      setConnectError(error.message || "Could not scan Jira project.");
-    }
-  }
-
-  return (
-    <div className="settings-section kn-source">
-      <button className="config-back" type="button" onClick={onBack}>
-        <Icon name="arrow-left" size={15} color="var(--gray-600)" /> All knowledge
-      </button>
-
-      <div className="config-head">
-        <span className="provider-icon lg">
-          <Icon name="ticket" size={22} color="var(--blue-600)" />
-        </span>
-        <div className="provider-id">
-          <h2 className="ds-h3">Jira (API)</h2>
-          <div className="provider-region">
-            The agent scans issues and project context from Jira so it can
-            reference them. Up to {JIRA_MAX} projects.
-          </div>
-        </div>
-        {cfg.connected ? (
-          <span className="badge badge-success knowledge-head-badge">
-            <span className="dot" />
-            Connected
-          </span>
-        ) : (
-          <span className="badge badge-neutral knowledge-head-badge">Not connected</span>
-        )}
-      </div>
-
-      {cfg.connected && projects.length > 0 && (
-        <SourceStats
-          items={[
-            { label: "Issues indexed", value: fmtNum(totalIssues) },
-            { label: "Projects", value: `${projects.length} / ${JIRA_MAX}` },
-            {
-              // Errors take precedence over scanning/paused, matching the design.
-              label: "Status",
-              value: errorCount
-                ? `${errorCount} error${errorCount === 1 ? "" : "s"}`
-                : scanningCount
-                  ? `${scanningCount} scanning`
-                  : pausedCount
-                    ? `${pausedCount} paused`
-                    : "Ready",
-              tone: errorCount ? "danger" : undefined
-            }
-          ]}
-        />
-      )}
-
-      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18, padding: 22 }}>
-        <Field label="Instance URL" hint="Your Atlassian Cloud or Server base URL.">
-          <input
-            className="input"
-            type="text"
-            placeholder="https://your-org.atlassian.net"
-            value={instanceUrl}
-            onChange={(event) => {
-              setInstanceUrl(event.target.value);
-              setConnectError("");
-            }}
-          />
-        </Field>
-        <Field label="Email" hint="The email address tied to your Jira account.">
-          <input
-            className="input"
-            type="email"
-            placeholder="you@company.com"
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setConnectError("");
-            }}
-          />
-        </Field>
-        <div className="field">
-          <label className="field">
-            <span className="field-label">API token</span>
-            <span className="input-icon">
-              <Icon name="key" size={16} />
-              <input
-                className="input"
-                type="password"
-                placeholder={hasSaved ? `Saved token · ending ${cfg.tokenLastFour}` : ""}
-                value={token}
-                onChange={(event) => {
-                  setToken(event.target.value);
-                  setConnectError("");
-                  setPendingClear(false);
-                }}
-              />
-            </span>
-          </label>
-          {hasSaved && !pendingClear ? (
-            <span className="saved-key-row">
-              <span className="saved-key-text">
-                <Icon name="circle-check" size={13} color="var(--success-600)" />
-                Saved token ending {cfg.tokenLastFour}
-              </span>
-              <button
-                className="btn btn-ghost btn-sm"
-                type="button"
-                onClick={() => setPendingClear(true)}
-              >
-                Clear
-              </button>
-            </span>
-          ) : hasSaved && pendingClear ? (
-            <span className="saved-key-row">
-              <span className="token-clear-warning">
-                <Icon name="alert-triangle" size={13} color="var(--warning-700)" />
-                Token will be cleared on save.
-              </span>
-              <button
-                className="btn btn-ghost btn-sm"
-                type="button"
-                onClick={() => setPendingClear(false)}
-              >
-                Undo
-              </button>
-            </span>
-          ) : (
-            <span className="field-hint">
-              Generate one at id.atlassian.com/manage-profile/security/api-tokens.
-              Stored encrypted on this device — never synced.
-            </span>
-          )}
-          {hasSaved && !pendingClear && typeof expiry === "number" && (
-            <span className={expirySoon ? "jira-expiry soon" : "jira-expiry"}>
-              <Icon
-                name={expirySoon ? "alert-triangle" : "calendar"}
-                size={13}
-                color={expirySoon ? "var(--warning-700)" : "var(--gray-400)"}
-              />
-              {expirySoon
-                ? `Token expires in ${expiry} days — generate a new one to avoid interrupted scans.`
-                : `Token expires in ${expiry} days.`}
-            </span>
-          )}
-        </div>
-        {connectError && <InlineError>{connectError}</InlineError>}
-      </div>
-
-      <div className="btn-row">
-        <button
-          className="btn btn-primary"
-          type="button"
-          onClick={saveConnection}
-          disabled={connecting}
-        >
-          {connecting ? (
-            <>
-              <Icon name="refresh-cw" size={15} color="#fff" className="cda-spin" />
-              Saving…
-            </>
-          ) : cfg.connected ? (
-            <>
-              <Icon name="check" size={16} color="#fff" /> Save connection
-            </>
-          ) : (
-            <>
-              <Icon name="check" size={16} color="#fff" /> Connect
-            </>
-          )}
-        </button>
-        {cfg.connected && !disconnectConfirm && (
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={() => setDisconnectConfirm(true)}
-          >
-            Disconnect
-          </button>
-        )}
-        {cfg.connected && disconnectConfirm && (
-          <>
-            <span className="disconnect-prompt">
-              Remove all {projects.length} project{projects.length !== 1 ? "s" : ""} too?
-            </span>
-            <button
-              className="btn btn-secondary btn-sm"
-              type="button"
-              onClick={() => setDisconnectConfirm(false)}
-            >
-              Cancel
-            </button>
-            <button className="btn btn-danger btn-sm" type="button" onClick={disconnect}>
-              <Icon name="trash" size={14} color="#fff" /> Disconnect
-            </button>
-          </>
-        )}
-      </div>
-
-      {cfg.connected && (
-        <KnowledgeSourceList
-          items={projects}
-          noun="projects"
-          addRowRef={pickerRef}
-          emptyText="No projects yet. Add a Jira project above to start scanning."
-          confirmLabel="Remove project?"
-          removeLabel="Remove project"
-          onScanNow={scanNow}
-          onTogglePause={togglePause}
-          onRemove={removeProject}
-          renderLeading={(project) => (
-            <span
-              className={project.status === "error" ? "jira-key error" : "jira-key"}
-            >
-              {project.key}
-            </span>
-          )}
-          renderTitle={(project) => project.name}
-          tickerItems={(project) => scanProgressById?.[project.id] ?? []}
-          metaScanned={(project) =>
-            `${fmtNum(project.issues)} issues · checked ${project.checked || "just now"}`
-          }
-          metaPaused={(project) =>
-            `Paused · ${fmtNum(project.issues)} issues`
-          }
-          metaError={(project) =>
-            project.message ||
-            "Couldn’t reach this project — check your access and retry."
-          }
-          scanActionLabel="Scan now"
-          pauseActionLabel="Pause saved project"
-          resumeActionLabel="Resume saved project"
-          addControl={
-            pickerOpen ? (
-              <button
-                className="btn btn-secondary btn-sm"
-                type="button"
-                onClick={() => {
-                  setPickerOpen(false);
-                  setPickerSearch("");
-                }}
-              >
-                <Icon name="check" size={15} color="var(--gray-700)" /> Done
-              </button>
-            ) : (
-              <button
-                className="btn btn-primary btn-sm"
-                type="button"
-                onClick={() => {
-                  setPickerOpen(true);
-                  setPickerSearch("");
-                }}
-                disabled={atMax}
-              >
-                <Icon name="plus" size={15} color="#fff" />{" "}
-                {atMax ? "Project limit reached" : "Add project"}
-              </button>
-            )
-          }
-          addBelow={
-            pickerOpen && !atMax ? (
-              <div className="jira-picker">
-                <span className="input-icon jira-picker-search">
-                  <Icon name="search" size={16} />
-                  <input
-                    className="input"
-                    type="text"
-                    autoFocus
-                    placeholder="Search projects in this instance…"
-                    value={pickerSearch}
-                    onChange={(event) => setPickerSearch(event.target.value)}
-                  />
-                </span>
-                <div className="jira-picker-list">
-                  {pickerLoading ? (
-                    <div className="jira-picker-empty">Loading projects...</div>
-                  ) : available.length === 0 ? (
-                    <div className="jira-picker-empty">Every project is already added.</div>
-                  ) : matchingProjects.length === 0 ? (
-                    <div className="jira-picker-empty">No matching projects.</div>
-                  ) : (
-                    matchingProjects.map((project) => (
-                      <button
-                        key={project.key}
-                        type="button"
-                        className="jira-picker-item"
-                        disabled={Boolean(addingProjectKey)}
-                        onClick={() => addProjectByKey(project.key)}
-                      >
-                        <span className="jira-key">{project.key}</span>
-                        <span className="jira-picker-name">{project.name}</span>
-                        <Icon
-                          name={addingProjectKey === project.key ? "refresh-cw" : "plus"}
-                          size={15}
-                          color="var(--blue-600)"
-                          className={addingProjectKey === project.key ? "cda-spin" : ""}
-                        />
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            ) : null
-          }
-        />
-      )}
-
-      <div className="knowledge-privacy">
-        <Icon name="shield-check" size={14} color="var(--success-600)" />
-        Issues are indexed locally on this device — nothing is uploaded.
-      </div>
-    </div>
-  );
-}
-
-// Sibling of JiraConfig — same connect/scan archetype, scoped to Confluence spaces and
-// pages. Confluence Cloud has a single REST API, so there's no apiVersion to carry.
-function ConfluenceConfig({
-  config,
-  scanProgressById,
-  onSaveConnection,
-  onClearConnection,
-  onSearchSpaces,
-  onAddSpace,
-  onRemoveSpace,
-  onScanSpace,
-  onToggleSpacePause,
-  onBack
-}) {
-  const [cfg, setCfg] = useState(() => ({
-    connected: Boolean(config.connected),
-    tokenConfigured: Boolean(config.tokenConfigured),
-    tokenLastFour: config.tokenLastFour ?? "",
-    tokenExpiresDays: config.tokenExpiresDays ?? null,
-    spaces: config.spaces ?? []
-  }));
-  const [instanceUrl, setInstanceUrl] = useState(config.instanceUrl ?? "");
-  const [email, setEmail] = useState(config.email ?? "");
-  const [token, setToken] = useState("");
-  const [pendingClear, setPendingClear] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-  const [connectError, setConnectError] = useState("");
-  const [disconnectConfirm, setDisconnectConfirm] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerSearch, setPickerSearch] = useState("");
-  const [available, setAvailable] = useState([]);
-  const [pickerLoading, setPickerLoading] = useState(false);
-  const [addingSpaceKey, setAddingSpaceKey] = useState("");
-  const pickerRef = useRef(null);
-
-  useServerSync(config, (next) => {
-    setCfg({
-      connected: Boolean(next.connected),
-      tokenConfigured: Boolean(next.tokenConfigured),
-      tokenLastFour: next.tokenLastFour ?? "",
-      tokenExpiresDays: next.tokenExpiresDays ?? null,
-      spaces: next.spaces ?? []
-    });
-    setInstanceUrl(next.instanceUrl ?? "");
-    setEmail(next.email ?? "");
-  });
-
-  const hasSaved = cfg.tokenConfigured;
-  // Status (scanning/paused/error/scanned) is server-derived from each space's
-  // KnowledgeRoot and synced here, so the list renders it directly — no client-side
-  // "scanning" override, matching how Jira projects and Local Folders work.
-  const spaces = cfg.spaces;
-  const atMax = spaces.length >= CONFLUENCE_MAX;
-  const totalPages = spaces.reduce((total, space) => total + Number(space.pages ?? 0), 0);
-  const scanningCount = spaces.filter((space) => space.status === "scanning").length;
-  const pausedCount = spaces.filter((space) => space.status === "paused").length;
-  const errorCount = spaces.filter((space) => space.status === "error").length;
-  // Days until the saved API token expires; under 14 we nudge the user to renew.
-  const expiry = cfg.tokenExpiresDays;
-  const expirySoon = typeof expiry === "number" && expiry <= 14;
-
-  // Close the space picker on an outside click or the Escape key.
-  useEffect(() => {
-    if (!pickerOpen) {
-      return undefined;
-    }
-    const close = () => {
-      setPickerOpen(false);
-      setPickerSearch("");
-    };
-    const onDown = (event) => {
-      if (pickerRef.current && !pickerRef.current.contains(event.target)) {
-        close();
-      }
-    };
-    const onKey = (event) => {
-      if (event.key === "Escape") {
-        close();
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [pickerOpen]);
-
-  useEffect(() => {
-    if (!pickerOpen || atMax) {
-      setAvailable([]);
-      return undefined;
-    }
-    let cancelled = false;
-    setPickerLoading(true);
-    // Fetch the whole instance once per picker session; typing filters it client-side below.
-    onSearchSpaces("")
+    onSearch("")
       .then((found) => {
         if (!cancelled) {
           setAvailable(found);
@@ -1780,7 +1315,7 @@ function ConfluenceConfig({
       })
       .catch((error) => {
         if (!cancelled) {
-          setConnectError(error.message || "Could not load Confluence spaces.");
+          setConnectError(error.message || descriptor.errLoad);
           setAvailable([]);
         }
       })
@@ -1792,9 +1327,9 @@ function ConfluenceConfig({
     return () => {
       cancelled = true;
     };
-  }, [pickerOpen, atMax, spaces.length]);
+  }, [pickerOpen, atMax, items.length]);
 
-  const matchingSpaces = filterPickerItems(available, pickerSearch);
+  const matching = filterPickerItems(available, pickerSearch);
 
   function saveConnection() {
     const url = instanceUrl.trim();
@@ -1806,7 +1341,7 @@ function ConfluenceConfig({
       token: trimmedToken,
       hasSaved,
       pendingClear,
-      sourceName: "Confluence"
+      sourceName: descriptor.sourceName
     });
     if (inputError) {
       setConnectError(inputError);
@@ -1821,12 +1356,12 @@ function ConfluenceConfig({
       clearToken: pendingClear
     })
       .then((savedCfg) => {
-        setCfg(savedCfg);
+        setCfg(toCfg(savedCfg));
         setToken("");
         setPendingClear(false);
       })
       .catch((error) => {
-        setConnectError(error.message || "Could not save Confluence setup.");
+        setConnectError(error.message || descriptor.errSave);
       })
       .finally(() => {
         setConnecting(false);
@@ -1836,82 +1371,79 @@ function ConfluenceConfig({
   function disconnect() {
     onClearConnection()
       .then((savedCfg) => {
-        setCfg(savedCfg);
+        setCfg(toCfg(savedCfg));
         setDisconnectConfirm(false);
         setToken("");
         setPendingClear(false);
       })
       .catch((error) => {
-        setConnectError(error.message || "Could not clear Confluence setup.");
+        setConnectError(error.message || descriptor.errClear);
       });
   }
 
-  async function addSpaceByKey(key) {
-    if (addingSpaceKey || atMax || spaces.some((space) => space.key === key)) {
+  async function addByKey(key) {
+    if (addingKey || atMax || items.some((item) => item.key === key)) {
       return;
     }
-    setAddingSpaceKey(key);
+    setAddingKey(key);
     try {
-      const space = await onAddSpace(key);
+      const added = await onAdd(key);
       setCfg((prev) => ({
         ...prev,
-        spaces: prev.spaces.some((item) => item.id === space.id)
-          ? prev.spaces.map((item) => (item.id === space.id ? space : item))
-          : [...prev.spaces, space]
+        items: prev.items.some((item) => item.id === added.id)
+          ? prev.items.map((item) => (item.id === added.id ? added : item))
+          : [...prev.items, added]
       }));
       setPickerSearch("");
       try {
-        // The scan runs in the background; its status arrives via SSE, so don't apply
-        // the trigger response here — it would clobber the live "scanning" status.
-        await onScanSpace(space.id);
+        // The scan runs in the background; its status arrives via SSE, so don't apply the
+        // trigger response here — it would clobber the live "scanning" status.
+        await onScan(added.id);
       } catch (error) {
-        setConnectError(error.message || "Space added, but the Confluence scan couldn't start.");
+        setConnectError(error.message || descriptor.errScanStart);
       }
     } catch (error) {
-      setConnectError(error.message || "Could not add Confluence space.");
+      setConnectError(error.message || descriptor.errAdd);
     } finally {
-      setAddingSpaceKey("");
+      setAddingKey("");
     }
   }
 
-  async function removeSpace(id) {
+  async function removeItem(id) {
     try {
-      await onRemoveSpace(id);
+      await onRemove(id);
       setCfg((current) => ({
         ...current,
-        spaces: current.spaces.filter((space) => space.id !== id)
+        items: current.items.filter((item) => item.id !== id)
       }));
     } catch (error) {
-      setConnectError(error.message || "Could not remove Confluence space.");
+      setConnectError(error.message || descriptor.errRemove);
     }
   }
 
   async function togglePause(id) {
-    const space = spaces.find((item) => item.id === id);
-    if (!space) {
+    const item = items.find((entry) => entry.id === id);
+    if (!item) {
       return;
     }
     try {
-      const savedSpace = await onToggleSpacePause(space);
+      const saved = await onTogglePause(item);
       setCfg((current) => ({
         ...current,
-        spaces: current.spaces.map((item) =>
-          item.id === savedSpace.id ? savedSpace : item
-        )
+        items: current.items.map((entry) => (entry.id === saved.id ? saved : entry))
       }));
     } catch (error) {
-      setConnectError(error.message || "Could not update Confluence space.");
+      setConnectError(error.message || descriptor.errUpdate);
     }
   }
 
   async function scanNow(id) {
-    // The server flips the space to "scanning" (and back) on its KnowledgeRoot and pushes
-    // it over SSE, so there's no client-side scanning state to track here — this mirrors
-    // the Jira project scan handler.
+    // The server flips the item to "scanning" (and back) on its KnowledgeRoot and pushes it over
+    // SSE, so there's no client-side scanning state to track here.
     try {
-      await onScanSpace(id);
+      await onScan(id);
     } catch (error) {
-      setConnectError(error.message || "Could not scan Confluence space.");
+      setConnectError(error.message || descriptor.errScan);
     }
   }
 
@@ -1923,14 +1455,11 @@ function ConfluenceConfig({
 
       <div className="config-head">
         <span className="provider-icon lg">
-          <Icon name="book-open" size={22} color="var(--blue-600)" />
+          <Icon name={descriptor.headIcon} size={22} color="var(--blue-600)" />
         </span>
         <div className="provider-id">
-          <h2 className="ds-h3">Confluence (API)</h2>
-          <div className="provider-region">
-            The agent scans pages and space context from Confluence so it can
-            reference them. Up to {CONFLUENCE_MAX} spaces.
-          </div>
+          <h2 className="ds-h3">{descriptor.headTitle}</h2>
+          <div className="provider-region">{descriptor.headDescription}</div>
         </div>
         {cfg.connected ? (
           <span className="badge badge-success knowledge-head-badge">
@@ -1942,11 +1471,11 @@ function ConfluenceConfig({
         )}
       </div>
 
-      {cfg.connected && spaces.length > 0 && (
+      {cfg.connected && items.length > 0 && (
         <SourceStats
           items={[
-            { label: "Pages indexed", value: fmtNum(totalPages) },
-            { label: "Spaces", value: `${spaces.length} / ${CONFLUENCE_MAX}` },
+            { label: descriptor.statsCountLabel, value: fmtNum(totalCount) },
+            { label: descriptor.statsCollectionLabel, value: `${items.length} / ${descriptor.max}` },
             {
               // Errors take precedence over scanning/paused, matching the design.
               label: "Status",
@@ -1964,11 +1493,11 @@ function ConfluenceConfig({
       )}
 
       <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18, padding: 22 }}>
-        <Field label="Instance URL" hint="Your Atlassian Cloud or Server wiki base URL.">
+        <Field label="Instance URL" hint={descriptor.instanceUrlHint}>
           <input
             className="input"
             type="text"
-            placeholder="https://your-org.atlassian.net/wiki"
+            placeholder={descriptor.instanceUrlPlaceholder}
             value={instanceUrl}
             onChange={(event) => {
               setInstanceUrl(event.target.value);
@@ -1976,7 +1505,7 @@ function ConfluenceConfig({
             }}
           />
         </Field>
-        <Field label="Email" hint="The email address tied to your Confluence account.">
+        <Field label="Email" hint={descriptor.emailHint}>
           <input
             className="input"
             type="email"
@@ -2090,7 +1619,7 @@ function ConfluenceConfig({
         {cfg.connected && disconnectConfirm && (
           <>
             <span className="disconnect-prompt">
-              Remove all {spaces.length} space{spaces.length !== 1 ? "s" : ""} too?
+              Remove all {items.length} {descriptor.singular}{items.length !== 1 ? "s" : ""} too?
             </span>
             <button
               className="btn btn-secondary btn-sm"
@@ -2108,35 +1637,30 @@ function ConfluenceConfig({
 
       {cfg.connected && (
         <KnowledgeSourceList
-          items={spaces}
-          noun="spaces"
+          items={items}
+          noun={descriptor.collectionKey}
           addRowRef={pickerRef}
-          emptyText="No spaces yet. Add a Confluence space above to start scanning."
-          confirmLabel="Remove space?"
-          removeLabel="Remove space"
+          emptyText={descriptor.emptyText}
+          confirmLabel={descriptor.confirmLabel}
+          removeLabel={descriptor.removeLabel}
           onScanNow={scanNow}
           onTogglePause={togglePause}
-          onRemove={removeSpace}
-          renderLeading={(space) => (
-            <span className={space.status === "error" ? "jira-key error" : "jira-key"}>
-              {space.key}
+          onRemove={removeItem}
+          renderLeading={(item) => (
+            <span className={item.status === "error" ? "jira-key error" : "jira-key"}>
+              {item.key}
             </span>
           )}
-          renderTitle={(space) => space.name}
-          tickerItems={(space) => scanProgressById?.[space.id] ?? []}
-          metaScanned={(space) =>
-            `${fmtNum(space.pages)} pages · checked ${space.checked || "just now"}`
+          renderTitle={(item) => item.name}
+          tickerItems={(item) => scanProgressById?.[item.id] ?? []}
+          metaScanned={(item) =>
+            `${fmtNum(item[descriptor.countKey])} ${descriptor.countKey} · checked ${item.checked || "just now"}`
           }
-          metaPaused={(space) =>
-            `Paused · ${fmtNum(space.pages)} pages`
-          }
-          metaError={(space) =>
-            space.message ||
-            "Couldn’t reach this space — check your access and retry."
-          }
+          metaPaused={(item) => `Paused · ${fmtNum(item[descriptor.countKey])} ${descriptor.countKey}`}
+          metaError={(item) => item.message || descriptor.errorMeta}
           scanActionLabel="Scan now"
-          pauseActionLabel="Pause saved space"
-          resumeActionLabel="Resume saved space"
+          pauseActionLabel={descriptor.pauseActionLabel}
+          resumeActionLabel={descriptor.resumeActionLabel}
           addControl={
             pickerOpen ? (
               <button
@@ -2160,7 +1684,7 @@ function ConfluenceConfig({
                 disabled={atMax}
               >
                 <Icon name="plus" size={15} color="#fff" />{" "}
-                {atMax ? "Space limit reached" : "Add space"}
+                {atMax ? descriptor.limitReachedLabel : descriptor.addLabel}
               </button>
             )
           }
@@ -2173,34 +1697,34 @@ function ConfluenceConfig({
                     className="input"
                     type="text"
                     autoFocus
-                    placeholder="Search spaces in this instance…"
+                    placeholder={descriptor.searchPlaceholder}
                     value={pickerSearch}
                     onChange={(event) => setPickerSearch(event.target.value)}
                   />
                 </span>
                 <div className="jira-picker-list">
                   {pickerLoading ? (
-                    <div className="jira-picker-empty">Loading spaces...</div>
+                    <div className="jira-picker-empty">{descriptor.loadingText}</div>
                   ) : available.length === 0 ? (
-                    <div className="jira-picker-empty">Every space is already added.</div>
-                  ) : matchingSpaces.length === 0 ? (
-                    <div className="jira-picker-empty">No matching spaces.</div>
+                    <div className="jira-picker-empty">{descriptor.allAddedText}</div>
+                  ) : matching.length === 0 ? (
+                    <div className="jira-picker-empty">{descriptor.noMatchText}</div>
                   ) : (
-                    matchingSpaces.map((space) => (
+                    matching.map((item) => (
                       <button
-                        key={space.key}
+                        key={item.key}
                         type="button"
                         className="jira-picker-item"
-                        disabled={Boolean(addingSpaceKey)}
-                        onClick={() => addSpaceByKey(space.key)}
+                        disabled={Boolean(addingKey)}
+                        onClick={() => addByKey(item.key)}
                       >
-                        <span className="jira-key">{space.key}</span>
-                        <span className="jira-picker-name">{space.name}</span>
+                        <span className="jira-key">{item.key}</span>
+                        <span className="jira-picker-name">{item.name}</span>
                         <Icon
-                          name={addingSpaceKey === space.key ? "refresh-cw" : "plus"}
+                          name={addingKey === item.key ? "refresh-cw" : "plus"}
                           size={15}
                           color="var(--blue-600)"
-                          className={addingSpaceKey === space.key ? "cda-spin" : ""}
+                          className={addingKey === item.key ? "cda-spin" : ""}
                         />
                       </button>
                     ))
@@ -2214,9 +1738,51 @@ function ConfluenceConfig({
 
       <div className="knowledge-privacy">
         <Icon name="shield-check" size={14} color="var(--success-600)" />
-        Pages are indexed locally on this device — nothing is uploaded.
+        {descriptor.privacyText}
       </div>
     </div>
+  );
+}
+
+function JiraConfig({
+  onSearchProjects,
+  onAddProject,
+  onRemoveProject,
+  onScanProject,
+  onToggleProjectPause,
+  ...rest
+}) {
+  return (
+    <AtlassianSourceConfig
+      {...rest}
+      descriptor={JIRA_SOURCE}
+      onSearch={onSearchProjects}
+      onAdd={onAddProject}
+      onRemove={onRemoveProject}
+      onScan={onScanProject}
+      onTogglePause={onToggleProjectPause}
+    />
+  );
+}
+
+function ConfluenceConfig({
+  onSearchSpaces,
+  onAddSpace,
+  onRemoveSpace,
+  onScanSpace,
+  onToggleSpacePause,
+  ...rest
+}) {
+  return (
+    <AtlassianSourceConfig
+      {...rest}
+      descriptor={CONFLUENCE_SOURCE}
+      onSearch={onSearchSpaces}
+      onAdd={onAddSpace}
+      onRemove={onRemoveSpace}
+      onScan={onScanSpace}
+      onTogglePause={onToggleSpacePause}
+    />
   );
 }
 
