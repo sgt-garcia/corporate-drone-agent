@@ -4,8 +4,10 @@ import ai.corporatedroneagent.service.KnowledgeSearchService;
 import ai.corporatedroneagent.tools.KnowledgeSearchTools;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 
 /**
  * POC: exposes the on-demand knowledge search tool over MCP so external clients (e.g. Claude)
@@ -25,5 +27,17 @@ public class McpServerConfig {
     public ToolCallbackProvider cdaMcpTools(KnowledgeSearchService knowledgeSearchService) {
         KnowledgeSearchTools tools = new KnowledgeSearchTools(knowledgeSearchService, RESULTS, RESULT_LENGTH);
         return MethodToolCallbackProvider.builder().toolObjects(tools).build();
+    }
+
+    // Guard the MCP transport endpoints (SSE stream + message post) against DNS-rebinding by
+    // rejecting any request whose Host/Origin is not loopback. Highest precedence so it runs
+    // before the request reaches the transport handler.
+    @Bean
+    public FilterRegistrationBean<McpLocalOnlyFilter> mcpLocalOnlyFilter() {
+        FilterRegistrationBean<McpLocalOnlyFilter> registration = new FilterRegistrationBean<>(new McpLocalOnlyFilter());
+        registration.addUrlPatterns("/sse", "/mcp/*");
+        registration.setName("mcpLocalOnlyFilter");
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return registration;
     }
 }
