@@ -71,7 +71,7 @@ public class ConfluencePageFetchService {
             ConfluenceSpaceDto space,
             Instant updatedSince
     ) {
-        String spaceKey = Strings.defaultIfBlank(space.getKey(), "").trim();
+        String spaceKey = Strings.defaultIfBlank(space.key(), "").trim();
         if (spaceKey.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confluence space key is required");
         }

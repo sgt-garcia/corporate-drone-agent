@@ -142,7 +142,7 @@ public class SettingsService {
         if (folders.size() >= MAX_KNOWLEDGE_FOLDERS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Local folder limit reached");
         }
-        if (folders.stream().anyMatch(folder -> samePath(folder.getPath(), path))) {
+        if (folders.stream().anyMatch(folder -> samePath(folder.path(), path))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Folder is already configured");
         }
         validateNotNestedFolder(folderPath, folders);
@@ -157,7 +157,7 @@ public class SettingsService {
         root = knowledgeRootRepository.save(root);
         publishSettingsUpdated();
         KnowledgeFolderDto folder = knowledgeFolder(root);
-        log.info("Added local knowledge folder {} at {}.", folder.getId(), path);
+        log.info("Added local knowledge folder {} at {}.", folder.id(), path);
         return folder;
     }
 
@@ -223,7 +223,7 @@ public class SettingsService {
 
     private void validateNotNestedFolder(Path folderPath, List<KnowledgeFolderDto> existingFolders) {
         for (KnowledgeFolderDto existingFolder : existingFolders) {
-            Optional<Path> existingPath = comparableExistingFolderPath(existingFolder.getPath());
+            Optional<Path> existingPath = comparableExistingFolderPath(existingFolder.path());
             if (existingPath.isEmpty()) {
                 continue;
             }
@@ -268,18 +268,16 @@ public class SettingsService {
     // delegates here so a scan's return DTO and the settings listing stay in sync
     // (notably the "checked" freshness label, which a separate mapper kept dropping).
     KnowledgeFolderDto knowledgeFolder(KnowledgeRoot root) {
-        KnowledgeFolderDto folder = new KnowledgeFolderDto();
-        folder.setId(root.getId());
-        folder.setPath(root.getReference());
-        folder.setStatus(KnowledgeRootFormatting.status(root));
-        folder.setFiles(root.getTotalResources());
-        folder.setSize(root.getTotalSizeBytes() == 0
-                ? ""
-                : formatBytes(root.getTotalSizeBytes()));
-        folder.setNextScan(nextScan(root));
-        folder.setChecked(KnowledgeRootFormatting.checkedLabel(root));
-        folder.setMessage("error".equals(folder.getStatus()) ? root.getScanMessage() : "");
-        return folder;
+        String status = KnowledgeRootFormatting.status(root);
+        return new KnowledgeFolderDto(
+                root.getId(),
+                root.getReference(),
+                status,
+                root.getTotalResources(),
+                root.getTotalSizeBytes() == 0 ? "" : formatBytes(root.getTotalSizeBytes()),
+                nextScan(root),
+                KnowledgeRootFormatting.checkedLabel(root),
+                "error".equals(status) ? root.getScanMessage() : "");
     }
 
     private String nextScan(KnowledgeRoot root) {

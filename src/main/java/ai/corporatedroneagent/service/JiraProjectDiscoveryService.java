@@ -92,7 +92,7 @@ public class JiraProjectDiscoveryService {
         // so it must return all — capping it would hide projects past the cap from the picker.
         return projects.stream()
                 .filter(project -> trimmedQuery.isBlank()
-                        || (project.getKey() + " " + project.getName()).toLowerCase(Locale.ROOT)
+                        || (project.key() + " " + project.name()).toLowerCase(Locale.ROOT)
                         .contains(trimmedQuery.toLowerCase(Locale.ROOT)))
                 .limit(trimmedQuery.isBlank() ? Long.MAX_VALUE : limit)
                 .toList();
@@ -174,13 +174,14 @@ public class JiraProjectDiscoveryService {
         if (key.isBlank() || name.isBlank()) {
             return java.util.Optional.empty();
         }
-        JiraProjectDto project = new JiraProjectDto();
-        project.setId(Strings.defaultIfBlank(node.path("id").asText(""), "jira-" + key.toLowerCase(Locale.ROOT)));
-        project.setKey(key);
-        project.setName(name);
-        project.setStatus("scanned");
-        project.setIssues(Math.max(0L, node.path("insight").path("totalIssueCount").asLong(0L)));
-        project.setChecked(checked);
+        JiraProjectDto project = new JiraProjectDto(
+                Strings.defaultIfBlank(node.path("id").asText(""), "jira-" + key.toLowerCase(Locale.ROOT)),
+                key,
+                name,
+                "scanned",
+                Math.max(0L, node.path("insight").path("totalIssueCount").asLong(0L)),
+                checked,
+                "");
         return java.util.Optional.of(project);
     }
 

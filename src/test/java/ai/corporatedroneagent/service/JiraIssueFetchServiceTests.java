@@ -258,11 +258,7 @@ class JiraIssueFetchServiceTests {
     }
 
     private JiraProjectDto project(String id, String key) {
-        JiraProjectDto project = new JiraProjectDto();
-        project.setId(id);
-        project.setKey(key);
-        project.setName("Software Development");
-        return project;
+        return new JiraProjectDto(id, key, "Software Development", "scanned", 0, "", "");
     }
 
     private JiraIssueFetchService.JiraIssueManifest manifest(String id, String key, String summary) {

@@ -77,11 +77,11 @@ class KnowledgeFolderSettingsServiceTests {
 
         KnowledgeFolderDto folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(workFolder.toString()));
 
-        assertThat(folder.getId()).isNotNull();
-        assertThat(folder.getPath()).isEqualTo(workFolder.toString());
-        assertThat(folder.getStatus()).isEqualTo("scanned");
+        assertThat(folder.id()).isNotNull();
+        assertThat(folder.path()).isEqualTo(workFolder.toString());
+        assertThat(folder.status()).isEqualTo("scanned");
         assertThat(settingsService.listKnowledgeFolders())
-                .extracting(KnowledgeFolderDto::getPath)
+                .extracting(KnowledgeFolderDto::path)
                 .containsExactly(workFolder.toString());
         verify(eventService).publish(eq("settings-updated"));
     }
@@ -106,7 +106,7 @@ class KnowledgeFolderSettingsServiceTests {
                 .hasMessageContaining("Folders must not be nested inside each other");
 
         assertThat(settingsService.listKnowledgeFolders())
-                .extracting(KnowledgeFolderDto::getPath)
+                .extracting(KnowledgeFolderDto::path)
                 .containsExactly(parent.toString());
     }
 
@@ -120,7 +120,7 @@ class KnowledgeFolderSettingsServiceTests {
                 .hasMessageContaining("Folders must not be nested inside each other");
 
         assertThat(settingsService.listKnowledgeFolders())
-                .extracting(KnowledgeFolderDto::getPath)
+                .extracting(KnowledgeFolderDto::path)
                 .containsExactly(child.toString());
     }
 
@@ -135,15 +135,15 @@ class KnowledgeFolderSettingsServiceTests {
 
         assertThat(savedSettings.getAgentName()).isEqualTo("Renamed Agent");
         assertThat(savedSettings.getKnowledgeFolders())
-                .extracting(KnowledgeFolderDto::getId)
-                .containsExactly(folder.getId());
+                .extracting(KnowledgeFolderDto::id)
+                .containsExactly(folder.id());
     }
 
     @Test
     void removingLocalFolderPersistsTheRemoval() throws IOException {
         KnowledgeFolderDto folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
 
-        settingsService.removeKnowledgeFolder(folder.getId());
+        settingsService.removeKnowledgeFolder(folder.id());
 
         assertThat(settingsService.listKnowledgeFolders()).isEmpty();
     }
@@ -152,13 +152,13 @@ class KnowledgeFolderSettingsServiceTests {
     void pauseAndResumeScanningPersistStatus() throws IOException {
         KnowledgeFolderDto folder = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(existingFolderPath()));
 
-        KnowledgeFolderDto paused = settingsService.pauseKnowledgeFolder(folder.getId());
-        assertThat(paused.getStatus()).isEqualTo("paused");
-        assertThat(settingsService.listKnowledgeFolders().getFirst().getStatus()).isEqualTo("paused");
+        KnowledgeFolderDto paused = settingsService.pauseKnowledgeFolder(folder.id());
+        assertThat(paused.status()).isEqualTo("paused");
+        assertThat(settingsService.listKnowledgeFolders().getFirst().status()).isEqualTo("paused");
 
-        KnowledgeFolderDto resumed = settingsService.resumeKnowledgeFolder(folder.getId());
-        assertThat(resumed.getStatus()).isEqualTo("scanned");
-        assertThat(settingsService.listKnowledgeFolders().getFirst().getStatus()).isEqualTo("scanned");
+        KnowledgeFolderDto resumed = settingsService.resumeKnowledgeFolder(folder.id());
+        assertThat(resumed.status()).isEqualTo("scanned");
+        assertThat(settingsService.listKnowledgeFolders().getFirst().status()).isEqualTo("scanned");
     }
 
     @Test

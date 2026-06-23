@@ -63,10 +63,10 @@ class JiraProjectDiscoveryServiceTests {
                 .encodeToString("me@example.com:token-1234".getBytes(StandardCharsets.UTF_8)));
         assertThat(queryString.get()).contains("maxResults=25", "query=dev+ops");
         assertThat(projects).hasSize(1);
-        assertThat(projects.getFirst().getId()).isEqualTo("10001");
-        assertThat(projects.getFirst().getKey()).isEqualTo("DEV");
-        assertThat(projects.getFirst().getName()).isEqualTo("Software Development");
-        assertThat(projects.getFirst().getIssues()).isEqualTo(42);
+        assertThat(projects.getFirst().id()).isEqualTo("10001");
+        assertThat(projects.getFirst().key()).isEqualTo("DEV");
+        assertThat(projects.getFirst().name()).isEqualTo("Software Development");
+        assertThat(projects.getFirst().issues()).isEqualTo(42);
     }
 
     @Test
@@ -101,10 +101,10 @@ class JiraProjectDiscoveryServiceTests {
         var projects = service.searchProjects(baseUrl(), "me@example.com", "token-1234", "", 25);
 
         assertThat(projects)
-                .extracting(JiraProjectDto::getKey)
+                .extracting(JiraProjectDto::key)
                 .containsExactly("DEV", "HLP");
-        assertThat(projects.get(1).getId()).isEqualTo("jira-hlp");
-        assertThat(projects.get(1).getIssues()).isZero();
+        assertThat(projects.get(1).id()).isEqualTo("jira-hlp");
+        assertThat(projects.get(1).issues()).isZero();
     }
 
     @Test
@@ -138,7 +138,7 @@ class JiraProjectDiscoveryServiceTests {
         var projects = service.searchProjects(baseUrl(), "me@example.com", "token-1234", "", 25);
 
         assertThat(projects).hasSize(51);
-        assertThat(projects).extracting(JiraProjectDto::getKey).contains("P0", "P49", "LAST");
+        assertThat(projects).extracting(JiraProjectDto::key).contains("P0", "P49", "LAST");
         assertThat(requestedQueries).anyMatch(query -> query.contains("startAt=0"));
         assertThat(requestedQueries).anyMatch(query -> query.contains("startAt=50"));
     }
@@ -168,7 +168,7 @@ class JiraProjectDiscoveryServiceTests {
 
         assertThat(path.get()).isEqualTo("/rest/api/2/project");
         assertThat(projects)
-                .extracting(JiraProjectDto::getKey)
+                .extracting(JiraProjectDto::key)
                 .containsExactly("OPS");
     }
 
@@ -197,7 +197,7 @@ class JiraProjectDiscoveryServiceTests {
         var projects = service.searchProjects(baseUrl(), "me@example.com", "token-1234", "", 25, "2");
 
         assertThat(projects).hasSize(30);
-        assertThat(projects).extracting(JiraProjectDto::getKey).contains("P0", "P25", "P29");
+        assertThat(projects).extracting(JiraProjectDto::key).contains("P0", "P25", "P29");
     }
 
     @Test
@@ -213,9 +213,9 @@ class JiraProjectDiscoveryServiceTests {
 
         var project = service.getProject(baseUrl(), "me@example.com", "token-1234", "DEV");
 
-        assertThat(project.getId()).isEqualTo("10001");
-        assertThat(project.getKey()).isEqualTo("DEV");
-        assertThat(project.getChecked()).isEqualTo("just now");
+        assertThat(project.id()).isEqualTo("10001");
+        assertThat(project.key()).isEqualTo("DEV");
+        assertThat(project.checked()).isEqualTo("just now");
     }
 
     @Test

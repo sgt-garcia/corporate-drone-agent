@@ -147,7 +147,7 @@ class KnowledgeFolderScanServiceTests {
                             org.springframework.http.HttpStatus.NOT_FOUND, "Knowledge folder not found"));
             ingestionService.scan(folderRoot);
             return settingsService.listKnowledgeFolders().stream()
-                    .filter(folder -> folderId.equals(folder.getId()))
+                    .filter(folder -> folderId.equals(folder.id()))
                     .findFirst()
                     .orElseThrow(() -> new ResponseStatusException(
                             org.springframework.http.HttpStatus.NOT_FOUND, "Knowledge folder not found"));
@@ -166,13 +166,13 @@ class KnowledgeFolderScanServiceTests {
         Files.write(nested.resolve("two.bin"), new byte[1024]);
         KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
 
-        KnowledgeFolderDto scanned = scanService.scanFolder(configured.getId());
+        KnowledgeFolderDto scanned = scanService.scanFolder(configured.id());
 
-        assertThat(scanned.getStatus()).isEqualTo("scanned");
-        assertThat(scanned.getFiles()).isEqualTo(2);
-        assertThat(scanned.getSize()).isEqualTo("1.0 KB");
-        assertThat(scanned.getNextScan()).isEqualTo("~15 min");
-        assertThat(settingsService.listKnowledgeFolders().getFirst().getFiles()).isEqualTo(2);
+        assertThat(scanned.status()).isEqualTo("scanned");
+        assertThat(scanned.files()).isEqualTo(2);
+        assertThat(scanned.size()).isEqualTo("1.0 KB");
+        assertThat(scanned.nextScan()).isEqualTo("~15 min");
+        assertThat(settingsService.listKnowledgeFolders().getFirst().files()).isEqualTo(2);
 
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
@@ -258,14 +258,14 @@ class KnowledgeFolderScanServiceTests {
         Files.write(pausedFolder.resolve("paused.txt"), new byte[12]);
         KnowledgeFolderDto active = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(activeFolder.toString()));
         KnowledgeFolderDto paused = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(pausedFolder.toString()));
-        settingsService.pauseKnowledgeFolder(paused.getId());
+        settingsService.pauseKnowledgeFolder(paused.id());
 
         scanService.scanAllFolders();
 
-        assertThat(folder(active.getId()).getFiles()).isEqualTo(1);
-        assertThat(folder(active.getId()).getStatus()).isEqualTo("scanned");
-        assertThat(folder(paused.getId()).getFiles()).isZero();
-        assertThat(folder(paused.getId()).getStatus()).isEqualTo("paused");
+        assertThat(folder(active.id()).files()).isEqualTo(1);
+        assertThat(folder(active.id()).status()).isEqualTo("scanned");
+        assertThat(folder(paused.id()).files()).isZero();
+        assertThat(folder(paused.id()).status()).isEqualTo("paused");
     }
 
     @Test
@@ -274,10 +274,10 @@ class KnowledgeFolderScanServiceTests {
         Path staleFile = Files.writeString(folder.resolve("stale.txt"), "stale", StandardCharsets.UTF_8);
         Files.writeString(folder.resolve("kept.txt"), "kept", StandardCharsets.UTF_8);
         KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
-        scanService.scanFolder(configured.getId());
+        scanService.scanFolder(configured.id());
 
         Files.delete(staleFile);
-        scanService.scanFolder(configured.getId());
+        scanService.scanFolder(configured.id());
 
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
@@ -298,11 +298,11 @@ class KnowledgeFolderScanServiceTests {
         Path folder = Files.createDirectory(root.resolve("remove-me"));
         Files.writeString(folder.resolve("removed.txt"), "remove-token", StandardCharsets.UTF_8);
         KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
-        scanService.scanFolder(configured.getId());
+        scanService.scanFolder(configured.id());
 
         assertThat(searchService.search("remove-token", 10)).hasSize(1);
 
-        settingsService.removeKnowledgeFolder(configured.getId());
+        settingsService.removeKnowledgeFolder(configured.id());
 
         assertThat(knowledgeRootRepository.findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString()))
                 .isEmpty();
@@ -340,9 +340,9 @@ class KnowledgeFolderScanServiceTests {
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
         try {
-            Future<?> scan = executor.submit(() -> blockingScanService.scanFolder(configured.getId()));
+            Future<?> scan = executor.submit(() -> blockingScanService.scanFolder(configured.id()));
             assertThat(firstReadStarted.await(5, TimeUnit.SECONDS)).isTrue();
-            Future<?> removal = executor.submit(() -> settingsService.removeKnowledgeFolder(configured.getId()));
+            Future<?> removal = executor.submit(() -> settingsService.removeKnowledgeFolder(configured.id()));
 
             allowFirstReadToFinish.countDown();
 
@@ -380,12 +380,12 @@ class KnowledgeFolderScanServiceTests {
         };
         FolderScanHarness failingScanService = new FolderScanHarness(failingReadService);
 
-        assertThatThrownBy(() -> failingScanService.scanFolder(configured.getId()))
+        assertThatThrownBy(() -> failingScanService.scanFolder(configured.id()))
                 .isInstanceOf(KnowledgeScanEngine.KnowledgeScanException.class);
 
-        KnowledgeFolderDto erroredFolder = folder(configured.getId());
-        assertThat(erroredFolder.getStatus()).isEqualTo("error");
-        assertThat(erroredFolder.getMessage()).isEqualTo("Could not scan knowledge source");
+        KnowledgeFolderDto erroredFolder = folder(configured.id());
+        assertThat(erroredFolder.status()).isEqualTo("error");
+        assertThat(erroredFolder.message()).isEqualTo("Could not scan knowledge source");
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
                 .orElseThrow();
@@ -407,13 +407,13 @@ class KnowledgeFolderScanServiceTests {
         // The folder disappears (moved, renamed, or unmounted) before the scan runs.
         Files.delete(folder);
 
-        assertThatThrownBy(() -> scanService.scanFolder(configured.getId()))
+        assertThatThrownBy(() -> scanService.scanFolder(configured.id()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Folder not found");
 
-        KnowledgeFolderDto errored = folder(configured.getId());
-        assertThat(errored.getStatus()).isEqualTo("error");
-        assertThat(errored.getMessage())
+        KnowledgeFolderDto errored = folder(configured.id());
+        assertThat(errored.status()).isEqualTo("error");
+        assertThat(errored.message())
                 .isEqualTo("Folder not found — it may have been moved, renamed, or unmounted.");
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
@@ -430,10 +430,10 @@ class KnowledgeFolderScanServiceTests {
         Files.write(folder.resolve("large.txt"), content);
         KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
 
-        KnowledgeFolderDto scanned = scanService.scanFolder(configured.getId());
+        KnowledgeFolderDto scanned = scanService.scanFolder(configured.id());
 
-        assertThat(scanned.getFiles()).isEqualTo(1);
-        assertThat(scanned.getSize()).isEqualTo("1.0 MB");
+        assertThat(scanned.files()).isEqualTo(1);
+        assertThat(scanned.size()).isEqualTo("1.0 MB");
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
                 .orElseThrow();
@@ -466,10 +466,10 @@ class KnowledgeFolderScanServiceTests {
         Path file = folder.resolve("notes.md");
         Files.writeString(file, "old", StandardCharsets.UTF_8);
         KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
-        scanService.scanFolder(configured.getId());
+        scanService.scanFolder(configured.id());
 
         Files.writeString(file, "new", StandardCharsets.UTF_8);
-        scanService.scanFolder(configured.getId());
+        scanService.scanFolder(configured.id());
 
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
@@ -520,15 +520,15 @@ class KnowledgeFolderScanServiceTests {
         };
         FolderScanHarness countingScanService = new FolderScanHarness(countingReadService);
 
-        countingScanService.scanFolder(configured.getId());
-        countingScanService.scanFolder(configured.getId());
+        countingScanService.scanFolder(configured.id());
+        countingScanService.scanFolder(configured.id());
 
         assertThat(reads.get()).isEqualTo(1);
         assertThat(searchService.search("oldtoken", 10)).hasSize(1);
 
         Files.writeString(file, "newtoken", StandardCharsets.UTF_8);
         Files.setLastModifiedTime(file, FileTime.from(Instant.now().plusSeconds(5)));
-        countingScanService.scanFolder(configured.getId());
+        countingScanService.scanFolder(configured.id());
 
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
@@ -548,7 +548,7 @@ class KnowledgeFolderScanServiceTests {
         Files.writeString(folder.resolve("large.txt"), text, StandardCharsets.UTF_8);
         KnowledgeFolderDto configured = settingsService.addKnowledgeFolder(new KnowledgeFolderRequest(folder.toString()));
 
-        scanService.scanFolder(configured.getId());
+        scanService.scanFolder(configured.id());
 
         KnowledgeRoot knowledgeRoot = knowledgeRootRepository
                 .findBySourceAndReference(KnowledgeSource.LOCAL_FOLDER, folder.toString())
@@ -577,7 +577,7 @@ class KnowledgeFolderScanServiceTests {
 
     private KnowledgeFolderDto folder(java.util.UUID id) {
         return settingsService.listKnowledgeFolders().stream()
-                .filter(folder -> id.equals(folder.getId()))
+                .filter(folder -> id.equals(folder.id()))
                 .findFirst()
                 .orElseThrow();
     }

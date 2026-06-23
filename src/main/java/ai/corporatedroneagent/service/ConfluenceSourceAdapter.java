@@ -49,11 +49,11 @@ public class ConfluenceSourceAdapter implements KnowledgeSourceAdapter {
     }
 
     private ConfluenceSpaceDto spaceFromRoot(KnowledgeRoot root) {
-        ConfluenceSpaceDto space = new ConfluenceSpaceDto();
-        space.setId(ConfluenceKnowledgeRootConfig.readSpaceId(root));
-        space.setKey(ConfluenceKnowledgeRootConfig.readKey(root));
-        space.setName(ConfluenceKnowledgeRootConfig.readName(root));
-        return space;
+        return new ConfluenceSpaceDto(
+                ConfluenceKnowledgeRootConfig.readSpaceId(root),
+                ConfluenceKnowledgeRootConfig.readKey(root),
+                ConfluenceKnowledgeRootConfig.readName(root),
+                "scanned", 0, "", "");
     }
 
     private final class Session implements KnowledgeScanSession {

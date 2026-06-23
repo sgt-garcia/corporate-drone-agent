@@ -104,14 +104,14 @@ class JiraKnowledgeScanServiceTests {
     }
 
     private KnowledgeRoot jiraRoot(JiraSettings jira, JiraProjectDto project) {
-        String reference = JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId());
+        String reference = JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.id());
         KnowledgeRoot root = rootRepository.findBySourceAndReference(KnowledgeSource.JIRA, reference)
                 .orElseGet(KnowledgeRoot::new);
         root.setSource(KnowledgeSource.JIRA);
         root.setReference(reference);
-        root.setDisplayName(project.getKey() + " - " + project.getName());
+        root.setDisplayName(project.key() + " - " + project.name());
         root.setConfigJson(JiraKnowledgeRootConfig.withIdentity(
-                root.getConfigJson(), project.getId(), project.getKey(), project.getName()));
+                root.getConfigJson(), project.id(), project.key(), project.name()));
         return root;
     }
 
@@ -136,7 +136,7 @@ class JiraKnowledgeScanServiceTests {
         assertThat(result.bytes()).isEqualTo(document.sizeBytes());
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
-                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.id())
         ).orElseThrow();
         assertThat(root.getScanStatus()).isEqualTo(WorkStatus.DONE);
         assertThat(root.getScanSuccess()).isTrue();
@@ -189,7 +189,7 @@ class JiraKnowledgeScanServiceTests {
         assertThat(result.resources()).isEqualTo(1);
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
-                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.id())
         ).orElseThrow();
         assertThat(root.getScanStatus()).isEqualTo(WorkStatus.DONE);
         // The cursor must not advance, so the next scan re-covers the skipped issue.
@@ -213,7 +213,7 @@ class JiraKnowledgeScanServiceTests {
 
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
-                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.id())
         ).orElseThrow();
         assertThat(root.getScanStatus()).isEqualTo(WorkStatus.DONE);
         assertThat(root.getScanSuccess()).isTrue();
@@ -246,7 +246,7 @@ class JiraKnowledgeScanServiceTests {
 
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
-                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.id())
         ).orElseThrow();
         Instant firstScanStartedAt = root.getScanStartedAt();
         JiraIssueFetchService.JiraIssueManifest changedAgain = manifest(
@@ -289,7 +289,7 @@ class JiraKnowledgeScanServiceTests {
 
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
-                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.id())
         ).orElseThrow();
         Instant firstScanStartedAt = root.getScanStartedAt();
         JiraIssueFetchService.JiraIssueManifest changedAgain = manifest(
@@ -329,7 +329,7 @@ class JiraKnowledgeScanServiceTests {
         scan(jira, project, "token-1234");
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
-                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.id())
         ).orElseThrow();
         Instant firstSuccessfulScanStartedAt = root.getScanStartedAt();
 
@@ -474,7 +474,7 @@ class JiraKnowledgeScanServiceTests {
 
         KnowledgeRoot root = rootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
-                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.getId())
+                JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), project.id())
         ).orElseThrow();
         KnowledgeResource resource = resourceRepository
                 .findByRootIdAndReference(root.getId(), issue.reference())
@@ -606,11 +606,7 @@ class JiraKnowledgeScanServiceTests {
     }
 
     private JiraProjectDto project() {
-        JiraProjectDto project = new JiraProjectDto();
-        project.setId("10001");
-        project.setKey("DEV");
-        project.setName("Software Development");
-        return project;
+        return new JiraProjectDto("10001", "DEV", "Software Development", "scanned", 0, "", "");
     }
 
     private JsonNode readJson(KnowledgeResourceRead read) {
@@ -660,7 +656,7 @@ class JiraKnowledgeScanServiceTests {
             assertThat(instanceUrl).isEqualTo("https://example.atlassian.net");
             assertThat(email).isEqualTo("me@example.com");
             assertThat(token).isEqualTo("token-1234");
-            assertThat(project.getKey()).isEqualTo("DEV");
+            assertThat(project.key()).isEqualTo("DEV");
             assertThat(apiVersion).isEqualTo("3");
             this.updatedSince.set(updatedSince);
             if (throwOnManifest) {

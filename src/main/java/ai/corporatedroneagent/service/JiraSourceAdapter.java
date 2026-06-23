@@ -45,11 +45,11 @@ public class JiraSourceAdapter implements KnowledgeSourceAdapter {
     }
 
     private JiraProjectDto projectFromRoot(KnowledgeRoot root) {
-        JiraProjectDto project = new JiraProjectDto();
-        project.setId(JiraKnowledgeRootConfig.readProjectId(root));
-        project.setKey(JiraKnowledgeRootConfig.readKey(root));
-        project.setName(JiraKnowledgeRootConfig.readName(root));
-        return project;
+        return new JiraProjectDto(
+                JiraKnowledgeRootConfig.readProjectId(root),
+                JiraKnowledgeRootConfig.readKey(root),
+                JiraKnowledgeRootConfig.readName(root),
+                "scanned", 0, "", "");
     }
 
     private final class Session implements KnowledgeScanSession {

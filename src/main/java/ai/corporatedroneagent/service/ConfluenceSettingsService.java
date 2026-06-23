@@ -155,7 +155,7 @@ public class ConfluenceSettingsService {
                         CONFLUENCE_SPACE_SEARCH_LIMIT
                 ).stream()
                 .filter(space -> confluence.getSpaces().stream()
-                        .noneMatch(configured -> configured.getKey().equalsIgnoreCase(space.getKey())))
+                        .noneMatch(configured -> configured.key().equalsIgnoreCase(space.key())))
                 .toList();
     }
 
@@ -180,17 +180,17 @@ public class ConfluenceSettingsService {
                 savedConfluenceToken(),
                 key
         );
-        String spaceId = Strings.defaultIfBlank(discovered.getId(), "").trim();
+        String spaceId = Strings.defaultIfBlank(discovered.id(), "").trim();
         if (spaceId.isBlank()) {
             spaceId = UUID.randomUUID().toString();
         }
         KnowledgeRoot root = new KnowledgeRoot();
         root.setSource(KnowledgeSource.CONFLUENCE);
         root.setReference(ConfluenceKnowledgeReferences.spaceRootReference(confluence.getInstanceUrl(), spaceId));
-        root.setDisplayName(KnowledgeRootFormatting.keyAndName(discovered.getKey(), discovered.getName()));
-        root.setTotalResources(discovered.getPages());
+        root.setDisplayName(KnowledgeRootFormatting.keyAndName(discovered.key(), discovered.name()));
+        root.setTotalResources(discovered.pages());
         root.setConfigJson(ConfluenceKnowledgeRootConfig.withIdentity(
-                null, spaceId, discovered.getKey(), discovered.getName()));
+                null, spaceId, discovered.key(), discovered.name()));
         root = knowledgeRootRepository.save(root);
         publishSettingsUpdated();
         log.info("Added Confluence space {}.", key);
@@ -312,16 +312,15 @@ public class ConfluenceSettingsService {
     // comes from configJson, status/pages/checked/message from the scan pipeline. Package-private
     // and non-synchronized so the scan orchestrator can map a root to a DTO without the monitor.
     ConfluenceSpaceDto confluenceSpace(KnowledgeRoot root) {
-        ConfluenceSpaceDto space = new ConfluenceSpaceDto();
-        space.setId(ConfluenceKnowledgeRootConfig.readSpaceId(root));
-        space.setKey(ConfluenceKnowledgeRootConfig.readKey(root));
-        space.setName(ConfluenceKnowledgeRootConfig.readName(root));
         String status = KnowledgeRootFormatting.status(root);
-        space.setStatus(status);
-        space.setPages(root.getTotalResources());
-        space.setChecked(KnowledgeRootFormatting.checkedLabel(root));
-        space.setMessage("error".equals(status) ? root.getScanMessage() : "");
-        return space;
+        return new ConfluenceSpaceDto(
+                ConfluenceKnowledgeRootConfig.readSpaceId(root),
+                ConfluenceKnowledgeRootConfig.readKey(root),
+                ConfluenceKnowledgeRootConfig.readName(root),
+                status,
+                root.getTotalResources(),
+                KnowledgeRootFormatting.checkedLabel(root),
+                "error".equals(status) ? root.getScanMessage() : "");
     }
 
     private KnowledgeRoot findConfluenceRoot(String spaceId) {

@@ -160,7 +160,7 @@ public class JiraSettingsService {
                         jira.getApiVersion()
                 ).stream()
                 .filter(project -> jira.getProjects().stream()
-                        .noneMatch(configured -> configured.getKey().equalsIgnoreCase(project.getKey())))
+                        .noneMatch(configured -> configured.key().equalsIgnoreCase(project.key())))
                 .toList();
     }
 
@@ -186,17 +186,17 @@ public class JiraSettingsService {
                 key,
                 jira.getApiVersion()
         );
-        String projectId = Strings.defaultIfBlank(discovered.getId(), "").trim();
+        String projectId = Strings.defaultIfBlank(discovered.id(), "").trim();
         if (projectId.isBlank()) {
             projectId = UUID.randomUUID().toString();
         }
         KnowledgeRoot root = new KnowledgeRoot();
         root.setSource(KnowledgeSource.JIRA);
         root.setReference(JiraKnowledgeReferences.projectRootReference(jira.getInstanceUrl(), projectId));
-        root.setDisplayName(KnowledgeRootFormatting.keyAndName(discovered.getKey(), discovered.getName()));
-        root.setTotalResources(discovered.getIssues());
+        root.setDisplayName(KnowledgeRootFormatting.keyAndName(discovered.key(), discovered.name()));
+        root.setTotalResources(discovered.issues());
         root.setConfigJson(JiraKnowledgeRootConfig.withIdentity(
-                null, projectId, discovered.getKey(), discovered.getName()));
+                null, projectId, discovered.key(), discovered.name()));
         root = knowledgeRootRepository.save(root);
         publishSettingsUpdated();
         log.info("Added Jira project {}.", key);
@@ -318,16 +318,15 @@ public class JiraSettingsService {
     // status/issues/checked/message from the scan pipeline. Package-private and non-synchronized so
     // the scan orchestrator can map a root to a DTO without taking the monitor.
     JiraProjectDto jiraProject(KnowledgeRoot root) {
-        JiraProjectDto project = new JiraProjectDto();
-        project.setId(JiraKnowledgeRootConfig.readProjectId(root));
-        project.setKey(JiraKnowledgeRootConfig.readKey(root));
-        project.setName(JiraKnowledgeRootConfig.readName(root));
         String status = KnowledgeRootFormatting.status(root);
-        project.setStatus(status);
-        project.setIssues(root.getTotalResources());
-        project.setChecked(KnowledgeRootFormatting.checkedLabel(root));
-        project.setMessage("error".equals(status) ? root.getScanMessage() : "");
-        return project;
+        return new JiraProjectDto(
+                JiraKnowledgeRootConfig.readProjectId(root),
+                JiraKnowledgeRootConfig.readKey(root),
+                JiraKnowledgeRootConfig.readName(root),
+                status,
+                root.getTotalResources(),
+                KnowledgeRootFormatting.checkedLabel(root),
+                "error".equals(status) ? root.getScanMessage() : "");
     }
 
     private KnowledgeRoot findJiraRoot(String projectId) {

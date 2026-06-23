@@ -86,7 +86,7 @@ class JiraSettingsServiceTests {
         jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
         JiraProjectDto project = jiraSettingsService.addJiraProject(new JiraProjectRequest("DEV"));
 
-        assertThat(jiraSettingsService.listJiraProjects()).extracting(JiraProjectDto::getId).contains(project.getId());
+        assertThat(jiraSettingsService.listJiraProjects()).extracting(JiraProjectDto::id).contains(project.id());
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).hasSize(1);
 
         var cleared = jiraSettingsService.clearJiraConnection();
@@ -135,7 +135,7 @@ class JiraSettingsServiceTests {
         jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
 
         assertThat(jiraSettingsService.searchJiraProjects("dev"))
-                .extracting(JiraProjectDto::getKey)
+                .extracting(JiraProjectDto::key)
                 .containsExactly("DEV");
 
         jiraSettingsService.addJiraProject(new JiraProjectRequest("DEV"));
@@ -157,7 +157,7 @@ class JiraSettingsServiceTests {
                     assertThat(root.getTotalResources()).isEqualTo(42);
                     assertThat(root.isPaused()).isFalse();
                 });
-        assertThat(added.getId()).isEqualTo("10001");
+        assertThat(added.id()).isEqualTo("10001");
         assertThat(JiraKnowledgeReferences.issueResourceReference(
                 "https://Example.atlassian.net/",
                 "12345"
@@ -169,28 +169,28 @@ class JiraSettingsServiceTests {
         jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
 
         JiraProjectDto added = jiraSettingsService.addJiraProject(new JiraProjectRequest("ops"));
-        assertThat(added.getId()).isEqualTo("10002");
-        assertThat(added.getStatus()).isEqualTo("scanned");
-        assertThat(added.getIssues()).isEqualTo(17);
+        assertThat(added.id()).isEqualTo("10002");
+        assertThat(added.status()).isEqualTo("scanned");
+        assertThat(added.issues()).isEqualTo(17);
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
                 .extracting(KnowledgeRoot::getReference)
                 .containsExactly("jira://example.atlassian.net/project/10002");
 
-        JiraProjectDto paused = jiraSettingsService.pauseJiraProject(added.getId());
-        assertThat(paused.getStatus()).isEqualTo("paused");
+        JiraProjectDto paused = jiraSettingsService.pauseJiraProject(added.id());
+        assertThat(paused.status()).isEqualTo("paused");
         assertThat(knowledgeRootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
                 "jira://example.atlassian.net/project/10002"
         )).get().extracting(KnowledgeRoot::isPaused).isEqualTo(true);
 
-        JiraProjectDto resumed = jiraSettingsService.resumeJiraProject(added.getId());
-        assertThat(resumed.getStatus()).isEqualTo("scanned");
+        JiraProjectDto resumed = jiraSettingsService.resumeJiraProject(added.id());
+        assertThat(resumed.status()).isEqualTo("scanned");
         assertThat(knowledgeRootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
                 "jira://example.atlassian.net/project/10002"
         )).get().extracting(KnowledgeRoot::isPaused).isEqualTo(false);
 
-        jiraSettingsService.removeJiraProject(added.getId());
+        jiraSettingsService.removeJiraProject(added.id());
         assertThat(jiraSettingsService.listJiraProjects()).isEmpty();
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).isEmpty();
     }
@@ -212,7 +212,7 @@ class JiraSettingsServiceTests {
         knowledgeRootRepository.save(root);
         assertThat(jiraSettingsService.listJiraProjects())
                 .singleElement()
-                .extracting(JiraProjectDto::getStatus)
+                .extracting(JiraProjectDto::status)
                 .isEqualTo("scanning");
 
         // A pause that lands mid-scan must win over the in-progress scan, so the pause
@@ -221,7 +221,7 @@ class JiraSettingsServiceTests {
         knowledgeRootRepository.save(root);
         assertThat(jiraSettingsService.listJiraProjects())
                 .singleElement()
-                .extracting(JiraProjectDto::getStatus)
+                .extracting(JiraProjectDto::status)
                 .isEqualTo("paused");
     }
 
@@ -262,7 +262,7 @@ class JiraSettingsServiceTests {
 
         JiraSettings jira = jiraSettingsService.getJiraSettings();
         assertThat(jira.isConnected()).isTrue();
-        assertThat(jira.getProjects()).extracting(JiraProjectDto::getId).contains(added.getId());
+        assertThat(jira.getProjects()).extracting(JiraProjectDto::id).contains(added.id());
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).hasSize(1);
         assertThat(settingsService.get().getAgentName()).isEqualTo("Renamed Agent");
     }
@@ -359,7 +359,7 @@ class JiraSettingsServiceTests {
                                 project("10003", "HLP", "Help Desk", 3)
                         ).stream()
                         .filter(project -> normalizedQuery.isBlank()
-                                || (project.getKey() + " " + project.getName())
+                                || (project.key() + " " + project.name())
                                 .toLowerCase(java.util.Locale.ROOT)
                                 .contains(normalizedQuery))
                         .limit(maxResults)
@@ -369,7 +369,7 @@ class JiraSettingsServiceTests {
             @Override
             public JiraProjectDto getProject(String instanceUrl, String email, String token, String key, String apiVersion) {
                 return searchProjects(instanceUrl, email, token, key, 10, apiVersion).stream()
-                        .filter(project -> project.getKey().equalsIgnoreCase(key))
+                        .filter(project -> project.key().equalsIgnoreCase(key))
                         .findFirst()
                         .orElseThrow();
             }
@@ -377,13 +377,7 @@ class JiraSettingsServiceTests {
     }
 
     private JiraProjectDto project(String id, String key, String name, long issues) {
-        JiraProjectDto project = new JiraProjectDto();
-        project.setId(id);
-        project.setKey(key);
-        project.setName(name);
-        project.setIssues(issues);
-        project.setChecked("just now");
-        return project;
+        return new JiraProjectDto(id, key, name, "scanned", issues, "just now", "");
     }
 
     private static class InMemorySecretStore implements SecretStore {

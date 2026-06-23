@@ -93,7 +93,7 @@ public class ConfluenceSpaceDiscoveryService {
         // returns every space; a non-blank query keeps the capped server-side fallback.
         return spaces.stream()
                 .filter(space -> trimmedQuery.isBlank()
-                        || (space.getKey() + " " + space.getName()).toLowerCase(Locale.ROOT).contains(trimmedQuery))
+                        || (space.key() + " " + space.name()).toLowerCase(Locale.ROOT).contains(trimmedQuery))
                 .limit(trimmedQuery.isBlank() ? Long.MAX_VALUE : limit)
                 .toList();
     }
@@ -131,13 +131,14 @@ public class ConfluenceSpaceDiscoveryService {
         if (key.isBlank() || name.isBlank()) {
             return java.util.Optional.empty();
         }
-        ConfluenceSpaceDto space = new ConfluenceSpaceDto();
-        space.setId(Strings.defaultIfBlank(node.path("id").asText(""), "confluence-" + key.toLowerCase(Locale.ROOT)));
-        space.setKey(key);
-        space.setName(name);
-        space.setStatus("scanned");
-        space.setPages(0);
-        space.setChecked(checked);
+        ConfluenceSpaceDto space = new ConfluenceSpaceDto(
+                Strings.defaultIfBlank(node.path("id").asText(""), "confluence-" + key.toLowerCase(Locale.ROOT)),
+                key,
+                name,
+                "scanned",
+                0,
+                checked,
+                "");
         return java.util.Optional.of(space);
     }
 

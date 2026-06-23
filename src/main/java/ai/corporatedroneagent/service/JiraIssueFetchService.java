@@ -110,7 +110,7 @@ public class JiraIssueFetchService {
             Instant updatedSince,
             String apiVersion
     ) {
-        String projectKey = Strings.defaultIfBlank(project.getKey(), "").trim();
+        String projectKey = Strings.defaultIfBlank(project.key(), "").trim();
         if (projectKey.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Jira project key is required");
         }
