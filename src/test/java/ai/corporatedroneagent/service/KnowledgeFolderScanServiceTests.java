@@ -109,7 +109,9 @@ class KnowledgeFolderScanServiceTests {
                         indexingService
                 ),
                 scanCoordinator,
-                mock(KnowledgeIngestionService.class)
+                mock(KnowledgeIngestionService.class),
+                mock(JiraSettingsService.class),
+                mock(ConfluenceSettingsService.class)
         );
         scanService = new FolderScanHarness(new LocalFolderKnowledgeReadService());
     }

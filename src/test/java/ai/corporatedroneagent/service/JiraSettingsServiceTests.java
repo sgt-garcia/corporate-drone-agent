@@ -2,13 +2,7 @@ package ai.corporatedroneagent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import ai.corporatedroneagent.TestDatabaseSupport;
 import ai.corporatedroneagent.dto.JiraConnectionRequest;
@@ -26,18 +20,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import ai.corporatedroneagent.model.ApplicationSettings;
 import ai.corporatedroneagent.model.JiraSettings;
 import java.lang.reflect.Modifier;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.web.server.ResponseStatusException;
 
 class JiraSettingsServiceTests {
 
+    private JiraSettingsService jiraSettingsService;
     private SettingsService settingsService;
     private InMemorySecretStore secretStore;
     private KnowledgeRootRepository knowledgeRootRepository;
@@ -47,7 +39,7 @@ class JiraSettingsServiceTests {
     @BeforeEach
     void setUp() {
         secretStore = new InMemorySecretStore();
-        settingsService = serviceWith(validValidator(), fakeDiscovery());
+        initServices(validValidator(), fakeDiscovery());
     }
 
     @Test
@@ -62,7 +54,7 @@ class JiraSettingsServiceTests {
 
     @Test
     void saveJiraConnectionPersistsSetupAndTokenStatus() {
-        var saved = settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        var saved = jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
 
         assertThat(saved.isConnected()).isTrue();
         assertThat(saved.getInstanceUrl()).isEqualTo("https://example.atlassian.net");
@@ -77,27 +69,27 @@ class JiraSettingsServiceTests {
 
     @Test
     void saveJiraConnectionPersistsDetectedV2ApiVersion() {
-        settingsService = serviceWith(new JiraConnectionValidationService() {
+        initServices(new JiraConnectionValidationService() {
             @Override
             public ValidationResult validate(String instanceUrl, String email, String token) {
                 return new ValidationResult(true, "ok", 200, "2");
             }
         }, fakeDiscovery());
 
-        var saved = settingsService.saveJiraConnection(connection("https://jira.example.com", "me@example.com", "token-1234"));
+        var saved = jiraSettingsService.saveJiraConnection(connection("https://jira.example.com", "me@example.com", "token-1234"));
 
         assertThat(saved.getApiVersion()).isEqualTo("2");
     }
 
     @Test
     void clearJiraConnectionRemovesTokenAndProjects() {
-        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
-        JiraProjectDto project = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        JiraProjectDto project = jiraSettingsService.addJiraProject(new JiraProjectRequest("DEV"));
 
-        assertThat(settingsService.listJiraProjects()).extracting(JiraProjectDto::getId).contains(project.getId());
+        assertThat(jiraSettingsService.listJiraProjects()).extracting(JiraProjectDto::getId).contains(project.getId());
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).hasSize(1);
 
-        var cleared = settingsService.clearJiraConnection();
+        var cleared = jiraSettingsService.clearJiraConnection();
 
         assertThat(cleared.isConnected()).isFalse();
         assertThat(cleared.isTokenConfigured()).isFalse();
@@ -108,10 +100,10 @@ class JiraSettingsServiceTests {
 
     @Test
     void clearTokenOnSaveClearsJiraSetup() {
-        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
-        settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        jiraSettingsService.addJiraProject(new JiraProjectRequest("DEV"));
 
-        var cleared = settingsService.saveJiraConnection(
+        var cleared = jiraSettingsService.saveJiraConnection(
                 new JiraConnectionRequest("https://example.atlassian.net", "me@example.com", "", true)
         );
 
@@ -124,38 +116,38 @@ class JiraSettingsServiceTests {
 
     @Test
     void saveJiraConnectionDoesNotMarkConnectedWhenValidationFails() {
-        settingsService = serviceWith(new JiraConnectionValidationService() {
+        initServices(new JiraConnectionValidationService() {
             @Override
             public ValidationResult validate(String instanceUrl, String email, String token) {
                 return new ValidationResult(false, "Jira rejected the email or API token.", 401, "3");
             }
         }, fakeDiscovery());
 
-        assertThatThrownBy(() -> settingsService.saveJiraConnection(
+        assertThatThrownBy(() -> jiraSettingsService.saveJiraConnection(
                 connection("https://example.atlassian.net", "me@example.com", "wrong-token")
         )).hasMessageContaining("Jira rejected the email or API token");
-        assertThat(settingsService.getJiraSettings().isConnected()).isFalse();
+        assertThat(jiraSettingsService.getJiraSettings().isConnected()).isFalse();
         assertThat(secretStore.get("settings.jira.token")).isEmpty();
     }
 
     @Test
     void searchJiraProjectsFiltersConfiguredProjects() {
-        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
 
-        assertThat(settingsService.searchJiraProjects("dev"))
+        assertThat(jiraSettingsService.searchJiraProjects("dev"))
                 .extracting(JiraProjectDto::getKey)
                 .containsExactly("DEV");
 
-        settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        jiraSettingsService.addJiraProject(new JiraProjectRequest("DEV"));
 
-        assertThat(settingsService.searchJiraProjects("dev")).isEmpty();
+        assertThat(jiraSettingsService.searchJiraProjects("dev")).isEmpty();
     }
 
     @Test
     void addingJiraProjectCreatesStableKnowledgeRoot() {
-        settingsService.saveJiraConnection(connection("https://Example.atlassian.net/", "me@example.com", "token-1234"));
+        jiraSettingsService.saveJiraConnection(connection("https://Example.atlassian.net/", "me@example.com", "token-1234"));
 
-        JiraProjectDto added = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        JiraProjectDto added = jiraSettingsService.addJiraProject(new JiraProjectRequest("DEV"));
 
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA))
                 .singleElement()
@@ -174,9 +166,9 @@ class JiraSettingsServiceTests {
 
     @Test
     void jiraProjectLifecycleUsesExplicitEndpoints() {
-        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
 
-        JiraProjectDto added = settingsService.addJiraProject(new JiraProjectRequest("ops"));
+        JiraProjectDto added = jiraSettingsService.addJiraProject(new JiraProjectRequest("ops"));
         assertThat(added.getId()).isEqualTo("10002");
         assertThat(added.getStatus()).isEqualTo("scanned");
         assertThat(added.getIssues()).isEqualTo(17);
@@ -184,29 +176,29 @@ class JiraSettingsServiceTests {
                 .extracting(KnowledgeRoot::getReference)
                 .containsExactly("jira://example.atlassian.net/project/10002");
 
-        JiraProjectDto paused = settingsService.pauseJiraProject(added.getId());
+        JiraProjectDto paused = jiraSettingsService.pauseJiraProject(added.getId());
         assertThat(paused.getStatus()).isEqualTo("paused");
         assertThat(knowledgeRootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
                 "jira://example.atlassian.net/project/10002"
         )).get().extracting(KnowledgeRoot::isPaused).isEqualTo(true);
 
-        JiraProjectDto resumed = settingsService.resumeJiraProject(added.getId());
+        JiraProjectDto resumed = jiraSettingsService.resumeJiraProject(added.getId());
         assertThat(resumed.getStatus()).isEqualTo("scanned");
         assertThat(knowledgeRootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
                 "jira://example.atlassian.net/project/10002"
         )).get().extracting(KnowledgeRoot::isPaused).isEqualTo(false);
 
-        settingsService.removeJiraProject(added.getId());
-        assertThat(settingsService.listJiraProjects()).isEmpty();
+        jiraSettingsService.removeJiraProject(added.getId());
+        assertThat(jiraSettingsService.listJiraProjects()).isEmpty();
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).isEmpty();
     }
 
     @Test
     void jiraProjectStatusDerivesScanningAndPausedFromKnowledgeRoot() {
-        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
-        settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        jiraSettingsService.addJiraProject(new JiraProjectRequest("DEV"));
         KnowledgeRoot root = knowledgeRootRepository.findBySourceAndReference(
                 KnowledgeSource.JIRA,
                 "jira://example.atlassian.net/project/10001"
@@ -218,7 +210,7 @@ class JiraSettingsServiceTests {
         root.setScanStatus(WorkStatus.IN_PROGRESS);
         root.setScanSuccess(null);
         knowledgeRootRepository.save(root);
-        assertThat(settingsService.listJiraProjects())
+        assertThat(jiraSettingsService.listJiraProjects())
                 .singleElement()
                 .extracting(JiraProjectDto::getStatus)
                 .isEqualTo("scanning");
@@ -227,7 +219,7 @@ class JiraSettingsServiceTests {
         // button sticks instead of the row snapping back to "scanning".
         root.setPaused(true);
         knowledgeRootRepository.save(root);
-        assertThat(settingsService.listJiraProjects())
+        assertThat(jiraSettingsService.listJiraProjects())
                 .singleElement()
                 .extracting(JiraProjectDto::getStatus)
                 .isEqualTo("paused");
@@ -241,9 +233,9 @@ class JiraSettingsServiceTests {
         localRoot.setDisplayName("Data");
         localRoot = knowledgeRootRepository.save(localRoot);
 
-        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
-        settingsService.addJiraProject(new JiraProjectRequest("DEV"));
-        settingsService.clearJiraConnection();
+        jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        jiraSettingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        jiraSettingsService.clearJiraConnection();
 
         assertThat(knowledgeRootRepository.findByIdAndSource(localRoot.getId(), KnowledgeSource.LOCAL_FOLDER))
                 .isPresent();
@@ -251,14 +243,14 @@ class JiraSettingsServiceTests {
 
     @Test
     void rejectsProjectManagementBeforeJiraSetupIsSaved() {
-        assertThatThrownBy(() -> settingsService.addJiraProject(new JiraProjectRequest("DEV")))
+        assertThatThrownBy(() -> jiraSettingsService.addJiraProject(new JiraProjectRequest("DEV")))
                 .hasMessageContaining("Save Jira setup before managing projects");
     }
 
     @Test
     void generalSettingsSaveDoesNotDisconnectJiraOrDropProjects() {
-        settingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
-        JiraProjectDto added = settingsService.addJiraProject(new JiraProjectRequest("DEV"));
+        jiraSettingsService.saveJiraConnection(connection("https://example.atlassian.net", "me@example.com", "token-1234"));
+        JiraProjectDto added = jiraSettingsService.addJiraProject(new JiraProjectRequest("DEV"));
 
         // A general settings PUT carrying a stale/blank jira payload (connected=false)
         // must not disconnect Jira or hide its projects — the connection is owned by the
@@ -268,7 +260,7 @@ class JiraSettingsServiceTests {
         incoming.getJira().setConnected(false);
         settingsService.save(incoming);
 
-        JiraSettings jira = settingsService.getJiraSettings();
+        JiraSettings jira = jiraSettingsService.getJiraSettings();
         assertThat(jira.isConnected()).isTrue();
         assertThat(jira.getProjects()).extracting(JiraProjectDto::getId).contains(added.getId());
         assertThat(knowledgeRootRepository.findBySource(KnowledgeSource.JIRA)).hasSize(1);
@@ -277,7 +269,7 @@ class JiraSettingsServiceTests {
 
     @Test
     void validatesJiraConnectionShapeWithoutLiveValidation() {
-        var validation = settingsService.validateJiraConnection(
+        var validation = jiraSettingsService.validateJiraConnection(
                 connection("https://example.atlassian.net", "me@example.com", "token-1234")
         );
 
@@ -289,28 +281,54 @@ class JiraSettingsServiceTests {
         return new JiraConnectionRequest(instanceUrl, email, token, false);
     }
 
-    private SettingsService serviceWith(
+    private void initServices(
             JiraConnectionValidationService validator,
             JiraProjectDiscoveryService discovery
     ) {
         jdbcTemplate = TestDatabaseSupport.migratedJdbcTemplate();
         knowledgeRootRepository = new KnowledgeRootRepository(jdbcTemplate);
         settingsRepository = new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules());
+        SettingsSecretsService secretsService = new SettingsSecretsService(secretStore);
+        EventService eventService = mock(EventService.class);
         KnowledgeRootCleanupService cleanupService = new KnowledgeRootCleanupService(
                 knowledgeRootRepository,
                 new KnowledgeResourceRepository(jdbcTemplate),
                 mock(KnowledgeIndexingService.class)
         );
-        return new SettingsService(
+        KnowledgeScanCoordinator coordinator = new KnowledgeScanCoordinator();
+        KnowledgeIngestionService ingestionService = mock(KnowledgeIngestionService.class);
+        jiraSettingsService = new JiraSettingsService(
                 settingsRepository,
                 knowledgeRootRepository,
-                new SettingsSecretsService(secretStore),
-                mock(EventService.class),
+                secretsService,
+                eventService,
                 cleanupService,
-                new KnowledgeScanCoordinator(),
-                mock(KnowledgeIngestionService.class),
+                coordinator,
+                ingestionService,
                 validator,
                 discovery
+        );
+        ConfluenceSettingsService confluenceSettingsService = new ConfluenceSettingsService(
+                settingsRepository,
+                knowledgeRootRepository,
+                secretsService,
+                eventService,
+                cleanupService,
+                coordinator,
+                ingestionService,
+                new ConfluenceConnectionValidationService(),
+                new ConfluenceSpaceDiscoveryService(new ObjectMapper())
+        );
+        settingsService = new SettingsService(
+                settingsRepository,
+                knowledgeRootRepository,
+                secretsService,
+                eventService,
+                cleanupService,
+                coordinator,
+                ingestionService,
+                jiraSettingsService,
+                confluenceSettingsService
         );
     }
 

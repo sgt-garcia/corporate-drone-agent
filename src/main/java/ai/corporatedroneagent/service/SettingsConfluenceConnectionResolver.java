@@ -10,21 +10,21 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class SettingsConfluenceConnectionResolver implements ConfluenceConnectionResolver {
 
-    private final SettingsService settingsService;
+    private final ConfluenceSettingsService confluenceSettingsService;
 
-    public SettingsConfluenceConnectionResolver(SettingsService settingsService) {
-        this.settingsService = settingsService;
+    public SettingsConfluenceConnectionResolver(ConfluenceSettingsService confluenceSettingsService) {
+        this.confluenceSettingsService = confluenceSettingsService;
     }
 
     @Override
     public ConfluenceConnection resolve(KnowledgeRoot root) {
-        ConfluenceSettings confluence = settingsService.getConfluenceSettings();
+        ConfluenceSettings confluence = confluenceSettingsService.getConfluenceSettings();
         if (!confluence.isConnected() || !confluence.isTokenConfigured()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Save Confluence setup before managing spaces");
         }
         return new ConfluenceConnection(
                 confluence.getInstanceUrl(),
                 confluence.getEmail(),
-                settingsService.savedConfluenceToken());
+                confluenceSettingsService.savedConfluenceToken());
     }
 }

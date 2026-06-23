@@ -43,14 +43,31 @@ class KnowledgeFolderSettingsServiceTests {
 
         settingsRepository = new SettingsRepository(jdbcTemplate, new ObjectMapper().findAndRegisterModules());
         eventService = mock(EventService.class);
+        KnowledgeRootRepository rootRepository = new KnowledgeRootRepository(jdbcTemplate);
+        SettingsSecretsService secretsService = new SettingsSecretsService(new InMemorySecretStore());
+        KnowledgeRootCleanupService cleanupService = mock(KnowledgeRootCleanupService.class);
+        KnowledgeScanCoordinator coordinator = new KnowledgeScanCoordinator();
+        KnowledgeIngestionService ingestionService = mock(KnowledgeIngestionService.class);
+        // Real Jira/Confluence services (never connected here) so get()/save() can fold their
+        // sanitized, empty verticals into the aggregate settings without stubbing.
+        JiraSettingsService jiraSettingsService = new JiraSettingsService(
+                settingsRepository, rootRepository, secretsService, eventService, cleanupService,
+                coordinator, ingestionService, new JiraConnectionValidationService(),
+                new JiraProjectDiscoveryService(new ObjectMapper()));
+        ConfluenceSettingsService confluenceSettingsService = new ConfluenceSettingsService(
+                settingsRepository, rootRepository, secretsService, eventService, cleanupService,
+                coordinator, ingestionService, new ConfluenceConnectionValidationService(),
+                new ConfluenceSpaceDiscoveryService(new ObjectMapper()));
         settingsService = new SettingsService(
                 settingsRepository,
-                new KnowledgeRootRepository(jdbcTemplate),
-                new SettingsSecretsService(new InMemorySecretStore()),
+                rootRepository,
+                secretsService,
                 eventService,
-                mock(KnowledgeRootCleanupService.class),
-                new KnowledgeScanCoordinator(),
-                mock(KnowledgeIngestionService.class)
+                cleanupService,
+                coordinator,
+                ingestionService,
+                jiraSettingsService,
+                confluenceSettingsService
         );
     }
 
@@ -148,12 +165,12 @@ class KnowledgeFolderSettingsServiceTests {
     void formatsRelativeScanFreshness() {
         Instant now = Instant.parse("2026-06-10T12:00:00Z");
 
-        assertThat(SettingsService.relativeTime(now.minusSeconds(10), now)).isEqualTo("just now");
-        assertThat(SettingsService.relativeTime(now.minusSeconds(120), now)).isEqualTo("2 min ago");
-        assertThat(SettingsService.relativeTime(now.minus(Duration.ofHours(1)), now)).isEqualTo("1 hour ago");
-        assertThat(SettingsService.relativeTime(now.minus(Duration.ofHours(5)), now)).isEqualTo("5 hours ago");
-        assertThat(SettingsService.relativeTime(now.minus(Duration.ofDays(3)), now)).isEqualTo("3 days ago");
-        assertThat(SettingsService.relativeTime(now.plusSeconds(30), now)).isEqualTo("just now");
+        assertThat(KnowledgeRootFormatting.relativeTime(now.minusSeconds(10), now)).isEqualTo("just now");
+        assertThat(KnowledgeRootFormatting.relativeTime(now.minusSeconds(120), now)).isEqualTo("2 min ago");
+        assertThat(KnowledgeRootFormatting.relativeTime(now.minus(Duration.ofHours(1)), now)).isEqualTo("1 hour ago");
+        assertThat(KnowledgeRootFormatting.relativeTime(now.minus(Duration.ofHours(5)), now)).isEqualTo("5 hours ago");
+        assertThat(KnowledgeRootFormatting.relativeTime(now.minus(Duration.ofDays(3)), now)).isEqualTo("3 days ago");
+        assertThat(KnowledgeRootFormatting.relativeTime(now.plusSeconds(30), now)).isEqualTo("just now");
     }
 
     private String existingFolderPath() throws IOException {

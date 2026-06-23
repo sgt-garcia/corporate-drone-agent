@@ -10,15 +10,15 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class SettingsJiraConnectionResolver implements JiraConnectionResolver {
 
-    private final SettingsService settingsService;
+    private final JiraSettingsService jiraSettingsService;
 
-    public SettingsJiraConnectionResolver(SettingsService settingsService) {
-        this.settingsService = settingsService;
+    public SettingsJiraConnectionResolver(JiraSettingsService jiraSettingsService) {
+        this.jiraSettingsService = jiraSettingsService;
     }
 
     @Override
     public JiraConnection resolve(KnowledgeRoot root) {
-        JiraSettings jira = settingsService.getJiraSettings();
+        JiraSettings jira = jiraSettingsService.getJiraSettings();
         if (!jira.isConnected() || !jira.isTokenConfigured()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Save Jira setup before managing projects");
         }
@@ -26,6 +26,6 @@ public class SettingsJiraConnectionResolver implements JiraConnectionResolver {
                 jira.getInstanceUrl(),
                 jira.getEmail(),
                 jira.getApiVersion(),
-                settingsService.savedJiraToken());
+                jiraSettingsService.savedJiraToken());
     }
 }

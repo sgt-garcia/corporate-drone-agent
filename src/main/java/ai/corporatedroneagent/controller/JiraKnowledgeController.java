@@ -5,7 +5,7 @@ import ai.corporatedroneagent.dto.JiraConnectionValidationDto;
 import ai.corporatedroneagent.dto.JiraProjectDto;
 import ai.corporatedroneagent.dto.JiraProjectRequest;
 import ai.corporatedroneagent.model.JiraSettings;
-import ai.corporatedroneagent.service.SettingsService;
+import ai.corporatedroneagent.service.JiraSettingsService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,65 +23,65 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/settings/knowledge/jira")
 public class JiraKnowledgeController {
 
-    private final SettingsService settingsService;
+    private final JiraSettingsService jiraSettingsService;
 
-    public JiraKnowledgeController(SettingsService settingsService) {
-        this.settingsService = settingsService;
+    public JiraKnowledgeController(JiraSettingsService jiraSettingsService) {
+        this.jiraSettingsService = jiraSettingsService;
     }
 
     @GetMapping
     public JiraSettings getJiraSettings() {
-        return settingsService.getJiraSettings();
+        return jiraSettingsService.getJiraSettings();
     }
 
     @PostMapping("/connection/validate")
     public JiraConnectionValidationDto validateConnection(@RequestBody JiraConnectionRequest request) {
-        return settingsService.validateJiraConnection(request);
+        return jiraSettingsService.validateJiraConnection(request);
     }
 
     @PutMapping("/connection")
     public JiraSettings saveConnection(@RequestBody JiraConnectionRequest request) {
-        return settingsService.saveJiraConnection(request);
+        return jiraSettingsService.saveJiraConnection(request);
     }
 
     @DeleteMapping("/connection")
     public JiraSettings clearConnection() {
-        return settingsService.clearJiraConnection();
+        return jiraSettingsService.clearJiraConnection();
     }
 
     @GetMapping("/projects")
     public List<JiraProjectDto> listProjects() {
-        return settingsService.listJiraProjects();
+        return jiraSettingsService.listJiraProjects();
     }
 
     @GetMapping("/projects/search")
     public List<JiraProjectDto> searchProjects(@RequestParam(defaultValue = "") String query) {
-        return settingsService.searchJiraProjects(query);
+        return jiraSettingsService.searchJiraProjects(query);
     }
 
     @PostMapping("/projects")
     public JiraProjectDto addProject(@RequestBody JiraProjectRequest request) {
-        return settingsService.addJiraProject(request);
+        return jiraSettingsService.addJiraProject(request);
     }
 
     @DeleteMapping("/projects/{projectId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removeProject(@PathVariable String projectId) {
-        settingsService.removeJiraProject(projectId);
+        jiraSettingsService.removeJiraProject(projectId);
     }
 
     @PostMapping("/projects/{projectId}/scan")
     public JiraProjectDto scanProject(@PathVariable String projectId) {
-        return settingsService.scanJiraProject(projectId);
+        return jiraSettingsService.scanJiraProject(projectId);
     }
 
     @PostMapping("/projects/{projectId}/pause")
     public JiraProjectDto pauseProject(@PathVariable String projectId) {
-        return settingsService.pauseJiraProject(projectId);
+        return jiraSettingsService.pauseJiraProject(projectId);
     }
 
     @PostMapping("/projects/{projectId}/resume")
     public JiraProjectDto resumeProject(@PathVariable String projectId) {
-        return settingsService.resumeJiraProject(projectId);
+        return jiraSettingsService.resumeJiraProject(projectId);
     }
 }
