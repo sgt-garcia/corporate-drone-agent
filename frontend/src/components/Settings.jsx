@@ -151,7 +151,9 @@ const TOOLS = [
     name: "MCP Server",
     icon: "server",
     enabledKey: "mcpServerEnabled",
-    endpoint: "http://localhost:8080/sse",
+    // Derive from the origin the app is served from, so the displayed endpoint stays correct
+    // even when the server runs on a non-default port (rather than a hardcoded :8080).
+    endpoint: `${window.location.origin}/sse`,
     summary:
       "Connect to a Model Context Protocol server to expose its tools to the agent.",
     description:
