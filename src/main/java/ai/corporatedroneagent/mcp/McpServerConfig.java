@@ -11,9 +11,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 
 /**
- * POC: exposes the on-demand knowledge search tool over MCP so external clients (e.g. Claude)
- * can query the user's connected knowledge sources. Reuses the in-conversation
- * {@link KnowledgeSearchTools} verbatim, with fixed results/length — no per-call config, no auth.
+ * POC: exposes the on-demand knowledge tools (search, fetch a full document, list sources) over MCP
+ * so external clients (e.g. Claude) can query the user's connected knowledge sources. Reuses the
+ * in-conversation {@link KnowledgeSearchTools} verbatim, with fixed results/length — no per-call config, no auth.
  * Relies on the app being bound to localhost (see {@code server.address} in application.properties).
  */
 @Configuration

@@ -34,7 +34,13 @@ public final class KnowledgeSnippets {
     }
 
     private static String sourceLabel(KnowledgeContextSnippet snippet) {
-        return switch (sourceKey(snippet)) {
+        return sourceDisplay(snippet.source());
+    }
+
+    // Human-friendly name for a KnowledgeSource enum value, shared so snippets, fetched documents,
+    // and the source listing all label sources identically.
+    public static String sourceDisplay(String source) {
+        return switch (Strings.defaultIfBlank(source, "").trim().toUpperCase(Locale.ROOT)) {
             case "JIRA" -> "Jira";
             case "CONFLUENCE" -> "Confluence";
             case "LOCAL_FOLDER" -> "Local folder";

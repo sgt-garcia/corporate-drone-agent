@@ -23,6 +23,10 @@ public class KnowledgeSearchService {
 
     private static final Pattern JIRA_ISSUE_KEY = Pattern.compile("\\b[A-Z][A-Z0-9_]+-\\d+\\b", Pattern.CASE_INSENSITIVE);
     private static final int DEFAULT_RESULT_LENGTH = 3000;
+    private static final int DEFAULT_DOCUMENT_LENGTH = 50_000;
+    // How many candidates a reference/title can resolve to before we just take the best one; small
+    // because references are nearly unique and we only return the first that has converted text.
+    private static final int FETCH_CANDIDATES = 5;
 
     private final KnowledgeIndexingService indexingService;
     private final KnowledgeResourcePipelineRepository pipelineRepository;
@@ -78,6 +82,57 @@ public class KnowledgeSearchService {
             }
         }
         return snippets;
+    }
+
+    /**
+     * Returns the full extracted text of a single document matched by its reference or title (the
+     * identifier a search result showed), capped at {@code maxLength}. Unlike {@link #search} this
+     * does not centre on the query — the model already located the document and wants the whole of
+     * it. The first match that has converted text wins; references are effectively unique.
+     */
+    public Optional<KnowledgeDocument> fetchDocument(String identifier, int maxLength) {
+        if (identifier == null || identifier.isBlank()) {
+            return Optional.empty();
+        }
+        int cap = maxLength <= 0 ? DEFAULT_DOCUMENT_LENGTH : maxLength;
+        for (KnowledgeResource resource : resourceRepository.findActiveByReferenceOrName(identifier.trim(), FETCH_CANDIDATES)) {
+            Optional<String> text = conversionText(resource.getId());
+            if (text.isEmpty()) {
+                continue;
+            }
+            String full = text.get().strip();
+            boolean truncated = full.length() > cap;
+            String content = truncated ? full.substring(0, cap).strip() + " …" : full;
+            KnowledgeRoot root = rootRepository.findById(resource.getRootId()).orElseGet(KnowledgeRoot::new);
+            return Optional.of(new KnowledgeDocument(
+                    root.getSource() == null ? "" : root.getSource().name(),
+                    root.getDisplayName(),
+                    resource.getReference(),
+                    resource.getDisplayName(),
+                    content,
+                    truncated,
+                    full.length()
+            ));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Lists the connected knowledge roots so a caller can discover what is searchable before
+     * querying — source type, display name, document count, scan status, and whether it is paused.
+     */
+    public List<KnowledgeSourceSummary> listSources() {
+        List<KnowledgeSourceSummary> summaries = new ArrayList<>();
+        for (KnowledgeRoot root : rootRepository.findAll()) {
+            summaries.add(new KnowledgeSourceSummary(
+                    root.getSource() == null ? "" : root.getSource().name(),
+                    root.getDisplayName(),
+                    root.getTotalResources(),
+                    root.getScanStatus() == null ? "" : root.getScanStatus().name(),
+                    root.isPaused()
+            ));
+        }
+        return summaries;
     }
 
     private Optional<KnowledgeContextSnippet> toSnippet(

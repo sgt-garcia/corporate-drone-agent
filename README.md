@@ -70,8 +70,9 @@ The guiding principles are:
 - Best-effort knowledge retrieval added to chat prompts as untrusted reference
   context, plus an on-demand `search_knowledge` tool the model can call
   mid-conversation.
-- A local MCP server that exposes the knowledge search tool to external clients
-  such as Claude, with a runtime enable toggle and a loopback-only guard.
+- A local MCP server that exposes the knowledge tools (search, fetch a full
+  document, list sources) to external clients such as Claude, with a runtime
+  enable toggle and a loopback-only guard.
 - Local encrypted H2 storage for settings, projects, conversations, messages,
   knowledge roots, scan status, and knowledge metadata.
 - Protected local API-key storage that keeps secrets out of settings responses.
@@ -305,10 +306,18 @@ Text handling:
 ## MCP Server
 
 The app hosts a local Model Context Protocol (MCP) server so external clients
-such as Claude can query your connected knowledge sources. It exposes the single
-`search_knowledge` tool, which searches across local folders, Jira, and
-Confluence and returns the most relevant snippets as untrusted reference
-material.
+such as Claude can query your connected knowledge sources. It exposes three
+read-only tools that together cover discover → search → fetch:
+
+- `search_knowledge` searches across local folders, Jira, and Confluence and
+  returns the most relevant snippets (query-centred passages) as untrusted
+  reference material.
+- `fetch_knowledge_document` returns the full text of one document, looked up by
+  the reference or title a search result showed (a file path, a Jira issue key,
+  or a title) — for when a snippet is not enough.
+- `list_knowledge_sources` lists the connected sources with their document
+  counts and scan status, so a client can see what is available before
+  searching.
 
 The transport runs over SSE at `/sse` (with message posts under `/mcp/*`), so
 the endpoint is derived from the app origin — typically:
@@ -346,8 +355,8 @@ on the app being bound to localhost.
   provider lookup, settings/secrets behavior, project workflows, Jira/Confluence
   connectors, and knowledge scanning/retrieval.
 - `src/main/java/ai/corporatedroneagent/tools` contains assistant tool
-  implementations, including project-scoped filesystem tools and the
-  `search_knowledge` tool.
+  implementations, including project-scoped filesystem tools and the knowledge
+  tools (`search_knowledge`, `fetch_knowledge_document`, `list_knowledge_sources`).
 - `src/main/java/ai/corporatedroneagent/mcp` hosts the local MCP server, its
   runtime enable gate, and the loopback-only guard.
 - `src/main/java/ai/corporatedroneagent/repository` stores settings, projects,

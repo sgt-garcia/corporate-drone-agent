@@ -80,6 +80,34 @@ public class KnowledgeResourceRepository {
         );
     }
 
+    public List<KnowledgeResource> findActiveByReferenceOrName(String identifier, int limit) {
+        if (identifier == null || identifier.isBlank() || limit <= 0) {
+            return List.of();
+        }
+        // The model passes back whatever a search result showed: a file path or Jira key (the
+        // reference) for local folders and Jira, or a title (the display name) for Confluence. Match
+        // either, plus the "KEY - title" form so a bare Jira key still resolves.
+        String normalized = identifier.trim().toUpperCase(java.util.Locale.ROOT);
+        return jdbcTemplate.query("""
+                SELECT resource.*
+                FROM knowledge_resources resource
+                WHERE resource.deleted = FALSE
+                  AND (
+                    UPPER(resource.resource_reference) = ?
+                    OR UPPER(resource.display_name) = ?
+                    OR UPPER(resource.display_name) LIKE ? ESCAPE '\\'
+                  )
+                ORDER BY resource.display_name, resource.resource_reference
+                LIMIT ?
+                """,
+                this::mapResource,
+                normalized,
+                normalized,
+                escapeLike(normalized) + " - %",
+                limit
+        );
+    }
+
     public KnowledgeResource save(KnowledgeResource resource) {
         Instant now = Instant.now();
         Optional<KnowledgeResource> existing = resource.getId() == null
