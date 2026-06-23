@@ -103,6 +103,7 @@ public class SettingsService {
         current.setAiModel(Strings.defaultIfBlank(settings.getAiModel(), "none"));
         current.setCustomInstructions(Strings.emptyIfNull(settings.getCustomInstructions()));
         current.setFilesystemToolEnabled(settings.isFilesystemToolEnabled());
+        current.setMcpServerEnabled(settings.isMcpServerEnabled());
         current.setKnowledgeTool(sanitizeKnowledgeTool(settings.getKnowledgeTool()));
         current.setOpenAi(settings.getOpenAi());
         current.setOpenAiSdk(settings.getOpenAiSdk());
@@ -126,6 +127,12 @@ public class SettingsService {
         ApplicationSettings savedSettings = get();
         eventService.publish("settings-updated");
         return savedSettings;
+    }
+
+    // Lightweight read for the MCP transport gate: just the stored flag, skipping the sanitize /
+    // secret-status / Atlassian-attach work that the full get() does on every call.
+    public boolean isMcpServerEnabled() {
+        return settingsRepository.get().isMcpServerEnabled();
     }
 
     public synchronized List<KnowledgeFolderDto> listKnowledgeFolders() {

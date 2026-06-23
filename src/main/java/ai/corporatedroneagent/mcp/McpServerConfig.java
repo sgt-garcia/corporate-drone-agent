@@ -1,6 +1,7 @@
 package ai.corporatedroneagent.mcp;
 
 import ai.corporatedroneagent.service.KnowledgeSearchService;
+import ai.corporatedroneagent.service.SettingsService;
 import ai.corporatedroneagent.tools.KnowledgeSearchTools;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
@@ -29,15 +30,27 @@ public class McpServerConfig {
         return MethodToolCallbackProvider.builder().toolObjects(tools).build();
     }
 
+    // Gate the MCP transport endpoints on the mcpServerEnabled setting so the Settings → Tools
+    // toggle disables the server at runtime. Runs first (before the loopback guard) so a disabled
+    // server answers 503 regardless of where the request came from.
+    @Bean
+    public FilterRegistrationBean<McpServerEnabledFilter> mcpServerEnabledFilter(SettingsService settingsService) {
+        FilterRegistrationBean<McpServerEnabledFilter> registration =
+                new FilterRegistrationBean<>(new McpServerEnabledFilter(settingsService::isMcpServerEnabled));
+        registration.addUrlPatterns("/sse", "/mcp/*");
+        registration.setName("mcpServerEnabledFilter");
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return registration;
+    }
+
     // Guard the MCP transport endpoints (SSE stream + message post) against DNS-rebinding by
-    // rejecting any request whose Host/Origin is not loopback. Highest precedence so it runs
-    // before the request reaches the transport handler.
+    // rejecting any request whose Host/Origin is not loopback. Runs just after the enabled gate.
     @Bean
     public FilterRegistrationBean<McpLocalOnlyFilter> mcpLocalOnlyFilter() {
         FilterRegistrationBean<McpLocalOnlyFilter> registration = new FilterRegistrationBean<>(new McpLocalOnlyFilter());
         registration.addUrlPatterns("/sse", "/mcp/*");
         registration.setName("mcpLocalOnlyFilter");
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }
 }

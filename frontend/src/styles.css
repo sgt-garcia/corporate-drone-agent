@@ -2103,6 +2103,29 @@ select.input {
   color: var(--gray-500);
   margin-top: 2px;
 }
+.tool-endpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-divider);
+}
+.tool-endpoint-text {
+  flex: 1;
+  min-width: 0;
+}
+.tool-endpoint-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray-700);
+}
+.tool-endpoint-value {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--gray-900);
+  word-break: break-all;
+}
 .tool-about {
   padding: 18px;
 }

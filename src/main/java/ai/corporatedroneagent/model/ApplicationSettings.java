@@ -10,6 +10,9 @@ public class ApplicationSettings {
     private String aiModel = "none";
     private String customInstructions = "Answer with concise, practical guidance using available local project context first.";
     private boolean filesystemToolEnabled = true;
+    // Whether the MCP server accepts connections. Defaults on, preserving the always-on behaviour
+    // from when the server was first added; the Settings → Tools toggle gates it at runtime.
+    private boolean mcpServerEnabled = true;
     private KnowledgeToolSettings knowledgeTool = new KnowledgeToolSettings();
     private List<KnowledgeFolderDto> knowledgeFolders = new ArrayList<>();
     private OpenAiSettings openAi = new OpenAiSettings();
@@ -55,6 +58,14 @@ public class ApplicationSettings {
 
     public void setFilesystemToolEnabled(boolean filesystemToolEnabled) {
         this.filesystemToolEnabled = filesystemToolEnabled;
+    }
+
+    public boolean isMcpServerEnabled() {
+        return mcpServerEnabled;
+    }
+
+    public void setMcpServerEnabled(boolean mcpServerEnabled) {
+        this.mcpServerEnabled = mcpServerEnabled;
     }
 
     public KnowledgeToolSettings getKnowledgeTool() {

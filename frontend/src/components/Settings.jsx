@@ -143,7 +143,19 @@ const TOOLS = [
     name: "Knowledge",
     icon: "database",
     kind: "knowledge",
-    summary: "Draw on your connected knowledge sources to answer with your work context."
+    summary:
+      "Pull context from your connected sources — automatically before every reply, on demand mid-task, or both."
+  },
+  {
+    id: "mcp-server",
+    name: "MCP Server",
+    icon: "server",
+    enabledKey: "mcpServerEnabled",
+    endpoint: "http://localhost:8080/sse",
+    summary:
+      "Connect to a Model Context Protocol server to expose its tools to the agent.",
+    description:
+      "Connects over Server-Sent Events to a Model Context Protocol (MCP) server and makes the tools it advertises available to the agent. When enabled, the agent can list and call the server’s tools during a conversation."
   }
 ];
 
@@ -2260,6 +2272,15 @@ function ToolConfig({ tool, enabled, onBack, onToggle }) {
             label={`${tool.name} tool`}
           />
         </div>
+        {tool.endpoint && (
+          <div className="tool-endpoint-row">
+            <Icon name="link" size={15} color="var(--gray-500)" />
+            <div className="tool-endpoint-text">
+              <div className="tool-endpoint-label">Server endpoint</div>
+              <div className="tool-endpoint-value">{tool.endpoint}</div>
+            </div>
+          </div>
+        )}
         <div className="tool-about">
           <div className="ds-overline">What it does</div>
           <p className="tool-about-text">{tool.description}</p>
@@ -2268,7 +2289,9 @@ function ToolConfig({ tool, enabled, onBack, onToggle }) {
 
       <div className="knowledge-privacy">
         <Icon name="shield-check" size={14} color="var(--success-600)" />
-        Runs locally on this device, sandboxed to the folders you grant.
+        {tool.endpoint
+          ? "Connects only to the endpoint above. Tools are loaded when the connection is enabled."
+          : "Runs locally on this device, sandboxed to the folders you grant."}
       </div>
     </div>
   );
