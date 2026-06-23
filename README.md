@@ -63,9 +63,15 @@ The guiding principles are:
 - Async assistant replies with live status/error events over SSE.
 - Local knowledge folders with add, remove, pause, resume, manual scan, and
   scheduled scan support.
+- Jira and Confluence connectors: connect an instance, add up to 10 projects /
+  spaces each, and scan them into the same knowledge index as local folders,
+  with per-item pause, resume, and manual scan.
 - Recursive local-folder indexing into Lucene-backed chunks.
-- Best-effort local knowledge retrieval added to chat prompts as untrusted
-  reference context.
+- Best-effort knowledge retrieval added to chat prompts as untrusted reference
+  context, plus an on-demand `search_knowledge` tool the model can call
+  mid-conversation.
+- A local MCP server that exposes the knowledge search tool to external clients
+  such as Claude, with a runtime enable toggle and a loopback-only guard.
 - Local encrypted H2 storage for settings, projects, conversations, messages,
   knowledge roots, scan status, and knowledge metadata.
 - Protected local API-key storage that keeps secrets out of settings responses.
@@ -89,9 +95,9 @@ conversation flow still works.
 
 ## Still Coming
 
-- Corporate connectors such as Jira, Confluence, GitHub, SharePoint, OneDrive,
-  ServiceNow, and Salesforce.
-- Indexing and retrieval for repositories, tickets, cloud documents, and other
+- More corporate connectors such as GitHub, SharePoint, OneDrive, ServiceNow,
+  and Salesforce (Jira and Confluence already work).
+- Indexing and retrieval for repositories, cloud documents, and other
   non-local sources.
 - Richer document conversion beyond the current text-oriented pipeline.
 - Scheduled jobs tied to projects and conversations.
@@ -193,7 +199,14 @@ store, and not returned by `GET /api/settings`.
 
 ## Knowledge
 
-Local folders are configured in Settings under `Knowledge -> Local Folders`.
+Knowledge sources are configured in Settings under `Knowledge`. Today that
+covers local folders, Jira, and Confluence. All sources feed the same
+Lucene-backed index, and retrieval (automatic and via the `search_knowledge`
+tool) spans every connected source.
+
+### Local Folders
+
+Local folders are configured under `Knowledge -> Local Folders`.
 
 Rules:
 
@@ -218,10 +231,23 @@ The current converter intentionally stays narrow: common text formats are
 supported, files larger than 1 MB are skipped, and richer document conversion is
 planned separately.
 
-When a chat starts, matching local snippets are added to the prompt as a
-separate context message. They are explicitly treated as untrusted reference
-material, not instructions. If retrieval fails, chat continues without local
-knowledge context and the failure is logged.
+When a chat starts, matching snippets are added to the prompt as a separate
+context message. They are explicitly treated as untrusted reference material,
+not instructions. If retrieval fails, chat continues without knowledge context
+and the failure is logged.
+
+### Jira and Confluence
+
+Jira and Confluence are configured under `Knowledge -> Jira` and
+`Knowledge -> Confluence`. Each connector takes an instance URL, an email, and
+an API token; the token is write-only and stored in the local secret store, so
+it is never returned by the settings API.
+
+Once connected, you can search the instance and add up to 10 Jira projects or
+10 Confluence spaces. Adding an item triggers a background scan so the UI stays
+responsive, and each item can be paused, resumed, or rescanned independently.
+Scanned issues and pages are chunked and indexed alongside local folders, and
+scan progress is streamed over SSE.
 
 ## Project Filesystem Tools
 
@@ -276,6 +302,28 @@ Text handling:
   edited content back.
 - `write_file` writes new text content as UTF-8.
 
+## MCP Server
+
+The app hosts a local Model Context Protocol (MCP) server so external clients
+such as Claude can query your connected knowledge sources. It exposes the single
+`search_knowledge` tool, which searches across local folders, Jira, and
+Confluence and returns the most relevant snippets as untrusted reference
+material.
+
+The transport runs over SSE at `/sse` (with message posts under `/mcp/*`), so
+the endpoint is derived from the app origin — typically:
+
+```text
+http://localhost:8080/sse
+```
+
+It is gated behind the `Settings -> Tools -> MCP Server` toggle, which enables
+or disables the server at runtime (a disabled server answers `503`). The
+endpoints are also guarded against DNS rebinding: any request whose `Host` or
+`Origin` header is not loopback (`localhost`, `127.0.0.1`, `::1`) is rejected
+with `403`. There is no per-call configuration and no auth — the server relies
+on the app being bound to localhost.
+
 ## Technology
 
 - Java 21
@@ -292,13 +340,16 @@ Text handling:
 ## Project Map
 
 - `src/main/java/ai/corporatedroneagent/controller` exposes projects,
-  conversations, settings, provider model lookup, knowledge folders, and SSE
-  events.
+  conversations, settings, provider model lookup, local/Jira/Confluence
+  knowledge, and SSE events.
 - `src/main/java/ai/corporatedroneagent/service` contains chat orchestration,
-  provider lookup, settings/secrets behavior, project workflows, and local
-  knowledge scanning/retrieval.
+  provider lookup, settings/secrets behavior, project workflows, Jira/Confluence
+  connectors, and knowledge scanning/retrieval.
 - `src/main/java/ai/corporatedroneagent/tools` contains assistant tool
-  implementations, including project-scoped filesystem tools.
+  implementations, including project-scoped filesystem tools and the
+  `search_knowledge` tool.
+- `src/main/java/ai/corporatedroneagent/mcp` hosts the local MCP server, its
+  runtime enable gate, and the loopback-only guard.
 - `src/main/java/ai/corporatedroneagent/repository` stores settings, projects,
   conversations, messages, knowledge roots, and knowledge pipeline state.
 - `src/main/java/ai/corporatedroneagent/security` protects local secrets.
@@ -317,8 +368,11 @@ Main backend areas:
 - `/api/conversations/{conversationId}/messages`
 - `/api/settings`
 - `/api/settings/knowledge/local-folders`
+- `/api/settings/knowledge/jira`
+- `/api/settings/knowledge/confluence`
 - `/api/settings/*-models`
 - `/api/events`
+- `/sse` and `/mcp/*` (local MCP server transport)
 
 `/api/events` is the server-sent event stream used by the frontend for project,
 conversation, message, and settings updates. Broad settings and project events
