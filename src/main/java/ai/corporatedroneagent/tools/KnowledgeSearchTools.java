@@ -124,15 +124,11 @@ public class KnowledgeSearchTools {
     }
 
     private String formatDocument(KnowledgeDocument document) {
-        // Label identically to a search snippet, then fence the full text and note any truncation.
-        String label = KnowledgeSnippets.label(new KnowledgeContextSnippet(
-                document.source(),
-                document.rootName(),
-                document.resourceReference(),
-                document.resourceName(),
-                document.content(),
-                0f));
-        String block = label + "\n```\n" + document.content().trim() + "\n```";
+        // Label identically to a search snippet, then fence the full text (already stripped by the
+        // service) and note any truncation.
+        String label = KnowledgeSnippets.label(
+                document.source(), document.rootName(), document.resourceReference(), document.resourceName());
+        String block = label + "\n```\n" + document.content() + "\n```";
         if (document.truncated()) {
             block += "\n\n(Showing the first " + DOCUMENT_LENGTH + " of " + document.fullLength()
                     + " characters. Use search_knowledge to locate a specific passage.)";

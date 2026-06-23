@@ -6,9 +6,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Shared formatting for retrieved knowledge snippets, used by both automatic retrieval
- * (injected into the prompt) and the on-demand search tool (returned as a tool result),
- * so the two paths label and fence snippets identically.
+ * Shared formatting for retrieved knowledge, used by automatic retrieval (injected into the
+ * prompt), the on-demand search tool, and the fetch-document tool, so every path labels and
+ * fences knowledge identically.
  */
 public final class KnowledgeSnippets {
 
@@ -28,19 +28,21 @@ public final class KnowledgeSnippets {
     }
 
     public static String label(KnowledgeContextSnippet snippet) {
-        return sourceLabel(snippet)
-                + " / " + Strings.defaultIfBlank(snippet.rootName(), "Knowledge")
-                + " / " + resourceLabel(snippet);
+        return label(snippet.source(), snippet.rootName(), snippet.resourceReference(), snippet.resourceName());
     }
 
-    private static String sourceLabel(KnowledgeContextSnippet snippet) {
-        return sourceDisplay(snippet.source());
+    // The "source / root / resource" heading from raw fields, so snippets and fetched documents
+    // (which carry the same identifying fields but different tails) render an identical label.
+    public static String label(String source, String rootName, String resourceReference, String resourceName) {
+        return sourceDisplay(source)
+                + " / " + Strings.defaultIfBlank(rootName, "Knowledge")
+                + " / " + resourceLabel(source, resourceReference, resourceName);
     }
 
     // Human-friendly name for a KnowledgeSource enum value, shared so snippets, fetched documents,
     // and the source listing all label sources identically.
     public static String sourceDisplay(String source) {
-        return switch (Strings.defaultIfBlank(source, "").trim().toUpperCase(Locale.ROOT)) {
+        return switch (sourceKey(source)) {
             case "JIRA" -> "Jira";
             case "CONFLUENCE" -> "Confluence";
             case "LOCAL_FOLDER" -> "Local folder";
@@ -50,14 +52,14 @@ public final class KnowledgeSnippets {
 
     // Jira and Confluence carry the human-friendly title in resourceName; the reference is an
     // issue key or page URL. Local folders carry the file path in the reference instead.
-    private static String resourceLabel(KnowledgeContextSnippet snippet) {
-        return switch (sourceKey(snippet)) {
-            case "JIRA", "CONFLUENCE" -> Strings.defaultIfBlank(snippet.resourceName(), snippet.resourceReference());
-            default -> Strings.defaultIfBlank(snippet.resourceReference(), snippet.resourceName());
+    private static String resourceLabel(String source, String resourceReference, String resourceName) {
+        return switch (sourceKey(source)) {
+            case "JIRA", "CONFLUENCE" -> Strings.defaultIfBlank(resourceName, resourceReference);
+            default -> Strings.defaultIfBlank(resourceReference, resourceName);
         };
     }
 
-    private static String sourceKey(KnowledgeContextSnippet snippet) {
-        return Strings.defaultIfBlank(snippet.source(), "").trim().toUpperCase(Locale.ROOT);
+    private static String sourceKey(String source) {
+        return Strings.defaultIfBlank(source, "").trim().toUpperCase(Locale.ROOT);
     }
 }

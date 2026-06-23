@@ -95,7 +95,7 @@ public class KnowledgeSearchService {
             return Optional.empty();
         }
         int cap = maxLength <= 0 ? DEFAULT_DOCUMENT_LENGTH : maxLength;
-        for (KnowledgeResource resource : resourceRepository.findActiveByReferenceOrName(identifier.trim(), FETCH_CANDIDATES)) {
+        for (KnowledgeResource resource : resourceRepository.findActiveByReferenceOrName(identifier, FETCH_CANDIDATES)) {
             Optional<String> text = conversionText(resource.getId());
             if (text.isEmpty()) {
                 continue;
