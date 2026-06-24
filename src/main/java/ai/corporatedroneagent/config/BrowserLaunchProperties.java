@@ -9,7 +9,7 @@ public class BrowserLaunchProperties {
     private boolean enabled = true;
     private boolean headless = false;
     private boolean terminateOnClose = true;
-    private String channel = "msedge";
+    private String channel = "";
     private String url = "";
     private double windowScale = 0.9;
     private Duration launchTimeout = Duration.ofSeconds(30);

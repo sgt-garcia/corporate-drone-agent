@@ -17,7 +17,6 @@ import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,8 +70,7 @@ public class PlaywrightBrowserLifecycle implements ApplicationListener<WebServer
     private void launchAndWatch(String homeUrl) {
         boolean launched = false;
         try {
-            playwright = Playwright.create(new Playwright.CreateOptions()
-                    .setEnv(Map.of("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")));
+            playwright = Playwright.create();
             browser = launchBrowser();
             browserContext = newBrowserContext();
             AtomicBoolean browserClosed = new AtomicBoolean(false);

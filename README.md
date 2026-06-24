@@ -114,8 +114,9 @@ Start the app:
 mvn spring-boot:run
 ```
 
-The app starts at `http://localhost:8080`, opens Microsoft Edge by default, and
-exits when the browser window closes.
+The app starts at `http://localhost:8080`, opens Chromium by default, and
+exits when the browser window closes. Playwright downloads the Chromium build on
+first run.
 
 Run the backend without opening the browser shell:
 
