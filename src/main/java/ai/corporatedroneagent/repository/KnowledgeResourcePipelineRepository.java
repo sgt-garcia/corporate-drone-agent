@@ -125,11 +125,12 @@ public class KnowledgeResourcePipelineRepository {
                 WHERE resource.root_id = ?
                   AND conversion.status = 'DONE'
                   AND conversion.success = FALSE
-                  AND conversion.reason = ?
+                  AND conversion.reason IN (?, ?)
                 """,
                 UUID.class,
                 rootId,
-                KnowledgePipelineReason.UTF8_DECODE_FAILED.name()
+                KnowledgePipelineReason.UTF8_DECODE_FAILED.name(),
+                KnowledgePipelineReason.DOCUMENT_EXTRACTION_FAILED.name()
         ));
 
         reusableResourceIds.addAll(jdbcTemplate.queryForList("""

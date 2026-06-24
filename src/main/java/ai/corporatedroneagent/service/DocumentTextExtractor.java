@@ -37,7 +37,10 @@ public class DocumentTextExtractor {
         try (InputStream stream = new ByteArrayInputStream(content)) {
             String text = tika.parseToString(stream);
             return text == null ? "" : text;
-        } catch (IOException | TikaException exception) {
+        } catch (IOException | TikaException | RuntimeException exception) {
+            // Tika's checked failures plus the unchecked ones its parsers (POI, PDFBox) raise
+            // on corrupt input — e.g. POI's EmptyFileException — so every parse failure becomes
+            // a typed ExtractionException rather than leaking a raw runtime exception.
             throw new ExtractionException("Could not extract document text", exception);
         }
     }

@@ -181,6 +181,7 @@ class KnowledgeResourcePipelineRepositoryTests {
         KnowledgeRoot root = root();
         KnowledgeResource unsupportedResource = resource(root, "unsupported.bin");
         KnowledgeResource undecodableResource = resource(root, "undecodable.txt");
+        KnowledgeResource unextractableResource = resource(root, "corrupt.pdf");
         KnowledgeResource legacyMessageOnlyResource = resource(root, "legacy.bin");
 
         KnowledgeResourceRead unsupportedRead = new KnowledgeResourceRead();
@@ -199,6 +200,14 @@ class KnowledgeResourcePipelineRepositoryTests {
         undecodableConversion.setMessage("Could not decode resource bytes");
         pipelineRepository.saveConversion(undecodableConversion);
 
+        KnowledgeResourceConversion unextractableConversion = new KnowledgeResourceConversion();
+        unextractableConversion.setResourceId(unextractableResource.getId());
+        unextractableConversion.setStatus(WorkStatus.DONE);
+        unextractableConversion.setSuccess(false);
+        unextractableConversion.setReason(KnowledgePipelineReason.DOCUMENT_EXTRACTION_FAILED);
+        unextractableConversion.setMessage("Could not extract document text");
+        pipelineRepository.saveConversion(unextractableConversion);
+
         KnowledgeResourceRead legacyRead = new KnowledgeResourceRead();
         legacyRead.setResourceId(legacyMessageOnlyResource.getId());
         legacyRead.setStatus(WorkStatus.DONE);
@@ -207,7 +216,10 @@ class KnowledgeResourcePipelineRepositoryTests {
         pipelineRepository.saveRead(legacyRead);
 
         assertThat(pipelineRepository.findReusablePipelineResourceIdsByRootId(root.getId()))
-                .contains(unsupportedResource.getId(), undecodableResource.getId())
+                .contains(
+                        unsupportedResource.getId(),
+                        undecodableResource.getId(),
+                        unextractableResource.getId())
                 .doesNotContain(legacyMessageOnlyResource.getId());
     }
 
