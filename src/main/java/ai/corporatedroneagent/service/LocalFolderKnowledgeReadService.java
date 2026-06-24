@@ -5,8 +5,6 @@ import ai.corporatedroneagent.model.knowledge.KnowledgeResource;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Locale;
-import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -15,101 +13,40 @@ import org.springframework.stereotype.Service;
  * Reads a local file's bytes for the ingestion engine: enforces the supported-format and
  * size limits and returns a pure {@link ReadResult} (the engine records the read stage).
  * An unsupported/too-large/unreadable file is an item-level skip ({@code success=false}),
- * not a thrown error, so the scan keeps going.
+ * not a thrown error, so the scan keeps going. Format classification lives in
+ * {@link KnowledgeFileFormats}; rendering bytes to text is the conversion stage's job.
  */
 @Service
 public class LocalFolderKnowledgeReadService {
 
     private static final Logger log = LoggerFactory.getLogger(LocalFolderKnowledgeReadService.class);
 
+    // Text decodes roughly 1:1, so a tight cap; a document packs its text into a binary
+    // container, so it gets a larger raw-byte budget before extraction shrinks it again.
     static final long MAX_READ_BYTES = 1024L * 1024L;
-
-    private static final Set<String> SUPPORTED_TEXT_FORMATS = Set.of(
-            "adoc",
-            "asciidoc",
-            "bash",
-            "bat",
-            "c",
-            "cc",
-            "cfg",
-            "cjs",
-            "cmd",
-            "conf",
-            "cpp",
-            "cs",
-            "css",
-            "csv",
-            "dart",
-            "env",
-            "go",
-            "gradle",
-            "graphql",
-            "gql",
-            "groovy",
-            "h",
-            "hpp",
-            "htm",
-            "html",
-            "ini",
-            "java",
-            "js",
-            "json",
-            "jsx",
-            "kt",
-            "kts",
-            "less",
-            "log",
-            "lua",
-            "markdown",
-            "md",
-            "mjs",
-            "php",
-            "pl",
-            "pm",
-            "properties",
-            "proto",
-            "ps1",
-            "py",
-            "r",
-            "rb",
-            "rs",
-            "rst",
-            "sass",
-            "scala",
-            "scss",
-            "sh",
-            "sql",
-            "svelte",
-            "swift",
-            "tex",
-            "toml",
-            "ts",
-            "tsv",
-            "tsx",
-            "txt",
-            "vue",
-            "xml",
-            "yaml",
-            "yml",
-            "zsh"
-    );
+    static final long MAX_DOCUMENT_READ_BYTES = 25L * 1024L * 1024L;
 
     public ReadResult read(KnowledgeResource resource, Path file) {
-        if (!isSupported(resource)) {
+        String format = resource.getFormat();
+        if (!KnowledgeFileFormats.isSupported(format)) {
             log.debug(
                     "Skipping local knowledge resource {} because format '{}' is unsupported.",
                     resource.getReference(),
-                    resource.getFormat()
+                    format
             );
             return failed(resource, KnowledgePipelineReason.UNSUPPORTED_FILE_FORMAT, "Unsupported file format");
         }
-        if (resource.getSizeBytes() > MAX_READ_BYTES) {
+        long maxBytes = KnowledgeFileFormats.isDocument(format) ? MAX_DOCUMENT_READ_BYTES : MAX_READ_BYTES;
+        if (resource.getSizeBytes() > maxBytes) {
             log.debug(
                     "Skipping local knowledge resource {} because it is {} bytes.",
                     resource.getReference(),
                     resource.getSizeBytes()
             );
-            return failed(resource, KnowledgePipelineReason.FILE_TOO_LARGE, "File is larger than 1 MB");
+            return failed(
+                    resource,
+                    KnowledgePipelineReason.FILE_TOO_LARGE,
+                    "File is larger than " + (maxBytes / (1024L * 1024L)) + " MB");
         }
         try {
             return ReadResult.of(
@@ -134,9 +71,5 @@ public class LocalFolderKnowledgeReadService {
                 resource.getLastModifiedAt(),
                 reason,
                 message);
-    }
-
-    private boolean isSupported(KnowledgeResource resource) {
-        return SUPPORTED_TEXT_FORMATS.contains(resource.getFormat().toLowerCase(Locale.ROOT));
     }
 }

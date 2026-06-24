@@ -100,7 +100,8 @@ conversation flow still works.
   and Salesforce (Jira and Confluence already work).
 - Indexing and retrieval for repositories, cloud documents, and other
   non-local sources.
-- Richer document conversion beyond the current text-oriented pipeline.
+- Document conversion beyond the current text and Office/PDF extraction (for
+  example OCR for scanned files).
 - Scheduled jobs tied to projects and conversations.
 - Persistent personal memory, preferences, and long-term goal tracking.
 - Write-back workflows for external systems.
@@ -225,13 +226,16 @@ The local-folder pipeline:
 
 1. Scan the root and record resources.
 2. Read supported files.
-3. Convert readable content to markdown/text.
+3. Convert readable content to text.
 4. Split content into character chunks.
 5. Index chunks in Lucene.
 
-The current converter intentionally stays narrow: common text formats are
-supported, files larger than 1 MB are skipped, and richer document conversion is
-planned separately.
+Two kinds of files are supported. Common text and source formats (Markdown,
+source code, config, CSV, and similar) are decoded directly as UTF-8 and are
+capped at 1 MB. Common document formats (PDF, Word, Excel, PowerPoint,
+OpenDocument, and RTF) are extracted to text with Apache Tika and get a larger
+25 MB cap, since their text is packed into a binary container. Files that are
+larger, unsupported, or unreadable are skipped without failing the scan.
 
 When a chat starts, matching snippets are added to the prompt as a separate
 context message. They are explicitly treated as untrusted reference material,
@@ -341,6 +345,7 @@ on the app being bound to localhost.
 - Spring AI 1.1.2
 - H2, HikariCP, and Flyway
 - Apache Lucene
+- Apache Tika
 - Maven
 - Node.js 22.16.0 and npm 10.9.2
 - React 19

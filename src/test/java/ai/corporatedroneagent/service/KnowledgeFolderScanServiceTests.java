@@ -136,7 +136,8 @@ class KnowledgeFolderScanServiceTests {
                     new ObjectMapper()
             );
             KnowledgeSourceRegistry registry = new KnowledgeSourceRegistry(java.util.List.of(
-                    new FolderSourceAdapter(readService, new LocalFolderKnowledgeConversionService())));
+                    new FolderSourceAdapter(
+                            readService, new LocalFolderKnowledgeConversionService(new DocumentTextExtractor()))));
             this.ingestionService = new KnowledgeIngestionService(
                     engine, registry, scanCoordinator, knowledgeRootRepository, mock(EventService.class));
         }
