@@ -780,6 +780,13 @@ select.input {
 .main-header {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(8px);
+  /* backdrop-filter traps the conversation actions menu in the header's own
+     stacking context; once the thread gains a mask (non-empty), it paints over
+     the menu's overflow and swallows the clicks. Promote the header to a
+     positioned context above the thread (but below the z-50 modal overlay) so
+     its dropdown stays clickable. */
+  position: relative;
+  z-index: 10;
 }
 .settings-topbar {
   background: var(--white);
