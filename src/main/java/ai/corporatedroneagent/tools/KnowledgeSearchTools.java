@@ -1,5 +1,6 @@
 package ai.corporatedroneagent.tools;
 
+import ai.corporatedroneagent.model.KnowledgeRetrievalMode;
 import ai.corporatedroneagent.service.KnowledgeContextSnippet;
 import ai.corporatedroneagent.service.KnowledgeDocument;
 import ai.corporatedroneagent.service.KnowledgeSearchService;
@@ -7,6 +8,7 @@ import ai.corporatedroneagent.service.KnowledgeSnippets;
 import ai.corporatedroneagent.service.KnowledgeSourceSummary;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
@@ -27,13 +29,22 @@ public class KnowledgeSearchTools {
     private static final int DOCUMENT_LENGTH = 50_000;
 
     private final KnowledgeSearchService knowledgeSearchService;
-    private final int results;
-    private final int length;
+    private final Supplier<KnowledgeRetrievalMode> searchMode;
 
+    // Fixed bounds — used by the in-conversation tool, which is rebuilt per message from the
+    // current settings, so it doesn't need to re-read them on each call. Only results/length are
+    // used here; the enabled flag is irrelevant once the tool is being invoked.
     public KnowledgeSearchTools(KnowledgeSearchService knowledgeSearchService, int results, int length) {
+        this(knowledgeSearchService, () -> new KnowledgeRetrievalMode(false, results, length));
+    }
+
+    // Reads the result count and per-result length from the supplied search-mode config on each
+    // call — used by the long-lived MCP server so search_knowledge honours the current
+    // Settings → Knowledge search-mode bounds rather than a snapshot taken at startup.
+    public KnowledgeSearchTools(
+            KnowledgeSearchService knowledgeSearchService, Supplier<KnowledgeRetrievalMode> searchMode) {
         this.knowledgeSearchService = knowledgeSearchService;
-        this.results = results;
-        this.length = length;
+        this.searchMode = searchMode;
     }
 
     @Tool(
@@ -47,9 +58,10 @@ public class KnowledgeSearchTools {
             @ToolParam(description = "What to look for: keywords or a short natural-language query "
                     + "(e.g. \"Q2 vendor renewal terms\"), or a Jira issue key (e.g. \"DEV-77\").") String query
     ) {
+        KnowledgeRetrievalMode mode = searchMode.get();
         List<KnowledgeContextSnippet> snippets;
         try {
-            snippets = knowledgeSearchService.search(query, results, length);
+            snippets = knowledgeSearchService.search(query, mode.getResults(), mode.getLength());
         } catch (RuntimeException exception) {
             // Degrade gracefully like automatic retrieval: a transient index failure should let
             // the model continue, not abort the whole turn.

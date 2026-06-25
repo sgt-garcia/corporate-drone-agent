@@ -135,6 +135,13 @@ public class SettingsService {
         return settingsRepository.get().isMcpServerEnabled();
     }
 
+    // The on-demand search mode's config (results/length), read straight from storage. The
+    // MCP-exposed search_knowledge tool reads this per call so it honours the same bounds the
+    // Settings → Knowledge search mode is configured with.
+    public KnowledgeRetrievalMode knowledgeSearchMode() {
+        return settingsRepository.get().getKnowledgeTool().getSearch();
+    }
+
     public synchronized List<KnowledgeFolderDto> listKnowledgeFolders() {
         return knowledgeFolders();
     }

@@ -2,14 +2,17 @@ package ai.corporatedroneagent.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ai.corporatedroneagent.model.KnowledgeRetrievalMode;
 import ai.corporatedroneagent.service.KnowledgeContextSnippet;
 import ai.corporatedroneagent.service.KnowledgeDocument;
 import ai.corporatedroneagent.service.KnowledgeSearchService;
 import ai.corporatedroneagent.service.KnowledgeSourceSummary;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class KnowledgeSearchToolsTests {
@@ -33,6 +36,25 @@ class KnowledgeSearchToolsTests {
                 .contains("[1]")
                 .contains("Jira / DEV - Software Development / DEV-77 - Checkout telemetry regression")
                 .contains("Renewal terms are net-30.");
+    }
+
+    @Test
+    void readsResultBoundsFromTheSuppliedSearchModeOnEachCall() {
+        KnowledgeSearchService search = mock(KnowledgeSearchService.class);
+        when(search.search("q", 10, 3000)).thenReturn(List.of());
+        when(search.search("q", 2, 500)).thenReturn(List.of());
+        // The supplier-backed constructor (used by the MCP server) must re-read the bounds each
+        // call, so a settings change between calls takes effect without rebuilding the tool.
+        AtomicReference<KnowledgeRetrievalMode> mode =
+                new AtomicReference<>(new KnowledgeRetrievalMode(false, 10, 3000));
+        KnowledgeSearchTools tools = new KnowledgeSearchTools(search, mode::get);
+
+        tools.searchKnowledge("q");
+        mode.set(new KnowledgeRetrievalMode(false, 2, 500));
+        tools.searchKnowledge("q");
+
+        verify(search).search("q", 10, 3000);
+        verify(search).search("q", 2, 500);
     }
 
     @Test
