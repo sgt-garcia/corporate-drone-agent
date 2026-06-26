@@ -80,16 +80,19 @@ The guiding principles are:
 
 Supported chat providers:
 
-- OpenAI
-- OpenAI official SDK
+- OpenAI (Spring AI OpenAI starter)
+- OpenAI official SDK (Spring AI OpenAI SDK starter)
 - Azure OpenAI
 - Amazon Bedrock
 - Ollama
 - Mistral AI
 - Google Gemini
 - Anthropic
-- Groq
-- DeepSeek
+- Groq (OpenAI-compatible endpoint)
+- DeepSeek (OpenAI-compatible endpoint)
+
+Groq and DeepSeek have no dedicated Spring AI starter; they are driven through
+the OpenAI-compatible client with their own base URLs.
 
 If no provider is configured, the app uses a local echo response so the
 conversation flow still works.
@@ -108,6 +111,12 @@ conversation flow still works.
 - End-user packaging beyond the runnable jar.
 
 ## Run
+
+Prerequisites: JDK 21 and Maven. The Maven build provisions its own Node.js and
+npm, so you do not need them installed separately.
+
+The commands below use PowerShell; on macOS or Linux, substitute the equivalent
+shell syntax.
 
 Start the app:
 
@@ -365,11 +374,20 @@ on the app being bound to localhost.
   tools (`search_knowledge`, `fetch_knowledge_document`, `list_knowledge_sources`).
 - `src/main/java/ai/corporatedroneagent/mcp` hosts the local MCP server, its
   runtime enable gate, and the loopback-only guard.
+- `src/main/java/ai/corporatedroneagent/job` holds scheduled jobs, including the
+  15-minute knowledge scan (`KnowledgeScanJob`) and message push handling.
 - `src/main/java/ai/corporatedroneagent/repository` stores settings, projects,
   conversations, messages, knowledge roots, and knowledge pipeline state.
+- `src/main/java/ai/corporatedroneagent/model` holds domain entities, provider
+  settings, and knowledge pipeline state types.
+- `src/main/java/ai/corporatedroneagent/dto` holds request/response payloads and
+  SSE event shapes.
+- `src/main/java/ai/corporatedroneagent/config` holds Spring configuration and
+  the `cda.storage` / `cda.browser` configuration properties.
 - `src/main/java/ai/corporatedroneagent/security` protects local secrets.
 - `src/main/java/ai/corporatedroneagent/packaging` owns browser lifecycle and
   app termination.
+- `src/main/java/ai/corporatedroneagent/util` holds small shared helpers.
 - `src/main/resources/db/migration` contains Flyway migrations.
 - `frontend/src` contains the React UI.
 
