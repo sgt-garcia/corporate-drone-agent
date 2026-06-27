@@ -1227,6 +1227,48 @@ const CONFLUENCE_SOURCE = {
   errScan: "Could not scan Confluence space."
 };
 
+// Collapsible "Connection" panel wrapping the instance-URL / email / token credentials and the
+// connect/disconnect actions. It starts open until a connection exists, then collapses to a
+// one-line summary (instance · email) so the saved credentials stay glanceable without crowding
+// the project/space list below.
+function ConnectionPanel({ open, onToggle, connected, instanceUrl, email, children }) {
+  const summary = connected
+    ? [instanceUrl, email].filter(Boolean).join(" · ") || "Connection configured"
+    : "Enter your credentials to connect this tool";
+  return (
+    <div className="ds-card connection-panel">
+      <button
+        type="button"
+        className="connection-panel-toggle"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span className={connected ? "connection-panel-icon connected" : "connection-panel-icon"}>
+          <Icon
+            name={connected ? "circle-check" : "link"}
+            size={16}
+            color={connected ? "var(--success-600)" : "var(--blue-600)"}
+          />
+        </span>
+        <span className="connection-panel-titles">
+          <span className="connection-panel-title">Connection</span>
+          <span className="connection-panel-summary">{summary}</span>
+        </span>
+        <span className="connection-panel-action">
+          {open ? "Hide" : connected ? "Edit" : "Show"}
+        </span>
+        <Icon
+          name="chevron-down"
+          size={18}
+          color="var(--gray-500)"
+          className={open ? "connection-panel-chevron open" : "connection-panel-chevron"}
+        />
+      </button>
+      {open && <div className="connection-panel-body">{children}</div>}
+    </div>
+  );
+}
+
 // Shared connect/scan UI for the Atlassian sources. All per-source differences come in via the
 // `descriptor` (see JIRA_SOURCE / CONFLUENCE_SOURCE); the handlers use generic names that the
 // JiraConfig / ConfluenceConfig wrappers map onto.
@@ -1259,6 +1301,9 @@ function AtlassianSourceConfig({
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState("");
   const [disconnectConfirm, setDisconnectConfirm] = useState(false);
+  // Open the credentials form by default until a connection exists; once connected it collapses to
+  // the one-line summary so the saved instance/email stay visible above the source list.
+  const [panelOpen, setPanelOpen] = useState(() => !config.connected);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [available, setAvailable] = useState([]);
@@ -1506,7 +1551,13 @@ function AtlassianSourceConfig({
         />
       )}
 
-      <div className="ds-card" style={{ display: "flex", flexDirection: "column", gap: 18, padding: 22 }}>
+      <ConnectionPanel
+        open={panelOpen}
+        onToggle={() => setPanelOpen((current) => !current)}
+        connected={cfg.connected}
+        instanceUrl={instanceUrl}
+        email={email}
+      >
         <Field label="Instance URL" hint={descriptor.instanceUrlHint}>
           <input
             className="input"
@@ -1597,9 +1648,8 @@ function AtlassianSourceConfig({
           )}
         </div>
         {connectError && <InlineError>{connectError}</InlineError>}
-      </div>
 
-      <div className="btn-row">
+        <div className="btn-row">
         <button
           className="btn btn-primary"
           type="button"
@@ -1647,7 +1697,8 @@ function AtlassianSourceConfig({
             </button>
           </>
         )}
-      </div>
+        </div>
+      </ConnectionPanel>
 
       {cfg.connected && (
         <KnowledgeSourceList

@@ -1561,6 +1561,79 @@ select.input {
   gap: 6px;
 }
 
+/* ---- Collapsible connection panel (Jira / Confluence) ---- */
+.connection-panel {
+  padding: 0;
+  overflow: hidden;
+}
+.connection-panel-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.connection-panel-toggle:hover {
+  background: var(--gray-50);
+}
+.connection-panel-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  background: var(--blue-50);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.connection-panel-icon.connected {
+  background: var(--success-50);
+}
+.connection-panel-titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.connection-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+.connection-panel-summary {
+  font-size: 12px;
+  color: var(--gray-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.connection-panel-action {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray-500);
+  flex-shrink: 0;
+}
+.connection-panel-chevron {
+  flex-shrink: 0;
+  transition: transform var(--dur-base) var(--ease-standard);
+}
+.connection-panel-chevron.open {
+  transform: rotate(180deg);
+}
+.connection-panel-body {
+  border-top: 1px solid var(--border-divider);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 /* ---- Providers overview ---- */
 .providers-grid {
   display: grid;
