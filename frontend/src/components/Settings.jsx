@@ -1243,7 +1243,10 @@ function ConnectionPanel({ open, onToggle, connected, instanceUrl, email, childr
         aria-expanded={open}
         onClick={onToggle}
       >
-        <span className={connected ? "connection-panel-icon connected" : "connection-panel-icon"}>
+        <span
+          className={connected ? "connection-panel-icon connected" : "connection-panel-icon"}
+          aria-hidden="true"
+        >
           <Icon
             name={connected ? "circle-check" : "link"}
             size={16}
