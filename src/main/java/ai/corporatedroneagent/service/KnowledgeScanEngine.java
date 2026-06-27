@@ -182,7 +182,11 @@ public class KnowledgeScanEngine {
         entity.setSuccess(read.success());
         entity.setReason(read.reason());
         entity.setMessage(read.message());
-        entity.setValue(read.value());
+        // The raw bytes are consumed in-memory by conversion within this same pass and are never
+        // read back afterwards, so we do not persist them. Storing them duplicated the corpus (up
+        // to 25 MB per document) on top of the converted text and Lucene index, ballooning the
+        // encrypted, incompressible H2 file. We keep the read row's pipeline state, not its bytes.
+        entity.setValue(null);
         entity.setReadAt(scannedAt);
         pipelineRepository.saveRead(entity);
     }

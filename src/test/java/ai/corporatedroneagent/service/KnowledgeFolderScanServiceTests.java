@@ -194,7 +194,8 @@ class KnowledgeFolderScanServiceTests {
                 .hasValueSatisfying(read -> {
                     assertThat(read.getStatus()).isEqualTo(WorkStatus.DONE);
                     assertThat(read.getSuccess()).isTrue();
-                    assertThat(new String(read.getValue(), StandardCharsets.UTF_8)).isEqualTo("hello");
+                    // Raw bytes are no longer persisted; the converted text is the retained copy.
+                    assertThat(read.getValue()).isNull();
                 });
         assertThat(pipelineRepository.findConversionByResourceId(textResource.getId()))
                 .hasValueSatisfying(conversion -> {
@@ -462,7 +463,7 @@ class KnowledgeFolderScanServiceTests {
     }
 
     @Test
-    void scanFolderUpdatesReadValueWhenTextFileChanges() throws IOException {
+    void scanFolderUpdatesConversionWhenTextFileChanges() throws IOException {
         Path folder = Files.createDirectory(root.resolve("read-refresh"));
         Path file = folder.resolve("notes.md");
         Files.writeString(file, "old", StandardCharsets.UTF_8);
@@ -482,9 +483,7 @@ class KnowledgeFolderScanServiceTests {
         Optional<KnowledgeResourceConversion> conversion = pipelineRepository.findConversionByResourceId(resource.getId());
         java.util.List<KnowledgeResourceChunk> chunks = pipelineRepository.findChunksByResourceId(resource.getId());
 
-        assertThat(read).hasValueSatisfying(value ->
-                assertThat(new String(value.getValue(), StandardCharsets.UTF_8)).isEqualTo("new")
-        );
+        assertThat(read).hasValueSatisfying(value -> assertThat(value.getValue()).isNull());
         assertThat(conversion).hasValueSatisfying(value ->
                 assertThat(value.getValue()).isEqualTo("new")
         );

@@ -20,7 +20,6 @@ import ai.corporatedroneagent.repository.KnowledgeResourcePipelineRepository;
 import ai.corporatedroneagent.repository.KnowledgeResourceRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootRepository;
 import ai.corporatedroneagent.repository.KnowledgeRootScanRepository;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -150,9 +149,10 @@ class JiraKnowledgeScanServiceTests {
         assertThat(resource.isDeleted()).isFalse();
         assertThat(pipelineRepository.findReadByResourceId(resource.getId()))
                 .hasValueSatisfying(read -> {
-                    JsonNode payload = readJson(read);
-                    assertThat(payload.path("issue").path("key").asText()).isEqualTo("DEV-7");
-                    assertThat(payload.path("comments").get(0).path("body").toString()).contains("firsttoken");
+                    assertThat(read.getStatus()).isEqualTo(WorkStatus.DONE);
+                    assertThat(read.getSuccess()).isTrue();
+                    // Raw issue JSON is not persisted; the converted markdown is the retained copy.
+                    assertThat(read.getValue()).isNull();
                 });
         assertThat(pipelineRepository.findConversionByResourceId(resource.getId()))
                 .hasValueSatisfying(conversion -> assertThat(conversion.getValue())
@@ -197,7 +197,7 @@ class JiraKnowledgeScanServiceTests {
     }
 
     @Test
-    void conversionFailurePersistsNativeReadAndRecordsFailedConversionWithoutAbortingScan() {
+    void conversionFailureRecordsSuccessfulReadAndFailedConversionWithoutAbortingScan() {
         JiraSettings jira = jira();
         JiraProjectDto project = project();
         JiraIssueFetchService.JiraIssueManifest manifest = manifest(jira, "10100", "DEV-7", "Issue 10100");
@@ -206,8 +206,8 @@ class JiraKnowledgeScanServiceTests {
         issueFetchService.putDocument(document);
         issueFetchService.throwOnMarkdown = true;
 
-        // A single item's conversion failure no longer aborts the scan; it records a failed
-        // conversion and the scan completes, keeping the native read so nothing is lost.
+        // A single item's conversion failure no longer aborts the scan; it records a successful
+        // read and a failed conversion, and the scan completes.
         KnowledgeScanEngine.ScanOutcome result = scan(jira, project, "token-1234");
         assertThat(result.resources()).isEqualTo(1);
 
@@ -222,9 +222,9 @@ class JiraKnowledgeScanServiceTests {
                 .orElseThrow();
         assertThat(pipelineRepository.findReadByResourceId(resource.getId()))
                 .hasValueSatisfying(read -> {
-                    JsonNode payload = readJson(read);
-                    assertThat(payload.path("issue").path("key").asText()).isEqualTo("DEV-7");
-                    assertThat(payload.path("comments").get(0).path("body").toString()).contains("firsttoken");
+                    assertThat(read.getStatus()).isEqualTo(WorkStatus.DONE);
+                    assertThat(read.getSuccess()).isTrue();
+                    assertThat(read.getValue()).isNull();
                 });
         assertThat(pipelineRepository.findConversionByResourceId(resource.getId()))
                 .hasValueSatisfying(conversion -> {
@@ -607,14 +607,6 @@ class JiraKnowledgeScanServiceTests {
 
     private JiraProjectDto project() {
         return new JiraProjectDto("10001", "DEV", "Software Development", "scanned", 0, "", "");
-    }
-
-    private JsonNode readJson(KnowledgeResourceRead read) {
-        try {
-            return objectMapper.readTree(read.getValue());
-        } catch (IOException exception) {
-            throw new AssertionError(exception);
-        }
     }
 
     private void respond(HttpExchange exchange, int status, String body) throws IOException {
