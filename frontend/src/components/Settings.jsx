@@ -1650,53 +1650,53 @@ function AtlassianSourceConfig({
         {connectError && <InlineError>{connectError}</InlineError>}
 
         <div className="btn-row">
-        <button
-          className="btn btn-primary"
-          type="button"
-          onClick={saveConnection}
-          disabled={connecting}
-        >
-          {connecting ? (
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={saveConnection}
+            disabled={connecting}
+          >
+            {connecting ? (
+              <>
+                <Icon name="refresh-cw" size={15} color="#fff" className="cda-spin" />
+                Saving…
+              </>
+            ) : cfg.connected ? (
+              <>
+                <Icon name="check" size={16} color="#fff" /> Save connection
+              </>
+            ) : (
+              <>
+                <Icon name="check" size={16} color="#fff" /> Connect
+              </>
+            )}
+          </button>
+          {cfg.connected && !disconnectConfirm && (
+            <button
+              className="btn btn-secondary"
+              type="button"
+              onClick={() => setDisconnectConfirm(true)}
+            >
+              Disconnect
+            </button>
+          )}
+          {cfg.connected && disconnectConfirm && (
             <>
-              <Icon name="refresh-cw" size={15} color="#fff" className="cda-spin" />
-              Saving…
-            </>
-          ) : cfg.connected ? (
-            <>
-              <Icon name="check" size={16} color="#fff" /> Save connection
-            </>
-          ) : (
-            <>
-              <Icon name="check" size={16} color="#fff" /> Connect
+              <span className="disconnect-prompt">
+                Remove all {items.length} {descriptor.singular}{items.length !== 1 ? "s" : ""} too?
+              </span>
+              <button
+                className="btn btn-secondary btn-sm"
+                type="button"
+                onClick={() => setDisconnectConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button className="btn btn-danger btn-sm" type="button" onClick={disconnect}>
+                <Icon name="trash" size={14} color="#fff" /> Disconnect
+              </button>
             </>
           )}
-        </button>
-        {cfg.connected && !disconnectConfirm && (
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={() => setDisconnectConfirm(true)}
-          >
-            Disconnect
-          </button>
-        )}
-        {cfg.connected && disconnectConfirm && (
-          <>
-            <span className="disconnect-prompt">
-              Remove all {items.length} {descriptor.singular}{items.length !== 1 ? "s" : ""} too?
-            </span>
-            <button
-              className="btn btn-secondary btn-sm"
-              type="button"
-              onClick={() => setDisconnectConfirm(false)}
-            >
-              Cancel
-            </button>
-            <button className="btn btn-danger btn-sm" type="button" onClick={disconnect}>
-              <Icon name="trash" size={14} color="#fff" /> Disconnect
-            </button>
-          </>
-        )}
         </div>
       </ConnectionPanel>
 

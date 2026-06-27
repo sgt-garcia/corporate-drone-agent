@@ -154,6 +154,7 @@ a {
 .settings-nav-item:focus-visible,
 .provider-card:focus-visible,
 .config-back:focus-visible,
+.connection-panel-toggle:focus-visible,
 .iconbtn:focus-visible,
 .agent-act:focus-visible,
 .source-pill:focus-visible,
